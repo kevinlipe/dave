@@ -1,0 +1,69 @@
+# dave
+
+A text editor named after Sam & Dave, the Stax Records legends. Dave is a spiritual successor to Rob Pike's `sam` editor, reimagined for daily use on Linux and Windows, with first-class soft word wrap for prose editing.
+
+## What it is
+
+Dave uses Sam's command language and structural regular expressions. If you know `sam`, you know Dave. The main additions are word wrap, a more keyboard-friendly interface, and a config file.
+
+The command window at the top accepts Sam commands. Right-click opens the buffer menu. Middle-click (or Shift+right-click) opens the editing menu (Cut, Paste, Snarf, Look, Send, Undo).
+
+## Building
+
+```
+make          # Linux
+make windows  # cross-compile for Windows
+```
+
+Requires Go and SDL2. The binary embeds Go Mono as a fallback font; no fonts need to be installed.
+
+## Configuration
+
+`~/.config/dave/config` on Linux, `%APPDATA%\dave\config` on Windows:
+
+```
+font      = JetBrains Mono
+font_size = 14
+font_mode = ttf          # ttf or plan9
+word_wrap = true
+margin    = 80
+tab_width = 4
+```
+
+## Invocation
+
+```
+dave [file ...]     # open files (no panes opened automatically)
+dave -d [file ...]  # headless REPL mode, no GUI
+```
+
+## Command language (brief)
+
+Addresses: `0` start, `$` end, `.` dot, `n` line, `#n` char offset, `/re/` next match, `a1,a2` range, `,` whole file.
+
+| Command | Effect |
+|---|---|
+| `a/text/` `i/text/` `c/text/` | append / insert / change |
+| `d` | delete dot |
+| `s/re/repl/` | substitute (add `g` flag for all) |
+| `p` `=` | print dot / print address |
+| `x/re/ cmd` | run cmd for each match |
+| `y/re/ cmd` | run cmd for text between matches |
+| `g/re/ cmd` `v/re/ cmd` | run cmd if dot matches / doesn't match |
+| `X/re/ cmd` `Y/re/ cmd` | run cmd across matching / non-matching files |
+| `e` `r` `w` `f` | edit / read / write / rename |
+| `B` `b` `D` | add / switch to / remove file |
+| `u` `u`*n* | undo last / last n commands |
+| `q` | quit (twice to force) |
+| `< cmd` `> cmd` `\| cmd` | shell in / out / pipe |
+
+See the [Sam paper](https://doc.cat-v.org/plan_9/4th_edition/papers/sam/) for the full reference.
+
+## sdave
+
+`sdave` is a companion stream editor (like `ssam` for `sam`):
+
+```
+sdave -e 's/foo/bar/g' file
+sdave -n ',x/TODO/ p' *.go
+```
