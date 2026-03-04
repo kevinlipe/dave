@@ -1,0 +1,7 @@
+# -*- mode: gitignore -*-
+# gitignore for dave
+
+# ignore the binary
+/dave
+/dave.exe
+
