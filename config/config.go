@@ -48,6 +48,7 @@ type Config struct {
 	FontSize    float64 // font size in points (default 14)
 	FontMode    string  // "ttf" or "plan9" (default "ttf")
 	Plan9Font   string  // full path to Plan 9 font file; only used when FontMode = "plan9"
+	Plan9Embiggen bool   // render Plan 9 fonts at 150% scale (default false)
 	WordWrap    bool    // soft word wrap on/off (default true)
 	Margin      int     // olivetti margin width in chars (default 80)
 	Split       string  // "vertical" or "horizontal" (default "vertical")
@@ -129,6 +130,7 @@ const defaultConfigText = `# Dave configuration file
 # font_size     = 14
 # font_mode     = ttf
 # plan9_font    =
+# plan9_embiggen = false
 
 # word_wrap     = true
 # margin        = 80
@@ -221,6 +223,12 @@ func applyKey(cfg *Config, k, v string) error {
 		cfg.FontMode = v
 	case "plan9_font":
 		cfg.Plan9Font = v
+	case "plan9_embiggen":
+		b, err := parseBool(v)
+		if err != nil {
+			return fmt.Errorf("invalid plan9_embiggen %q: %w", v, err)
+		}
+		cfg.Plan9Embiggen = b
 	case "word_wrap":
 		b, err := parseBool(v)
 		if err != nil {

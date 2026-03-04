@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"image"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -34,10 +35,16 @@ type Plan9Face struct {
 	font     *p9Font
 	ren      *sdl.Renderer
 	textures map[*p9SubfontImage]*sdl.Texture
+	scale    float64 // 1.0 or 1.5
 }
 
 // NewPlan9Face loads a Plan 9 .font file and returns a Face ready for drawing.
-func NewPlan9Face(path string, ren *sdl.Renderer) (*Plan9Face, error) {
+// If embiggen is true, glyphs are rendered at 150% scale.
+func NewPlan9Face(path string, ren *sdl.Renderer, embiggen bool) (*Plan9Face, error) {
+	scale := 1.0
+	if embiggen {
+		scale = 1.5
+	}
 	f, err := loadP9Font(path)
 	if err != nil {
 		return nil, err
@@ -46,18 +53,23 @@ func NewPlan9Face(path string, ren *sdl.Renderer) (*Plan9Face, error) {
 		font:     f,
 		ren:      ren,
 		textures: make(map[*p9SubfontImage]*sdl.Texture),
+		scale:    scale,
 	}, nil
 }
 
-func (pf *Plan9Face) Height() int { return pf.font.height }
-func (pf *Plan9Face) Ascent() int { return pf.font.ascent }
+func (pf *Plan9Face) sc(n int) int32 {
+	return int32(math.Round(float64(n) * pf.scale))
+}
+
+func (pf *Plan9Face) Height() int { return int(pf.sc(pf.font.height)) }
+func (pf *Plan9Face) Ascent() int { return int(pf.sc(pf.font.ascent)) }
 
 func (pf *Plan9Face) GlyphAdvance(r rune) int {
 	g, err := pf.font.glyph(r)
 	if err != nil {
 		return 0
 	}
-	return g.advance
+	return int(pf.sc(g.advance))
 }
 
 func (pf *Plan9Face) MeasureText(s string) int {
@@ -69,7 +81,7 @@ func (pf *Plan9Face) MeasureText(s string) int {
 }
 
 func (pf *Plan9Face) DrawText(s string, x, y int32, col sdl.Color) error {
-	baseline := y + int32(pf.font.ascent)
+	baseline := y + pf.sc(pf.font.ascent)
 	cursor := x
 	for _, r := range s {
 		g, err := pf.font.glyph(r)
@@ -77,25 +89,25 @@ func (pf *Plan9Face) DrawText(s string, x, y int32, col sdl.Color) error {
 			continue
 		}
 		if g.w <= 0 || g.h <= 0 {
-			cursor += int32(g.advance)
+			cursor += pf.sc(g.advance)
 			continue
 		}
 		tex, err := pf.texture(g.image)
 		if err != nil {
-			cursor += int32(g.advance)
+			cursor += pf.sc(g.advance)
 			continue
 		}
 		src := sdl.Rect{X: int32(g.x), Y: int32(g.y), W: int32(g.w), H: int32(g.h)}
 		dst := sdl.Rect{
-			X: cursor + int32(g.left),
-			Y: baseline - int32(g.image.ascent) + int32(g.y),
-			W: int32(g.w),
-			H: int32(g.h),
+			X: cursor + pf.sc(g.left),
+			Y: baseline - pf.sc(g.image.ascent) + pf.sc(g.y),
+			W: pf.sc(g.w),
+			H: pf.sc(g.h),
 		}
 		tex.SetColorMod(col.R, col.G, col.B)
 		tex.SetAlphaMod(col.A)
 		pf.ren.Copy(tex, &src, &dst)
-		cursor += int32(g.advance)
+		cursor += pf.sc(g.advance)
 	}
 	return nil
 }
@@ -112,6 +124,11 @@ func (pf *Plan9Face) Close() {
 func (pf *Plan9Face) texture(img *p9SubfontImage) (*sdl.Texture, error) {
 	if tex, ok := pf.textures[img]; ok {
 		return tex, nil
+	}
+	// Use linear filtering when scaling so upscaled glyphs are smooth.
+	if pf.scale > 1.0 {
+		sdl.SetHint(sdl.HINT_RENDER_SCALE_QUALITY, "1")
+		defer sdl.SetHint(sdl.HINT_RENDER_SCALE_QUALITY, "0")
 	}
 	w, h := int32(img.width), int32(img.height)
 	tex, err := pf.ren.CreateTexture(uint32(sdl.PIXELFORMAT_RGBA32), sdl.TEXTUREACCESS_STATIC, w, h)

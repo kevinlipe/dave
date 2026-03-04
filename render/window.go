@@ -147,7 +147,7 @@ func (w *Window) Size() (width, height int32) {
 // compensation; pass 1.0 on non-HiDPI displays.
 func loadFace(cfg *config.Config, ren *sdl.Renderer, scale float64) (Face, error) {
 	if cfg.FontMode == "plan9" && cfg.Plan9Font != "" {
-		face, err := NewPlan9Face(cfg.Plan9Font, ren)
+		face, err := NewPlan9Face(cfg.Plan9Font, ren, cfg.Plan9Embiggen)
 		if err != nil {
 			return nil, fmt.Errorf("render: load plan9 font %q: %w", cfg.Plan9Font, err)
 		}
