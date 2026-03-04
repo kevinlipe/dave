@@ -77,10 +77,18 @@ func (s *Session) execCmd(cmd *Command, f *file.File, ctx *execCtx) error {
 		return fmt.Errorf("no current file")
 	}
 
-	// Evaluate address (defaults to dot).
-	dot, err := s.evalAddr(cmd.Addr, f)
-	if err != nil {
-		return err
+	// Evaluate address. Most commands default to dot; 'w' defaults to the
+	// whole file (0,$) when no address is given — writing just dot would
+	// silently truncate the file to a null selection.
+	var dot buffer.Range
+	if cmd.Op == 'w' && cmd.Addr == nil {
+		dot = buffer.Range{Start: 0, End: f.Len()}
+	} else {
+		var err error
+		dot, err = s.evalAddr(cmd.Addr, f)
+		if err != nil {
+			return err
+		}
 	}
 
 	switch cmd.Op {

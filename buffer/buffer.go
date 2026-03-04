@@ -16,7 +16,12 @@ type Buffer struct {
 	data     []byte // entire storage: [0..gapStart) ++ gap ++ [gapEnd..len)
 	gapStart int    // first byte of the gap (byte index)
 	gapEnd   int    // first byte after the gap (byte index)
+	gen      int    // incremented on every Insert or Delete
 }
+
+// Gen returns the current modification generation. Callers can cache this
+// value and compare it later to detect whether the buffer has changed.
+func (b *Buffer) Gen() int { return b.gen }
 
 // New returns an empty Buffer.
 func New() *Buffer {
@@ -138,6 +143,7 @@ func (b *Buffer) delete(bytePos, n int) {
 func (b *Buffer) Insert(pos int, text string) {
 	bytePos := b.runeToBytePos(pos)
 	b.insert(bytePos, []byte(text))
+	b.gen++
 }
 
 // Delete removes n codepoints starting at codepoint position pos.
@@ -148,6 +154,7 @@ func (b *Buffer) Delete(pos, n int) {
 	byteStart := b.runeToBytePos(pos)
 	byteEnd := b.runeToBytePos(pos + n)
 	b.delete(byteStart, byteEnd-byteStart)
+	b.gen++
 }
 
 // ReadAt returns the string of n codepoints starting at codepoint offset pos.
