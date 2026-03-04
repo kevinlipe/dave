@@ -175,7 +175,16 @@ func (p *Pane) Draw(ren *sdl.Renderer, rect sdl.Rect, active bool) error {
 	p.drawScrollbar(ren, rect, false)
 
 	// --- Text body ---
-	return p.drawBody(ren, rect)
+	if err := p.drawBody(ren, rect); err != nil {
+		return err
+	}
+
+	// --- Active border (drawn last so it sits on top) ---
+	if active {
+		ren.SetDrawColor(p.pal.Scrollbar.R, p.pal.Scrollbar.G, p.pal.Scrollbar.B, 255)
+		render.DrawBorder(ren, rect, render.BorderW)
+	}
+	return nil
 }
 
 // drawHeader renders the single-line pane header.
@@ -183,12 +192,8 @@ func (p *Pane) drawHeader(ren *sdl.Renderer, rect sdl.Rect, active bool) {
 	hdrH := HeaderH(p.face)
 	hdrRect := sdl.Rect{X: rect.X, Y: rect.Y, W: rect.W, H: hdrH}
 
-	// Header background.
-	bg := p.pal.HeaderBG
-	if active {
-		bg = p.pal.Background
-	}
-	ren.SetDrawColor(bg.R, bg.G, bg.B, 255)
+	// Header background (always the same regardless of active state).
+	ren.SetDrawColor(p.pal.HeaderBG.R, p.pal.HeaderBG.G, p.pal.HeaderBG.B, 255)
 	ren.FillRect(&hdrRect)
 
 	// Header bottom border.
@@ -222,9 +227,10 @@ func (p *Pane) drawScrollbar(ren *sdl.Renderer, rect sdl.Rect, isCmd bool) {
 	ren.SetDrawColor(thumbCol.R, thumbCol.G, thumbCol.B, 255)
 	ren.DrawLine(rect.X+render.ScrollBarW-1, rect.Y+hdrH, rect.X+render.ScrollBarW-1, rect.Y+rect.H-1)
 
-	// Thumb: proportional position bubble.
+	// Thumb: only drawn when content exceeds the viewport; avoids overflow when
+	// thumbH = bodyH²/total would be larger than bodyH (total < bodyH case).
 	total := p.layout.TotalHeight
-	if total > 0 && bodyH > 0 {
+	if total > bodyH {
 		thumbY := int32(float64(p.scrollY) / float64(total) * float64(bodyH))
 		thumbH := int32(float64(bodyH) / float64(total) * float64(bodyH))
 		if thumbH < 4 {

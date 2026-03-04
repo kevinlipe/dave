@@ -4,7 +4,7 @@
 // Config file location:
 //
 //	Linux/macOS:  ~/.config/dave/config
-//	Windows:      %APPDATA%\Roaming\dave\config
+//	Windows:      %APPDATA%\dave\config
 //
 // Format: key = value, one per line. Lines beginning with # are comments.
 // Unknown keys are an error. Missing file → all defaults.
@@ -197,7 +197,7 @@ func (c *Config) ShellArgs() (string, []string) {
 // configPath returns the OS-appropriate config file path.
 func configPath() string {
 	if runtime.GOOS == "windows" {
-		return filepath.Join(os.Getenv("APPDATA"), "Roaming", "dave", "config")
+		return filepath.Join(os.Getenv("APPDATA"), "dave", "config")
 	}
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".config", "dave", "config")

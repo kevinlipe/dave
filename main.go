@@ -173,7 +173,7 @@ func runGUI(cfg *config.Config, sess *cmd.Session) error {
 		}
 
 		// Command window.
-		cmdWin.Draw(win.Ren, cmdRect, face, pal)
+		cmdWin.Draw(win.Ren, cmdRect, face, pal, handler.ActivePane() == nil)
 
 		// File panes.
 		for i, p := range panes {

@@ -9,23 +9,35 @@ import (
 )
 
 // resolveFontPath resolves a font name to TTF bytes on Windows.
-// Uses PowerShell to query installed fonts; falls back to scanning %WINDIR%\Fonts.
+// Scans per-user fonts (%LOCALAPPDATA%\Microsoft\Windows\Fonts) then
+// system fonts (%WINDIR%\Fonts), then tries fc-match as a last resort.
 func resolveFontPath(name string) ([]byte, error) {
-	// Try scanning WINDIR\Fonts for a matching file name.
+	// Build the list of directories to search: per-user first, then system.
+	var fontDirs []string
+	if localAppData := os.Getenv("LOCALAPPDATA"); localAppData != "" {
+		fontDirs = append(fontDirs, filepath.Join(localAppData, "Microsoft", "Windows", "Fonts"))
+	}
 	windir := os.Getenv("WINDIR")
 	if windir == "" {
 		windir = `C:\Windows`
 	}
-	fontsDir := filepath.Join(windir, "Fonts")
-	entries, err := os.ReadDir(fontsDir)
-	if err == nil {
-		nameLower := strings.ToLower(name)
+	fontDirs = append(fontDirs, filepath.Join(windir, "Fonts"))
+
+	nameLower := strings.ToLower(name)
+	nameCompact := strings.ReplaceAll(nameLower, " ", "")
+
+	for _, fontsDir := range fontDirs {
+		entries, err := os.ReadDir(fontsDir)
+		if err != nil {
+			continue
+		}
 		for _, e := range entries {
 			if e.IsDir() {
 				continue
 			}
 			fileLower := strings.ToLower(e.Name())
-			if strings.Contains(fileLower, nameLower) &&
+			fileCompact := strings.ReplaceAll(fileLower, " ", "")
+			if strings.Contains(fileCompact, nameCompact) &&
 				(strings.HasSuffix(fileLower, ".ttf") || strings.HasSuffix(fileLower, ".otf")) {
 				path := filepath.Join(fontsDir, e.Name())
 				data, err := os.ReadFile(path)

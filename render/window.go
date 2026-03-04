@@ -21,6 +21,10 @@ const (
 
 	// PanePad is the horizontal inner padding of a pane's text area.
 	PanePad int32 = 4
+
+	// BorderW is the pixel width of the active-frame highlight border,
+	// matching Sam's 2-pixel border drawn around the focused frame.
+	BorderW int32 = 2
 )
 
 // Window wraps an SDL window and renderer pair.
@@ -29,11 +33,16 @@ type Window struct {
 	Ren     *sdl.Renderer
 	Face    Face
 	Palette Palette
+	Scale   float64 // physical pixels per logical pixel (1.0 on most Linux, >1 on HiDPI)
 }
 
 // Open creates the SDL window and renderer, loads the font, and builds the
 // Palette from cfg.
 func Open(cfg *config.Config) (*Window, error) {
+	// Prevent Windows DPI virtualization from blurring the framebuffer.
+	// Must be set before SDL_Init. No effect on Linux/macOS.
+	sdl.SetHint("SDL_WINDOWS_DPI_AWARENESS", "permonitorv2")
+
 	if err := sdl.Init(sdl.INIT_VIDEO); err != nil {
 		return nil, fmt.Errorf("render: sdl init: %w", err)
 	}
@@ -58,7 +67,18 @@ func Open(cfg *config.Config) (*Window, error) {
 		return nil, fmt.Errorf("render: create renderer: %w", err)
 	}
 
-	face, err := loadFace(cfg, ren)
+	// Compute DPI scale: ratio of physical renderer pixels to logical window pixels.
+	// On Windows with DPI awareness this will be e.g. 1.25 at 125% display scaling.
+	scale := 1.0
+	if lw, _ := win.GetSize(); lw > 0 {
+		if pw, _, err := ren.GetOutputSize(); err == nil && pw > 0 {
+			if s := float64(pw) / float64(lw); s > 1.0 {
+				scale = s
+			}
+		}
+	}
+
+	face, err := loadFace(cfg, ren, scale)
 	if err != nil {
 		ren.Destroy()
 		win.Destroy()
@@ -72,6 +92,7 @@ func Open(cfg *config.Config) (*Window, error) {
 		Win:     win,
 		Ren:     ren,
 		Face:    face,
+		Scale:   scale,
 		Palette: PaletteFromConfig(cfg),
 	}, nil
 }
@@ -89,6 +110,14 @@ func (w *Window) Close() {
 		w.Win.Destroy()
 	}
 	sdl.Quit()
+}
+
+// DrawBorder draws a w-pixel thick border inside rect using the current draw color.
+func DrawBorder(ren *sdl.Renderer, rect sdl.Rect, w int32) {
+	ren.FillRect(&sdl.Rect{X: rect.X, Y: rect.Y, W: rect.W, H: w})                          // top
+	ren.FillRect(&sdl.Rect{X: rect.X, Y: rect.Y + rect.H - w, W: rect.W, H: w})             // bottom
+	ren.FillRect(&sdl.Rect{X: rect.X, Y: rect.Y, W: w, H: rect.H})                          // left
+	ren.FillRect(&sdl.Rect{X: rect.X + rect.W - w, Y: rect.Y, W: w, H: rect.H})             // right
 }
 
 // DrawCursor draws an I-beam cursor at pixel position (x, y) with the given
@@ -114,8 +143,9 @@ func (w *Window) Size() (width, height int32) {
 }
 
 // loadFace creates the text rendering face from cfg. Falls back to embedded
-// Go Mono on any error.
-func loadFace(cfg *config.Config, ren *sdl.Renderer) (Face, error) {
+// Go Mono on any error. scale is the physical-to-logical pixel ratio for DPI
+// compensation; pass 1.0 on non-HiDPI displays.
+func loadFace(cfg *config.Config, ren *sdl.Renderer, scale float64) (Face, error) {
 	if cfg.FontMode == "plan9" && cfg.Plan9Font != "" {
 		face, err := NewPlan9Face(cfg.Plan9Font, ren)
 		if err != nil {
@@ -132,7 +162,7 @@ func loadFace(cfg *config.Config, ren *sdl.Renderer) (Face, error) {
 		}
 		// On failure: fall through to embedded Go Mono silently.
 	}
-	face, err := NewTTFFace(data, cfg.FontSize, ren)
+	face, err := NewTTFFace(data, cfg.FontSize*scale, ren)
 	if err != nil {
 		return nil, fmt.Errorf("render: load font: %w", err)
 	}

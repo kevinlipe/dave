@@ -245,16 +245,21 @@ func (cw *CmdWindow) moveCursor(delta int, extend bool) {
 }
 
 // Draw renders the command window into rect.
-func (cw *CmdWindow) Draw(ren *sdl.Renderer, rect sdl.Rect, face render.Face, pal render.Palette) error {
+func (cw *CmdWindow) Draw(ren *sdl.Renderer, rect sdl.Rect, face render.Face, pal render.Palette, active bool) error {
 	lineH := int32(face.Height())
 
 	// Background.
 	ren.SetDrawColor(pal.CmdwinBG.R, pal.CmdwinBG.G, pal.CmdwinBG.B, 255)
 	ren.FillRect(&rect)
 
-	// Border.
-	ren.SetDrawColor(pal.CmdwinBorder.R, pal.CmdwinBorder.G, pal.CmdwinBorder.B, 255)
-	ren.DrawRect(&rect)
+	// Border: olive/scroll color and thick when active, single-pixel border color when not.
+	if active {
+		ren.SetDrawColor(pal.CmdwinScroll.R, pal.CmdwinScroll.G, pal.CmdwinScroll.B, 255)
+		render.DrawBorder(ren, rect, render.BorderW)
+	} else {
+		ren.SetDrawColor(pal.CmdwinBorder.R, pal.CmdwinBorder.G, pal.CmdwinBorder.B, 255)
+		ren.DrawRect(&rect)
+	}
 
 	// Scrollbar on left: track uses background, thumb uses accent color.
 	sbRect := sdl.Rect{X: rect.X, Y: rect.Y, W: render.ScrollBarW, H: rect.H}
