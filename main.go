@@ -1,3 +1,5 @@
+// test of writing to file
+
 package main
 
 import (
@@ -64,6 +66,11 @@ func runGUI(cfg *config.Config, sess *cmd.Session) error {
 
 	cmdWin := input.NewCmdWindow()
 	handler := input.NewHandler(sess, cmdWin, face, pal)
+
+	// Print menu lines for files loaded from command-line arguments.
+	for _, f := range sess.Files {
+		cmdWin.AppendOutput(f.MenuLine(f == sess.Current) + "\n")
+	}
 
 	// Start with no panes open. Files are in sess.Files but no view is created
 	// until the user picks one from the buffer menu (right-click), exactly as Sam.

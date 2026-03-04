@@ -507,6 +507,7 @@ func (s *Session) execBig(arg string) error {
 			s.AddFile(f)
 		}
 		s.Current = f
+		s.printf("%s\n", f.MenuLine(true))
 	}
 	return nil
 }

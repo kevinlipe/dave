@@ -54,7 +54,7 @@ type Config struct {
 	TabWidth    int     // tab stop width in spaces (default 4)
 	LineNumbers  bool    // show line numbers (default false)
 	UsePwsh      bool    // Windows only: use pwsh instead of powershell.exe (default true)
-	CommandLines int     // initial command window height in lines (default 4)
+	CommandLines int     // initial command window height in lines (default 10)
 	Colors       Colors
 }
 
@@ -69,7 +69,7 @@ func Default() *Config {
 		TabWidth:    4,
 		LineNumbers:  false,
 		UsePwsh:      true,
-		CommandLines: 4,
+		CommandLines: 10,
 		Colors: Colors{
 			Background:   Color{0xFF, 0xFF, 0xEA},
 			Text:         Color{0x00, 0x00, 0x00},
@@ -137,7 +137,7 @@ const defaultConfigText = `# Dave configuration file
 # line_numbers  = false
 
 # use_pwsh      = true
-# command_lines  = 4
+# command_lines  = 10
 
 # color_background    = #FFFFEA
 # color_text          = #000000

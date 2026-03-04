@@ -91,6 +91,19 @@ func (w *Window) Close() {
 	sdl.Quit()
 }
 
+// DrawCursor draws an I-beam cursor at pixel position (x, y) with the given
+// line height and color. The cursor is a 1-px vertical bar with 3-px horizontal
+// serifs at the top and bottom, matching Sam's cursor appearance.
+func DrawCursor(ren *sdl.Renderer, x, y, lineH int32, col sdl.Color) {
+	ren.SetDrawColor(col.R, col.G, col.B, 255)
+	// Vertical bar.
+	ren.DrawLine(x, y, x, y+lineH-1)
+	// Top serif.
+	ren.DrawLine(x-2, y, x+2, y)
+	// Bottom serif.
+	ren.DrawLine(x-2, y+lineH-1, x+2, y+lineH-1)
+}
+
 // Size returns the current logical window size in pixels.
 func (w *Window) Size() (width, height int32) {
 	pw, ph, err := w.Ren.GetOutputSize()
@@ -103,11 +116,18 @@ func (w *Window) Size() (width, height int32) {
 // loadFace creates the text rendering face from cfg. Falls back to embedded
 // Go Mono on any error.
 func loadFace(cfg *config.Config, ren *sdl.Renderer) (Face, error) {
+	if cfg.FontMode == "plan9" && cfg.Plan9Font != "" {
+		face, err := NewPlan9Face(cfg.Plan9Font, ren)
+		if err != nil {
+			return nil, fmt.Errorf("render: load plan9 font %q: %w", cfg.Plan9Font, err)
+		}
+		return face, nil
+	}
+
 	data := GoMonoTTF
 	if cfg.Font != "" {
 		resolved, err := resolveFontPath(cfg.Font)
 		if err == nil {
-			// Use the system font data if we can load it.
 			data = resolved
 		}
 		// On failure: fall through to embedded Go Mono silently.

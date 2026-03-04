@@ -123,6 +123,22 @@ func (cw *CmdWindow) SnarfBuffer() string { return cw.snarf }
 // SetSnarf sets the snarf buffer.
 func (cw *CmdWindow) SetSnarf(s string) { cw.snarf = s }
 
+// AppendOutput appends text to the end of the command window buffer and moves
+// the cursor to the end. This is the same path used by execute() for command output.
+func (cw *CmdWindow) AppendOutput(text string) {
+	if text == "" {
+		return
+	}
+	n := cw.buf.Len()
+	if n > 0 && cw.buf.RuneAt(n-1) != '\n' {
+		cw.buf.Insert(n, "\n")
+		n++
+	}
+	cw.buf.Insert(n, text)
+	n = cw.buf.Len()
+	cw.dot = buffer.Range{Start: n, End: n}
+}
+
 // execute runs the selected text (if non-null) or the current line (if null cursor)
 // as a Dave command. Output is appended to the end of the buffer.
 func (cw *CmdWindow) execute(sess *cmd.Session) error {
@@ -147,18 +163,7 @@ func (cw *CmdWindow) execute(sess *cmd.Session) error {
 	if err != nil && err != cmd.ErrQuit {
 		output += "? " + err.Error() + "\n"
 	}
-
-	if output != "" {
-		n := cw.buf.Len()
-		// Ensure output starts on a new line.
-		if n > 0 && cw.buf.RuneAt(n-1) != '\n' {
-			cw.buf.Insert(n, "\n")
-			n++
-		}
-		cw.buf.Insert(n, output)
-		n = cw.buf.Len()
-		cw.dot = buffer.Range{Start: n, End: n}
-	}
+	cw.AppendOutput(output)
 
 	if err == cmd.ErrQuit {
 		return err
@@ -251,19 +256,20 @@ func (cw *CmdWindow) Draw(ren *sdl.Renderer, rect sdl.Rect, face render.Face, pa
 	ren.SetDrawColor(pal.CmdwinBorder.R, pal.CmdwinBorder.G, pal.CmdwinBorder.B, 255)
 	ren.DrawRect(&rect)
 
-	// Scrollbar on left.
+	// Scrollbar on left: track uses background, thumb uses accent color.
 	sbRect := sdl.Rect{X: rect.X, Y: rect.Y, W: render.ScrollBarW, H: rect.H}
-	ren.SetDrawColor(pal.CmdwinScroll.R, pal.CmdwinScroll.G, pal.CmdwinScroll.B, 255)
+	ren.SetDrawColor(pal.CmdwinBG.R, pal.CmdwinBG.G, pal.CmdwinBG.B, 255)
 	ren.FillRect(&sbRect)
+	// Right-edge border in thumb color.
+	ren.SetDrawColor(pal.CmdwinScroll.R, pal.CmdwinScroll.G, pal.CmdwinScroll.B, 255)
+	ren.DrawLine(rect.X+render.ScrollBarW-1, rect.Y, rect.X+render.ScrollBarW-1, rect.Y+rect.H-1)
 
 	textX := rect.X + render.ScrollBarW + render.PanePad
 	textY := rect.Y + render.HeaderPad - cw.scrollY
 
 	// Render the buffer line by line.
 	if cw.buf.Len() == 0 {
-		// Draw cursor at empty start.
-		ren.SetDrawColor(pal.CmdwinFG.R, pal.CmdwinFG.G, pal.CmdwinFG.B, 255)
-		ren.FillRect(&sdl.Rect{X: textX, Y: textY, W: 2, H: lineH})
+		render.DrawCursor(ren, textX, textY, lineH, pal.CmdwinFG)
 		return nil
 	}
 
@@ -272,6 +278,22 @@ func (cw *CmdWindow) Draw(ren *sdl.Renderer, rect sdl.Rect, face render.Face, pa
 	// Remove trailing empty element from a trailing newline.
 	if len(lines) > 0 && lines[len(lines)-1] == "" {
 		lines = lines[:len(lines)-1]
+	}
+
+	// Draw scrollbar thumb proportional to scroll position.
+	totalH := int32(len(lines)) * lineH
+	bodyH := rect.H
+	if totalH > bodyH && bodyH > 0 {
+		thumbY := int32(float64(cw.scrollY) / float64(totalH) * float64(bodyH))
+		thumbH := int32(float64(bodyH) / float64(totalH) * float64(bodyH))
+		if thumbH < 4 {
+			thumbH = 4
+		}
+		if thumbY+thumbH > bodyH {
+			thumbY = bodyH - thumbH
+		}
+		ren.SetDrawColor(pal.CmdwinScroll.R, pal.CmdwinScroll.G, pal.CmdwinScroll.B, 255)
+		ren.FillRect(&sdl.Rect{X: rect.X, Y: rect.Y + thumbY, W: render.ScrollBarW, H: thumbH})
 	}
 
 	dot := cw.dot
@@ -313,8 +335,7 @@ func (cw *CmdWindow) Draw(ren *sdl.Renderer, rect sdl.Rect, face render.Face, pa
 		// Draw cursor (null dot on this line).
 		if dot.Start == dot.End && dot.Start >= lineStart && dot.Start <= lineEnd {
 			cx := textX + int32(face.MeasureText(string(lineRunes[:dot.Start-lineStart])))
-			ren.SetDrawColor(pal.CmdwinFG.R, pal.CmdwinFG.G, pal.CmdwinFG.B, 255)
-			ren.FillRect(&sdl.Rect{X: cx, Y: y, W: 2, H: lineH})
+			render.DrawCursor(ren, cx, y, lineH, pal.CmdwinFG)
 		}
 
 		// Draw text.

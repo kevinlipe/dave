@@ -59,7 +59,7 @@ func Wrap(buf *buffer.Buffer, face render.Face, paneWidthPx int32, wordWrap bool
 	}
 
 	var lines []VisualLine
-	y := int32(0)
+	lineIdx := 0
 	pos := 0
 	lineStart := 0
 	lineWrapped := false
@@ -68,8 +68,8 @@ func Wrap(buf *buffer.Buffer, face render.Face, paneWidthPx int32, wordWrap bool
 	inWord := false
 
 	flushLine := func(lo, hi int, wrapped bool) {
-		lines = append(lines, VisualLine{Lo: lo, Hi: hi, Y: y, Wrapped: wrapped})
-		y += lineH
+		lines = append(lines, VisualLine{Lo: lo, Hi: hi, Y: int32(lineIdx) * lineH, Wrapped: wrapped})
+		lineIdx++
 	}
 
 	for pos < n {
@@ -126,7 +126,7 @@ func Wrap(buf *buffer.Buffer, face render.Face, paneWidthPx int32, wordWrap bool
 	}
 
 	flushLine(lineStart, n, lineWrapped)
-	return Layout{Lines: lines, TotalHeight: y, MarginLeft: marginLeft, WrapWidth: wrapPx}
+	return Layout{Lines: lines, TotalHeight: int32(lineIdx) * lineH, MarginLeft: marginLeft, WrapWidth: wrapPx}
 }
 
 // LineAt returns the index of the visual line containing codepoint offset cp.

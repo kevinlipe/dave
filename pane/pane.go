@@ -186,8 +186,7 @@ func (p *Pane) drawHeader(ren *sdl.Renderer, rect sdl.Rect, active bool) {
 	// Header background.
 	bg := p.pal.HeaderBG
 	if active {
-		// Active pane: slightly tinted header to distinguish.
-		bg = p.pal.SelectionBG
+		bg = p.pal.Background
 	}
 	ren.SetDrawColor(bg.R, bg.G, bg.B, 255)
 	ren.FillRect(&hdrRect)
@@ -202,17 +201,26 @@ func (p *Pane) drawHeader(ren *sdl.Renderer, rect sdl.Rect, active bool) {
 		rect.X+render.ScrollBarW+render.PanePad, rect.Y+render.HeaderPad, p.pal.HeaderFG)
 }
 
-// drawScrollbar renders the olive scrollbar strip on the left edge.
+// drawScrollbar renders the scrollbar strip on the left edge.
+// The track uses the body background color; the thumb uses the scrollbar accent color.
 func (p *Pane) drawScrollbar(ren *sdl.Renderer, rect sdl.Rect, isCmd bool) {
-	col := p.pal.Scrollbar
+	trackCol := p.pal.Background
+	thumbCol := p.pal.Scrollbar
 	if isCmd {
-		col = p.pal.CmdwinScroll
+		trackCol = p.pal.CmdwinBG
+		thumbCol = p.pal.CmdwinScroll
 	}
 	hdrH := HeaderH(p.face)
 	bodyH := rect.H - hdrH
 	sbRect := sdl.Rect{X: rect.X, Y: rect.Y + hdrH, W: render.ScrollBarW, H: bodyH}
-	ren.SetDrawColor(col.R, col.G, col.B, 255)
+
+	// Track background.
+	ren.SetDrawColor(trackCol.R, trackCol.G, trackCol.B, 255)
 	ren.FillRect(&sbRect)
+
+	// Right-edge border in thumb color.
+	ren.SetDrawColor(thumbCol.R, thumbCol.G, thumbCol.B, 255)
+	ren.DrawLine(rect.X+render.ScrollBarW-1, rect.Y+hdrH, rect.X+render.ScrollBarW-1, rect.Y+rect.H-1)
 
 	// Thumb: proportional position bubble.
 	total := p.layout.TotalHeight
@@ -225,8 +233,7 @@ func (p *Pane) drawScrollbar(ren *sdl.Renderer, rect sdl.Rect, isCmd bool) {
 		if thumbY+thumbH > bodyH {
 			thumbY = bodyH - thumbH
 		}
-		// Lighter thumb.
-		ren.SetDrawColor(min8(col.R+40), min8(col.G+40), min8(col.B+40), 255)
+		ren.SetDrawColor(thumbCol.R, thumbCol.G, thumbCol.B, 255)
 		ren.FillRect(&sdl.Rect{X: rect.X, Y: rect.Y + hdrH + thumbY, W: render.ScrollBarW, H: thumbH})
 	}
 }
@@ -263,8 +270,7 @@ func (p *Pane) drawBody(ren *sdl.Renderer, rect sdl.Rect) error {
 		// Draw cursor (caret) if dot is a null selection within this line.
 		if dot.Start == dot.End && dot.Start >= vl.Lo && dot.Start <= vl.Hi {
 			cx := textX + XForCP(buf, vl, dot.Start, p.face, p.cfg.TabWidth)
-			ren.SetDrawColor(p.pal.Text.R, p.pal.Text.G, p.pal.Text.B, 255)
-			ren.FillRect(&sdl.Rect{X: cx, Y: lineScreenY, W: 2, H: lineH})
+			render.DrawCursor(ren, cx, lineScreenY, lineH, p.pal.Text)
 		}
 
 		// Draw text.
@@ -414,5 +420,3 @@ func max(a, b int) int {
 	}
 	return b
 }
-
-func min8(v uint8) uint8 { return v } // already clamped via uint8 overflow

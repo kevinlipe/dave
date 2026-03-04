@@ -23,6 +23,7 @@ type TTFFace struct {
 	ascent   int
 	ren      *sdl.Renderer
 	textures map[rune]*sdl.Texture
+	advances map[rune]int // cached advance widths
 }
 
 // NewTTFFace parses ttfData as a TrueType/OpenType font and returns a
@@ -46,6 +47,7 @@ func NewTTFFace(ttfData []byte, pointSize float64, ren *sdl.Renderer) (*TTFFace,
 		ascent:   m.Ascent.Ceil(),
 		ren:      ren,
 		textures: make(map[rune]*sdl.Texture),
+		advances: make(map[rune]int),
 	}, nil
 }
 
@@ -53,11 +55,16 @@ func (tf *TTFFace) Height() int { return tf.height }
 func (tf *TTFFace) Ascent() int { return tf.ascent }
 
 func (tf *TTFFace) GlyphAdvance(r rune) int {
-	adv, ok := tf.face.GlyphAdvance(r)
-	if !ok {
-		return 0
+	if v, ok := tf.advances[r]; ok {
+		return v
 	}
-	return adv.Ceil()
+	adv, ok := tf.face.GlyphAdvance(r)
+	v := 0
+	if ok {
+		v = adv.Ceil()
+	}
+	tf.advances[r] = v
+	return v
 }
 
 func (tf *TTFFace) MeasureText(s string) int {
@@ -110,6 +117,7 @@ func (tf *TTFFace) Close() {
 		}
 	}
 	tf.textures = make(map[rune]*sdl.Texture)
+	tf.advances = make(map[rune]int)
 	tf.face.Close()
 }
 
@@ -130,27 +138,22 @@ func (tf *TTFFace) buildGlyphTexture(r rune) (*sdl.Texture, error) {
 		return nil, nil
 	}
 	w := (bounds.Max.X - bounds.Min.X).Ceil()
-	h := (bounds.Max.Y - bounds.Min.Y).Ceil()
-	if w <= 0 || h <= 0 {
+	if w <= 0 {
 		return nil, nil
 	}
 
-	// Render the glyph into a tight RGBA image.
-	img := image.NewRGBA(image.Rect(0, 0, w, h))
-	dot := fixed.Point26_6{X: -bounds.Min.X, Y: -bounds.Min.Y}
+	// Render the glyph into a full-line-height image.
+	// dot.Y is placed at exactly tf.ascent pixels from the top (integer, no
+	// sub-pixel rounding) so every glyph lands at the same baseline, which
+	// eliminates the "crooked teeth" vertical jitter.
+	lineH := tf.height
+	img := image.NewRGBA(image.Rect(0, 0, w, lineH))
+	dot := fixed.Point26_6{X: -bounds.Min.X, Y: fixed.Int26_6(tf.ascent * 64)}
 	dr, mask, maskp, _, ok2 := tf.face.Glyph(dot, r)
 	if !ok2 {
 		return nil, nil
 	}
 	draw.DrawMask(img, dr, image.White, image.Point{}, mask, maskp, draw.Over)
-
-	// Place the glyph at the correct y inside a full-line-height texture so
-	// that DrawText can position by the top of the line box.
-	lineH := tf.height
-	yOff := tf.ascent + bounds.Min.Y.Ceil()
-	if yOff < 0 {
-		yOff = 0
-	}
 
 	tex, err := tf.ren.CreateTexture(
 		uint32(sdl.PIXELFORMAT_RGBA32),
@@ -163,17 +166,10 @@ func (tf *TTFFace) buildGlyphTexture(r rune) (*sdl.Texture, error) {
 	tex.SetBlendMode(sdl.BLENDMODE_BLEND)
 
 	pixels := make([]byte, w*lineH*4)
-	for py := 0; py < h; py++ {
-		destY := py + yOff
-		if destY < 0 || destY >= lineH {
-			continue
-		}
+	for py := 0; py < lineH; py++ {
 		for px := 0; px < w; px++ {
 			src := img.RGBAAt(px, py)
-			base := (destY*w + px) * 4
-			if base+3 >= len(pixels) {
-				continue
-			}
+			base := (py*w + px) * 4
 			// White ink with per-pixel alpha; coloured at draw time via SetColorMod.
 			pixels[base+0] = 255
 			pixels[base+1] = 255
