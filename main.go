@@ -70,11 +70,21 @@ func runGUI(cfg *config.Config, sess *cmd.Session) error {
 	var panes []*pane.Pane
 	handler.SetPanes(panes)
 
+	lineH := int32(face.Height())
+	cmdBorder := &pane.Border{
+		Y:            int32(cfg.CommandLines) * lineH,
+		MinAbove:     lineH,
+		MinBelow:     lineH,
+		MaxAboveFrac: 0.4,
+	}
+	dragger := input.NewBorderDragger(cmdBorder)
+	defer dragger.Close()
+
 	var activeMenu *menu.Menu
 
 	for {
 		winW, winH := win.Size()
-		cmdRect, paneRects := layout(winW, winH, len(panes), face)
+		cmdRect, paneRects := layout(winW, winH, cmdBorder.Y, len(panes))
 
 		for event := sdl.PollEvent(); event != nil; event = sdl.PollEvent() {
 			switch ev := event.(type) {
@@ -103,6 +113,9 @@ func runGUI(cfg *config.Config, sess *cmd.Session) error {
 					continue
 				}
 				if ev.Type == sdl.MOUSEBUTTONDOWN {
+					if dragger.MouseDown(ev.Button, ev.Y) {
+						continue
+					}
 					handler.HandleMouseDown(ev, cmdRect, paneRects)
 					mod := sdl.GetModState()
 					// Shift+right or middle → editing menu.
@@ -114,12 +127,18 @@ func runGUI(cfg *config.Config, sess *cmd.Session) error {
 						activeMenu = menu.NewBufferMenu(sess.Files, len(panes) > 1, ev.X, ev.Y)
 					}
 				} else if ev.Type == sdl.MOUSEBUTTONUP {
+					if dragger.MouseUp() {
+						continue
+					}
 					handler.HandleMouseUp(ev)
 				}
 
 			case *sdl.MouseMotionEvent:
 				if activeMenu != nil {
 					activeMenu.HandleMouseMotion(ev.X, ev.Y, face)
+					continue
+				}
+				if dragger.MouseMotion(ev.Y, winH) {
 					continue
 				}
 				handler.HandleMouseMotion(ev, cmdRect, paneRects)
@@ -174,8 +193,7 @@ func runGUI(cfg *config.Config, sess *cmd.Session) error {
 }
 
 // layout computes bounding rects for the command window and file panes.
-func layout(winW, winH int32, nPanes int, face render.Face) (cmdRect sdl.Rect, paneRects []sdl.Rect) {
-	cmdH := int32(render.CmdWinLines) * int32(face.Height())
+func layout(winW, winH, cmdH int32, nPanes int) (cmdRect sdl.Rect, paneRects []sdl.Rect) {
 	cmdRect = sdl.Rect{X: 0, Y: 0, W: winW, H: cmdH}
 	bodyY := cmdH
 	bodyH := winH - bodyY

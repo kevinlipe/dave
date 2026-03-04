@@ -52,9 +52,10 @@ type Config struct {
 	Margin      int     // olivetti margin width in chars (default 80)
 	Split       string  // "vertical" or "horizontal" (default "vertical")
 	TabWidth    int     // tab stop width in spaces (default 4)
-	LineNumbers bool    // show line numbers (default false)
-	UsePwsh     bool    // Windows only: use pwsh instead of powershell.exe (default true)
-	Colors      Colors
+	LineNumbers  bool    // show line numbers (default false)
+	UsePwsh      bool    // Windows only: use pwsh instead of powershell.exe (default true)
+	CommandLines int     // initial command window height in lines (default 4)
+	Colors       Colors
 }
 
 // Default returns a Config populated with all spec defaults.
@@ -66,8 +67,9 @@ func Default() *Config {
 		Margin:      80,
 		Split:       "vertical",
 		TabWidth:    4,
-		LineNumbers: false,
-		UsePwsh:     true,
+		LineNumbers:  false,
+		UsePwsh:      true,
+		CommandLines: 4,
 		Colors: Colors{
 			Background:   Color{0xFF, 0xFF, 0xEA},
 			Text:         Color{0x00, 0x00, 0x00},
@@ -135,6 +137,7 @@ const defaultConfigText = `# Dave configuration file
 # line_numbers  = false
 
 # use_pwsh      = true
+# command_lines  = 4
 
 # color_background    = #FFFFEA
 # color_text          = #000000
@@ -253,6 +256,12 @@ func applyKey(cfg *Config, k, v string) error {
 			return fmt.Errorf("invalid use_pwsh %q: %w", v, err)
 		}
 		cfg.UsePwsh = b
+	case "command_lines":
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 {
+			return fmt.Errorf("invalid command_lines %q: want positive integer", v)
+		}
+		cfg.CommandLines = n
 	case "color_background":
 		c, err := parseHexColor(v)
 		if err != nil {
