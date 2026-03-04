@@ -5,3 +5,6 @@
 /dave
 /dave.exe
 
+# ignore the claude folder
+.claude/
+
