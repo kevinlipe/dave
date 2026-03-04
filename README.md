@@ -11,8 +11,8 @@ The command window at the top accepts Sam commands. Right-click opens the buffer
 ## Building
 
 ```
-make          # Linux
-make windows  # cross-compile for Windows
+make all         # standard build
+make static      # build a statically-compiled exe including SDL2
 ```
 
 Requires Go and SDL2. The binary embeds Go Mono as a fallback font; no fonts need to be installed.
@@ -65,3 +65,5 @@ See the [Sam paper](https://doc.cat-v.org/plan_9/4th_edition/papers/sam/) for th
 sdave -e 's/foo/bar/g' file
 sdave -n ',x/TODO/ p' *.go
 ```
+
+I haven't actually implemented `sdave` yet, but I will.
