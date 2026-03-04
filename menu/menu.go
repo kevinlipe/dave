@@ -79,6 +79,7 @@ func NewEditMenu(x, y int32) *Menu {
 		{Kind: ItemAction, Label: "Snarf"},
 		{Kind: ItemAction, Label: "Look"},
 		{Kind: ItemAction, Label: "Send"},
+		{Kind: ItemAction, Label: "Undo"},
 	}
 	return &Menu{items: items, x: x, y: y, hovered: -1, open: true}
 }

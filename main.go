@@ -249,6 +249,8 @@ func applyMenuResult(res menu.Result, sess *cmd.Session, panes []*pane.Pane, han
 		if len(panes) > 1 {
 			panes = panes[:1]
 		}
+	case "Undo":
+		sess.DoUndo()
 	}
 
 	if res.File != nil {

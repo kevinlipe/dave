@@ -21,6 +21,7 @@ type File struct {
 	dot      buffer.Range // current selection (codepoint offsets)
 	mark     buffer.Range // 'k' mark position
 	loaded   bool         // true if contents have been read from disk
+	crlf     bool         // true if the file uses CRLF line endings on disk
 }
 
 // New creates a new, empty, unnamed File.

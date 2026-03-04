@@ -88,19 +88,19 @@ func (h *Handler) HandleKey(ev *sdl.KeyboardEvent, winW, winH int32) error {
 
 	switch sym {
 	case sdl.K_RETURN, sdl.K_KP_ENTER:
-		insertText(f, "\n")
+		insertText(h.session, f, "\n")
 		p.EnsureVisible(f.Dot().Start, winH)
 
 	case sdl.K_BACKSPACE:
-		deleteBackward(f)
+		deleteBackward(h.session, f)
 		p.EnsureVisible(f.Dot().Start, winH)
 
 	case sdl.K_DELETE:
-		deleteForward(f)
+		deleteForward(h.session, f)
 		p.EnsureVisible(f.Dot().Start, winH)
 
 	case sdl.K_TAB:
-		insertText(f, "\t")
+		insertText(h.session, f, "\t")
 		p.EnsureVisible(f.Dot().Start, winH)
 
 	case sdl.K_LEFT:
@@ -162,7 +162,7 @@ func (h *Handler) HandleText(ev *sdl.TextInputEvent) {
 	if p == nil {
 		return
 	}
-	insertText(p.File, ev.GetText())
+	insertText(h.session, p.File, ev.GetText())
 }
 
 // --- Mouse -------------------------------------------------------------------
@@ -407,55 +407,43 @@ func findMatchingOpen(buf *buffer.Buffer, end int, open, close rune) int {
 
 // --- cursor movement helpers -------------------------------------------------
 
-func insertText(f *file.File, text string) {
+func insertText(sess *cmd.Session, f *file.File, text string) {
 	if err := f.EnsureLoaded(); err != nil {
 		return
 	}
 	dot := f.Dot()
-	buf := f.Buffer()
-	// Delete selection first.
-	if dot.Start != dot.End {
-		buf.Delete(dot.Start, dot.End-dot.Start)
-		f.SetDot(buffer.Range{Start: dot.Start, End: dot.Start})
-		dot = f.Dot()
-	}
-	runes := []rune(text)
-	buf.Insert(dot.Start, text)
-	newPos := dot.Start + len(runes)
-	f.SetDot(buffer.Range{Start: newPos, End: newPos})
-	f.SetModified(true)
+	del := dot.End - dot.Start
+	sess.ApplyEdit(f, dot.Start, del, text)
+	n := len([]rune(text))
+	f.SetDot(buffer.Range{Start: dot.Start + n, End: dot.Start + n})
 }
 
-func deleteBackward(f *file.File) {
+func deleteBackward(sess *cmd.Session, f *file.File) {
 	if err := f.EnsureLoaded(); err != nil {
 		return
 	}
 	dot := f.Dot()
-	buf := f.Buffer()
 	if dot.Start != dot.End {
-		buf.Delete(dot.Start, dot.End-dot.Start)
+		sess.ApplyEdit(f, dot.Start, dot.End-dot.Start, "")
 		f.SetDot(buffer.Range{Start: dot.Start, End: dot.Start})
 	} else if dot.Start > 0 {
-		buf.Delete(dot.Start-1, 1)
+		sess.ApplyEdit(f, dot.Start-1, 1, "")
 		f.SetDot(buffer.Range{Start: dot.Start - 1, End: dot.Start - 1})
 	}
-	f.SetModified(true)
 }
 
-func deleteForward(f *file.File) {
+func deleteForward(sess *cmd.Session, f *file.File) {
 	if err := f.EnsureLoaded(); err != nil {
 		return
 	}
 	dot := f.Dot()
-	buf := f.Buffer()
-	n := buf.Len()
+	n := f.Len()
 	if dot.Start != dot.End {
-		buf.Delete(dot.Start, dot.End-dot.Start)
+		sess.ApplyEdit(f, dot.Start, dot.End-dot.Start, "")
 		f.SetDot(buffer.Range{Start: dot.Start, End: dot.Start})
 	} else if dot.Start < n {
-		buf.Delete(dot.Start, 1)
+		sess.ApplyEdit(f, dot.Start, 1, "")
 	}
-	f.SetModified(true)
 }
 
 func moveDotChar(f *file.File, delta int, extend bool) {

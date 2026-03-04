@@ -197,6 +197,21 @@ func (ctx *execCtx) rollback() {
 
 // ---- Undo execution ---------------------------------------------------------
 
+// DoUndo undoes the last command. It is a convenience wrapper for menu/UI use.
+func (s *Session) DoUndo() error { return s.doUndo(1) }
+
+// ApplyEdit applies a single interactive edit (keyboard typing or deletion) to
+// file f, recording it in the undo log. pos is the rune insert position, del
+// is the number of runes to delete before inserting, and text is the new text.
+func (s *Session) ApplyEdit(f *file.File, pos, del int, text string) error {
+	ctx := newExecCtx(s)
+	if err := ctx.addChange(f, pos, del, text); err != nil {
+		ctx.rollback()
+		return err
+	}
+	return ctx.commit()
+}
+
 // doUndo undoes the last n commands.
 func (s *Session) doUndo(n int) error {
 	for i := 0; i < n; i++ {

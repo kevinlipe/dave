@@ -163,7 +163,17 @@ func (cw *CmdWindow) execute(sess *cmd.Session) error {
 	if err != nil && err != cmd.ErrQuit {
 		output += "? " + err.Error() + "\n"
 	}
-	cw.AppendOutput(output)
+	if output != "" {
+		cw.AppendOutput(output)
+	} else {
+		// No output: still move cursor to a fresh line at end of buffer.
+		n := cw.buf.Len()
+		if n > 0 && cw.buf.RuneAt(n-1) != '\n' {
+			cw.buf.Insert(n, "\n")
+			n++
+		}
+		cw.dot = buffer.Range{Start: n, End: n}
+	}
 
 	if err == cmd.ErrQuit {
 		return err
@@ -280,10 +290,8 @@ func (cw *CmdWindow) Draw(ren *sdl.Renderer, rect sdl.Rect, face render.Face, pa
 
 	content := cw.buf.String()
 	lines := strings.Split(content, "\n")
-	// Remove trailing empty element from a trailing newline.
-	if len(lines) > 0 && lines[len(lines)-1] == "" {
-		lines = lines[:len(lines)-1]
-	}
+	// Always keep at least one line so the cursor has somewhere to sit.
+	// Do not strip the trailing empty element: the cursor may be on that line.
 
 	// Draw scrollbar thumb proportional to scroll position.
 	totalH := int32(len(lines)) * lineH
