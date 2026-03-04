@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // File represents an open file in Dave's buffer list.
@@ -39,6 +40,27 @@ func NewNamed(name string) *File {
 	}
 }
 
+// CRLF reports whether the file uses CRLF line endings on disk.
+func (f *File) CRLF() bool { return f.crlf }
+
+// DecodeContent strips \r from CRLF content and records the line-ending style.
+func (f *File) DecodeContent(raw string) string {
+	if strings.Contains(raw, "\r\n") {
+		f.crlf = true
+		return strings.ReplaceAll(raw, "\r\n", "\n")
+	}
+	f.crlf = false
+	return raw
+}
+
+// EncodeContent restores \r\n line endings if the file originally used CRLF.
+func (f *File) EncodeContent(s string) string {
+	if f.crlf {
+		return strings.ReplaceAll(s, "\n", "\r\n")
+	}
+	return s
+}
+
 // EnsureLoaded reads the file from disk if it hasn't been loaded yet.
 // If the file doesn't exist, the buffer remains empty and the file is
 // treated as new (no error).
@@ -57,7 +79,7 @@ func (f *File) EnsureLoaded() error {
 	if err != nil {
 		return fmt.Errorf("file: reading %q: %w", f.name, err)
 	}
-	f.buf = buffer.NewFromString(string(data))
+	f.buf = buffer.NewFromString(f.DecodeContent(string(data)))
 	f.modified = false
 	return nil
 }
@@ -149,7 +171,7 @@ func (f *File) Save() error {
 	if err != nil {
 		return fmt.Errorf("file: creating temp file: %w", err)
 	}
-	if err := f.WriteTo(fh); err != nil {
+	if _, err := io.WriteString(fh, f.EncodeContent(f.buf.String())); err != nil {
 		fh.Close()
 		os.Remove(tmp)
 		return fmt.Errorf("file: writing %q: %w", f.name, err)
@@ -179,7 +201,7 @@ func (f *File) Replace(path string) error {
 	if err != nil {
 		return fmt.Errorf("file: reading %q: %w", path, err)
 	}
-	f.buf = buffer.NewFromString(string(data))
+	f.buf = buffer.NewFromString(f.DecodeContent(string(data)))
 	f.dot = buffer.Range{}
 	f.modified = false
 	f.loaded = true

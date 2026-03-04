@@ -545,7 +545,7 @@ func (s *Session) execE(f *file.File, name string, ctx *execCtx) error {
 	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("e: %w", err)
 	}
-	newContent := string(data)
+	newContent := f.DecodeContent(string(data))
 	oldLen := f.Len()
 	// Replace all old content with new content via transcript.
 	if oldLen > 0 || newContent != "" {
@@ -584,8 +584,8 @@ func (s *Session) execW(f *file.File, dot buffer.Range, name string) error {
 	if name == "" {
 		return fmt.Errorf("w: no filename")
 	}
-	// Write addressed range.
-	content := f.Buffer().ReadAt(dot.Start, dot.Len())
+	// Write addressed range, restoring original line endings if needed.
+	content := f.EncodeContent(f.Buffer().ReadAt(dot.Start, dot.Len()))
 	if err := os.WriteFile(name, []byte(content), 0o644); err != nil {
 		return fmt.Errorf("w: %w", err)
 	}
