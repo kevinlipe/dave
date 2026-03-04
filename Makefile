@@ -1,5 +1,4 @@
 # Dave build rules.
-# new makefile undo test
 #
 # Targets:
 #   all     - build dave / dave.exe (dynamically linked)
@@ -17,7 +16,8 @@ else
     BINARY = dave
 endif
 
-# Auto-detect the MSYS2 ucrt64 lib dir by looking for libSDL2.a in common locations.
+# Auto-detect the MSYS2 ucrt64 lib dir by looking for libSDL2.a in common locations. 
+# (I know this is probably a bad idea, but it's what we're doing.)
 SDL2_LIBDIR ?= $(patsubst %/libSDL2.a,%,$(firstword $(wildcard \
 	/ucrt64/lib/libSDL2.a \
 	/c/msys64/ucrt64/lib/libSDL2.a \
