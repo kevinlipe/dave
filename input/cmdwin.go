@@ -92,9 +92,46 @@ func (cw *CmdWindow) HandleText(ev *sdl.TextInputEvent) {
 
 // CPAtXY returns the codepoint offset closest to pixel (x, y) within the
 // command window. x and y are relative to the command window's top-left corner.
-func (cw *CmdWindow) CPAtXY(x, y int32) int {
-	// Simplified: return end of buffer.
-	return cw.buf.Len()
+func (cw *CmdWindow) CPAtXY(x, y int32, face render.Face) int {
+	lineH := int32(face.Height())
+	if lineH <= 0 {
+		return cw.buf.Len()
+	}
+
+	// Mirror the Draw layout: text begins at (ScrollBarW+PanePad, HeaderPad-scrollY).
+	relY := y - render.HeaderPad + cw.scrollY
+	if relY < 0 {
+		relY = 0
+	}
+	lineIdx := int(relY / lineH)
+
+	content := cw.buf.String()
+	lines := strings.Split(content, "\n")
+	if lineIdx >= len(lines) {
+		lineIdx = len(lines) - 1
+	}
+
+	// Codepoint offset of the start of lineIdx.
+	lineStart := 0
+	for i := 0; i < lineIdx; i++ {
+		lineStart += len([]rune(lines[i])) + 1 // +1 for '\n'
+	}
+
+	// Find character within the line based on x.
+	relX := x - render.ScrollBarW - render.PanePad
+	if relX <= 0 {
+		return lineStart
+	}
+	lineRunes := []rune(lines[lineIdx])
+	cur := int32(0)
+	for i, r := range lineRunes {
+		rw := int32(face.GlyphAdvance(r))
+		if relX < cur+rw/2 {
+			return lineStart + i
+		}
+		cur += rw
+	}
+	return lineStart + len(lineRunes)
 }
 
 // SetDotStart places a null cursor at cp.

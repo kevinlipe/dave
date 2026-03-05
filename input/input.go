@@ -187,7 +187,7 @@ func (h *Handler) HandleMouseDown(ev *sdl.MouseButtonEvent, cmdRect sdl.Rect, pa
 
 		var cp int
 		if idx < 0 {
-			cp = h.cmdWin.CPAtXY(x-cmdRect.X, y-cmdRect.Y)
+			cp = h.cmdWin.CPAtXY(x-cmdRect.X, y-cmdRect.Y, h.face)
 			h.cmdWin.SetDotStart(cp)
 		} else {
 			p := h.panes[idx]
@@ -228,7 +228,7 @@ func (h *Handler) HandleMouseMotion(ev *sdl.MouseMotionEvent, cmdRect sdl.Rect, 
 	x, y := ev.X, ev.Y
 
 	if h.dragPane < 0 {
-		cp := h.cmdWin.CPAtXY(x-cmdRect.X, y-cmdRect.Y)
+		cp := h.cmdWin.CPAtXY(x-cmdRect.X, y-cmdRect.Y, h.face)
 		h.cmdWin.ExtendDrag(h.dragStart, cp)
 		return
 	}
