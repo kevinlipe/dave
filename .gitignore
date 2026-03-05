@@ -1,9 +1,10 @@
 # -*- mode: gitignore -*-
 # gitignore for dave
 
-# ignore the binary
+# ignore the binaries
 /dave
 /dave.exe
+sdave/sdave
 
 # ignore the claude folder
 .claude/
