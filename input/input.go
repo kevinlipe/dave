@@ -43,6 +43,12 @@ func NewHandler(sess *cmd.Session, cmdWin *CmdWindow, face render.Face, pal rend
 	}
 }
 
+// CmdWin returns the command window.
+func (h *Handler) CmdWin() *CmdWindow { return h.cmdWin }
+
+// IsCmdWinActive reports whether the command window is focused.
+func (h *Handler) IsCmdWinActive() bool { return h.activePane < 0 }
+
 // SetPanes updates the active pane list.
 func (h *Handler) SetPanes(panes []*pane.Pane) {
 	h.panes = panes

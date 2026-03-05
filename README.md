@@ -1,12 +1,12 @@
 # dave
 
-A text editor named after Sam & Dave, the Stax Records legends. Dave is a spiritual successor to Rob Pike's `sam` editor, reimagined for daily use on Linux and Windows, with first-class soft word wrap for prose editing.
+A text editor named after Sam & Dave, the Stax Records legends. Dave is a spiritual successor to [Rob Pike's `sam` editor](http://sam.cat-v.org), reimagined for daily use on Linux and Windows, with first-class soft word wrap for prose editing.
 
 ## What it is
 
 Dave uses Sam's command language and structural regular expressions. If you know `sam`, you know Dave. The main additions are word wrap, a more keyboard-friendly interface, and a config file.
 
-The command window at the top accepts Sam commands. Right-click opens the buffer menu. Middle-click (or Shift+right-click) opens the editing menu (Cut, Paste, Snarf, Look, Send, Undo).
+The command window at the top accepts Sam commands. Right-click opens the buffer menu. Middle-click (or Shift+right-click) opens the editing menu (Cut, Paste, Snarf, Look, Send, Undo). These use the system clipboard. "Snarf" is Plan 9 terminology for copy (copy without deleting, like Ctrl+C elsewhere).
 
 ## Building
 

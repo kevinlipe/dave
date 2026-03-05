@@ -22,8 +22,6 @@ type CmdWindow struct {
 	buf     *buffer.Buffer
 	dot     buffer.Range // cursor/selection within buf
 	scrollY int32
-
-	snarf string
 }
 
 // NewCmdWindow creates an empty command window.
@@ -117,11 +115,31 @@ func (cw *CmdWindow) ExtendDrag(anchor, cp int) {
 	cw.dot = buffer.Range{Start: lo, End: hi}
 }
 
-// SnarfBuffer returns the snarf (clipboard) buffer contents.
-func (cw *CmdWindow) SnarfBuffer() string { return cw.snarf }
+// Snarf copies the current selection to the system clipboard.
+func (cw *CmdWindow) Snarf() {
+	if cw.dot.Start != cw.dot.End {
+		sdl.SetClipboardText(cw.buf.ReadAt(cw.dot.Start, cw.dot.End-cw.dot.Start))
+	}
+}
 
-// SetSnarf sets the snarf buffer.
-func (cw *CmdWindow) SetSnarf(s string) { cw.snarf = s }
+// Cut copies the current selection to the system clipboard and deletes it.
+func (cw *CmdWindow) Cut() {
+	cw.Snarf()
+	cw.deleteSelection()
+}
+
+// Paste inserts the system clipboard contents at the cursor.
+func (cw *CmdWindow) Paste() {
+	text, err := sdl.GetClipboardText()
+	if err != nil || text == "" {
+		return
+	}
+	cw.deleteSelection()
+	runes := []rune(text)
+	cw.buf.Insert(cw.dot.Start, text)
+	pos := cw.dot.Start + len(runes)
+	cw.dot = buffer.Range{Start: pos, End: pos}
+}
 
 // AppendOutput appends text to the end of the command window buffer and moves
 // the cursor to the end. This is the same path used by execute() for command output.
@@ -262,15 +280,6 @@ func (cw *CmdWindow) Draw(ren *sdl.Renderer, rect sdl.Rect, face render.Face, pa
 	ren.SetDrawColor(pal.CmdwinBG.R, pal.CmdwinBG.G, pal.CmdwinBG.B, 255)
 	ren.FillRect(&rect)
 
-	// Border: olive/scroll color and thick when active, single-pixel border color when not.
-	if active {
-		ren.SetDrawColor(pal.CmdwinScroll.R, pal.CmdwinScroll.G, pal.CmdwinScroll.B, 255)
-		render.DrawBorder(ren, rect, render.BorderW)
-	} else {
-		ren.SetDrawColor(pal.CmdwinBorder.R, pal.CmdwinBorder.G, pal.CmdwinBorder.B, 255)
-		ren.DrawRect(&rect)
-	}
-
 	// Scrollbar on left: track uses background, thumb uses accent color.
 	sbRect := sdl.Rect{X: rect.X, Y: rect.Y, W: render.ScrollBarW, H: rect.H}
 	ren.SetDrawColor(pal.CmdwinBG.R, pal.CmdwinBG.G, pal.CmdwinBG.B, 255)
@@ -278,6 +287,15 @@ func (cw *CmdWindow) Draw(ren *sdl.Renderer, rect sdl.Rect, face render.Face, pa
 	// Right-edge border in thumb color.
 	ren.SetDrawColor(pal.CmdwinScroll.R, pal.CmdwinScroll.G, pal.CmdwinScroll.B, 255)
 	ren.DrawLine(rect.X+render.ScrollBarW-1, rect.Y, rect.X+render.ScrollBarW-1, rect.Y+rect.H-1)
+
+	// Border drawn after scrollbar so it sits on top (not overwritten).
+	if active {
+		ren.SetDrawColor(pal.CmdwinScroll.R, pal.CmdwinScroll.G, pal.CmdwinScroll.B, 255)
+		render.DrawBorder(ren, rect, render.BorderW)
+	} else {
+		ren.SetDrawColor(pal.CmdwinBorder.R, pal.CmdwinBorder.G, pal.CmdwinBorder.B, 255)
+		ren.DrawRect(&rect)
+	}
 
 	textX := rect.X + render.ScrollBarW + render.PanePad
 	textY := rect.Y + render.HeaderPad - cw.scrollY

@@ -4,6 +4,7 @@ package main
 
 import (
 	"bufio"
+	"dave/buffer"
 	"dave/cmd"
 	"dave/config"
 	"dave/file"
@@ -248,6 +249,52 @@ func applyMenuResult(res menu.Result, sess *cmd.Session, panes []*pane.Pane, han
 	case "Kill sidebar":
 		if len(panes) > 1 {
 			panes = panes[:1]
+		}
+	case "Close":
+		ap := handler.ActivePane()
+		for i, p := range panes {
+			if p == ap {
+				panes = append(panes[:i], panes[i+1:]...)
+				break
+			}
+		}
+		if len(panes) == 0 {
+			panes = nil
+		}
+	case "Snarf":
+		if handler.IsCmdWinActive() {
+			handler.CmdWin().Snarf()
+		} else if p := handler.ActivePane(); p != nil {
+			dot := p.File.Dot()
+			if dot.Start != dot.End {
+				sdl.SetClipboardText(p.File.Buffer().ReadAt(dot.Start, dot.End-dot.Start))
+			}
+		}
+	case "Cut":
+		if handler.IsCmdWinActive() {
+			handler.CmdWin().Cut()
+		} else if p := handler.ActivePane(); p != nil {
+			f := p.File
+			dot := f.Dot()
+			if dot.Start != dot.End {
+				sdl.SetClipboardText(f.Buffer().ReadAt(dot.Start, dot.End-dot.Start))
+				sess.ApplyEdit(f, dot.Start, dot.End-dot.Start, "")
+				f.SetDot(buffer.Range{Start: dot.Start, End: dot.Start})
+			}
+		}
+	case "Paste":
+		if handler.IsCmdWinActive() {
+			handler.CmdWin().Paste()
+		} else if p := handler.ActivePane(); p != nil {
+			text, err := sdl.GetClipboardText()
+			if err == nil && text != "" {
+				f := p.File
+				dot := f.Dot()
+				del := dot.End - dot.Start
+				sess.ApplyEdit(f, dot.Start, del, text)
+				n := len([]rune(text))
+				f.SetDot(buffer.Range{Start: dot.Start + n, End: dot.Start + n})
+			}
 		}
 	case "Undo":
 		sess.DoUndo()

@@ -63,6 +63,7 @@ func NewBufferMenu(files []*file.File, hasSidebar bool, x, y int32) *Menu {
 	items := []Item{
 		{Kind: ItemAction, Label: "New"},
 		{Kind: ItemAction, Label: sidebarLabel},
+		{Kind: ItemAction, Label: "Close"},
 		{Kind: ItemSeparator},
 	}
 	for _, f := range files {
