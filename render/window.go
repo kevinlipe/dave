@@ -22,9 +22,8 @@ const (
 	// PanePad is the horizontal inner padding of a pane's text area.
 	PanePad int32 = 4
 
-	// BorderW is the pixel width of the active-frame highlight border,
-	// matching Sam's 2-pixel border drawn around the focused frame.
-	BorderW int32 = 2
+	// BorderW is the pixel width of the active-frame highlight border.
+	BorderW int32 = 3
 )
 
 // Window wraps an SDL window and renderer pair.
@@ -121,16 +120,16 @@ func DrawBorder(ren *sdl.Renderer, rect sdl.Rect, w int32) {
 }
 
 // DrawCursor draws an I-beam cursor at pixel position (x, y) with the given
-// line height and color. The cursor is a 1-px vertical bar with 3-px horizontal
-// serifs at the top and bottom, matching Sam's cursor appearance.
+// line height and color. The cursor is a 2-px vertical bar with 2×3 filled
+// square terminals centered at the top and bottom, matching Sam's cursor appearance.
 func DrawCursor(ren *sdl.Renderer, x, y, lineH int32, col sdl.Color) {
 	ren.SetDrawColor(col.R, col.G, col.B, 255)
-	// Vertical bar.
-	ren.DrawLine(x, y, x, y+lineH-1)
-	// Top serif.
-	ren.DrawLine(x-2, y, x+2, y)
-	// Bottom serif.
-	ren.DrawLine(x-2, y+lineH-1, x+2, y+lineH-1)
+	// Vertical bar (2px wide).
+	ren.FillRect(&sdl.Rect{X: x, Y: y, W: 2, H: lineH})
+	// Top square: 3px wide × 2px tall, centered on bar.
+	ren.FillRect(&sdl.Rect{X: x - 1, Y: y, W: 4, H: 2})
+	// Bottom square: 3px wide × 2px tall, centered on bar.
+	ren.FillRect(&sdl.Rect{X: x - 1, Y: y + lineH - 2, W: 4, H: 2})
 }
 
 // Size returns the current logical window size in pixels.

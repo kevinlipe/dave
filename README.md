@@ -13,6 +13,7 @@ The command window at the top accepts Sam commands. Right-click opens the buffer
 ```
 make all         # standard build
 make static      # build a statically-compiled exe including SDL2
+make install     # install via go install
 ```
 
 Requires Go and SDL2. The binary embeds Go Mono as a fallback font; no fonts need to be installed.
@@ -23,6 +24,12 @@ Dave supports two font rendering modes. Set `font_mode` in the config file:
 
 - **TTF** (default) — any TrueType or OpenType font installed on the system, rendered via Go's `x/image` stack. Set `font` to the family name (e.g. `Consolas`, `JetBrains Mono`). Falls back to an embedded Go Mono if the named font isn't found.
 - **Plan 9 bitmap fonts** — the original bitmap fonts from Plan 9/inferno, rendered pixel-perfect with no antialiasing. Set `font_mode = plan9` and point `plan9_font` at a Plan 9 font file. Pairs especially well with low-DPI displays, but works nicely everywhere. Set `plan9_embiggen = true` to render at 150% scale.
+
+## Window management
+
+Sam manages its own windows, dividing the display into a column of resizable frames. Dave does not. Each Dave window shows one file at a time. Right-clicking opens a list of open buffers; selecting one brings it into view. To compare two files side by side, open two OS windows.
+
+This is a deliberate simplification. The OS already provides a window manager. Reimplementing one inside the editor adds complexity without adding capability.
 
 ## Configuration
 

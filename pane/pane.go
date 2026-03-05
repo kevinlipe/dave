@@ -273,15 +273,15 @@ func (p *Pane) drawBody(ren *sdl.Renderer, rect sdl.Rect) error {
 			p.drawLineSelection(ren, vl, dot.Start, dot.End, lineScreenY, lineH, textX, rect)
 		}
 
-		// Draw cursor (caret) if dot is a null selection within this line.
-		if dot.Start == dot.End && dot.Start >= vl.Lo && dot.Start <= vl.Hi {
-			cx := textX + XForCP(buf, vl, dot.Start, p.face, p.cfg.TabWidth)
-			render.DrawCursor(ren, cx, lineScreenY, lineH, p.pal.Text)
-		}
-
 		// Draw text.
 		if err := p.drawLineText(ren, vl, dot.Start, dot.End, lineScreenY, textX, bodyY, bodyH); err != nil {
 			return err
+		}
+
+		// Draw cursor (caret) on top of text if dot is a null selection within this line.
+		if dot.Start == dot.End && dot.Start >= vl.Lo && dot.Start <= vl.Hi {
+			cx := textX + XForCP(buf, vl, dot.Start, p.face, p.cfg.TabWidth)
+			render.DrawCursor(ren, cx, lineScreenY, lineH, p.pal.Text)
 		}
 	}
 	return nil

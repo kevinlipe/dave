@@ -3,6 +3,7 @@
 # Targets:
 #   all     - build dave / dave.exe (dynamically linked)
 #   static  - build self-contained exe with SDL2 statically linked (Windows only)
+#   install - install dave via go install
 #   clean   - remove build artifacts
 #
 # On Windows the 'static' target needs the MSYS2 ucrt64 static SDL2 library.
@@ -33,13 +34,16 @@ SDL2_STATIC_LDFLAGS = \
 	-lversion -luuid -lsetupapi \
 	-static-libgcc
 
-.PHONY: all static clean
+.PHONY: all static clean install
 
 all:
 	go build -o $(BINARY) .
 
 static:
 	CGO_LDFLAGS="$(SDL2_STATIC_LDFLAGS)" go build -o $(BINARY) .
+
+install:
+	go install dave
 
 clean:
 	rm -f $(BINARY)
