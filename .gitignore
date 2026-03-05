@@ -9,3 +9,7 @@ sdave/sdave
 # ignore the claude folder
 .claude/
 
+# ignore kate swap files
+*.kate-swp
+
+
