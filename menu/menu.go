@@ -17,6 +17,7 @@ type ItemKind int
 const (
 	ItemAction    ItemKind = iota // a clickable action
 	ItemSeparator                 // a visual divider line
+	ItemDave                      // the "~~dave~~" decoration label
 	ItemFile                      // a file entry from the buffer list
 )
 
@@ -56,15 +57,16 @@ const padX = 10
 // NewBufferMenu creates the right-click buffer menu with the given open files.
 // hasSidebar controls whether "Sidebar" or "Kill sidebar" is shown.
 func NewBufferMenu(files []*file.File, hasSidebar bool, x, y int32) *Menu {
-	sidebarLabel := "Sidebar"
+	sidebarLabel := "sidebar"
 	if hasSidebar {
-		sidebarLabel = "Kill sidebar"
+		sidebarLabel = "kill sidebar"
 	}
 	items := []Item{
-		{Kind: ItemAction, Label: "New"},
+		{Kind: ItemAction, Label: "new"},
 		{Kind: ItemAction, Label: sidebarLabel},
-		{Kind: ItemAction, Label: "Close"},
-		{Kind: ItemSeparator},
+		{Kind: ItemAction, Label: "close"},
+		{Kind: ItemAction, Label: "write"},
+		{Kind: ItemDave, Label: "~~dave~~"},
 	}
 	for _, f := range files {
 		items = append(items, Item{Kind: ItemFile, Label: f.MenuLine(false), File: f})
@@ -75,12 +77,12 @@ func NewBufferMenu(files []*file.File, hasSidebar bool, x, y int32) *Menu {
 // NewEditMenu creates the shift-right-click editing menu.
 func NewEditMenu(x, y int32) *Menu {
 	items := []Item{
-		{Kind: ItemAction, Label: "Cut"},
-		{Kind: ItemAction, Label: "Paste"},
-		{Kind: ItemAction, Label: "Snarf"},
-		{Kind: ItemAction, Label: "Look"},
-		{Kind: ItemAction, Label: "Send"},
-		{Kind: ItemAction, Label: "Undo"},
+		{Kind: ItemAction, Label: "cut"},
+		{Kind: ItemAction, Label: "paste"},
+		{Kind: ItemAction, Label: "snarf"},
+		{Kind: ItemAction, Label: "look"},
+		{Kind: ItemAction, Label: "send"},
+		{Kind: ItemAction, Label: "undo"},
 	}
 	return &Menu{items: items, x: x, y: y, hovered: -1, open: true}
 }
@@ -119,6 +121,24 @@ func (m *Menu) height() int32 {
 	return h
 }
 
+// Clamp adjusts m.x and m.y so the menu fits within a window of size winW×winH.
+func (m *Menu) Clamp(winW, winH int32, face render.Face) {
+	w := m.width(face)
+	h := m.height()
+	if m.x+w > winW {
+		m.x = winW - w
+	}
+	if m.x < 0 {
+		m.x = 0
+	}
+	if m.y+h > winH {
+		m.y = winH - h
+	}
+	if m.y < 0 {
+		m.y = 0
+	}
+}
+
 // itemRect returns the bounding rect of item i relative to m.x, m.y.
 func (m *Menu) itemRect(i int, face render.Face) sdl.Rect {
 	w := m.width(face)
@@ -142,7 +162,7 @@ func (m *Menu) itemRect(i int, face render.Face) sdl.Rect {
 func (m *Menu) HandleMouseMotion(x, y int32, face render.Face) {
 	m.hovered = -1
 	for i, it := range m.items {
-		if it.Kind == ItemSeparator {
+		if it.Kind == ItemSeparator || it.Kind == ItemDave {
 			continue
 		}
 		r := m.itemRect(i, face)
@@ -157,7 +177,7 @@ func (m *Menu) HandleMouseMotion(x, y int32, face render.Face) {
 // the menu should now be closed.
 func (m *Menu) HandleMouseUp(x, y int32, face render.Face) (Result, bool) {
 	for i, it := range m.items {
-		if it.Kind == ItemSeparator {
+		if it.Kind == ItemSeparator || it.Kind == ItemDave {
 			continue
 		}
 		r := m.itemRect(i, face)
@@ -200,6 +220,15 @@ func (m *Menu) Draw(ren *sdl.Renderer, face render.Face, pal render.Palette) {
 			ren.SetDrawColor(pal.Border.R, pal.Border.G, pal.Border.B, 255)
 			ren.DrawLine(m.x+2, mid, m.x+w-2, mid)
 			y += sepH
+			continue
+		}
+		if it.Kind == ItemDave {
+			// Draw "~~dave~~" centered in the row, in the border color.
+			tw := int32(face.MeasureText(it.Label))
+			tx := m.x + (w-tw)/2
+			ty := y + (itemH-int32(face.Height()))/2
+			face.DrawText(it.Label, tx, ty, pal.Border)
+			y += itemH
 			continue
 		}
 

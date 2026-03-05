@@ -134,6 +134,9 @@ func runGUI(cfg *config.Config, sess *cmd.Session) error {
 						// Plain right-click → buffer menu.
 						activeMenu = menu.NewBufferMenu(sess.Files, len(panes) > 1, ev.X, ev.Y)
 					}
+					if activeMenu != nil {
+						activeMenu.Clamp(winW, winH, face)
+					}
 				} else if ev.Type == sdl.MOUSEBUTTONUP {
 					if dragger.MouseUp() {
 						continue
@@ -225,7 +228,7 @@ func layout(winW, winH, cmdH int32, nPanes int) (cmdRect sdl.Rect, paneRects []s
 // Returns the (possibly updated) panes slice.
 func applyMenuResult(res menu.Result, sess *cmd.Session, panes []*pane.Pane, handler *input.Handler, cfg *config.Config, pal render.Palette, face render.Face) []*pane.Pane {
 	switch res.Action {
-	case "New":
+	case "new":
 		f := file.New()
 		sess.AddFile(f)
 		if len(panes) == 0 {
@@ -237,7 +240,7 @@ func applyMenuResult(res menu.Result, sess *cmd.Session, panes []*pane.Pane, han
 			}
 			ap.File = f
 		}
-	case "Sidebar":
+	case "sidebar":
 		if len(panes) < 2 {
 			f := sess.Current
 			if f == nil {
@@ -246,11 +249,11 @@ func applyMenuResult(res menu.Result, sess *cmd.Session, panes []*pane.Pane, han
 			}
 			panes = append(panes, pane.New(f, cfg, pal, face))
 		}
-	case "Kill sidebar":
+	case "kill sidebar":
 		if len(panes) > 1 {
 			panes = panes[:1]
 		}
-	case "Close":
+	case "close":
 		ap := handler.ActivePane()
 		for i, p := range panes {
 			if p == ap {
@@ -261,7 +264,7 @@ func applyMenuResult(res menu.Result, sess *cmd.Session, panes []*pane.Pane, han
 		if len(panes) == 0 {
 			panes = nil
 		}
-	case "Snarf":
+	case "snarf":
 		if handler.IsCmdWinActive() {
 			handler.CmdWin().Snarf()
 		} else if p := handler.ActivePane(); p != nil {
@@ -270,7 +273,7 @@ func applyMenuResult(res menu.Result, sess *cmd.Session, panes []*pane.Pane, han
 				sdl.SetClipboardText(p.File.Buffer().ReadAt(dot.Start, dot.End-dot.Start))
 			}
 		}
-	case "Cut":
+	case "cut":
 		if handler.IsCmdWinActive() {
 			handler.CmdWin().Cut()
 		} else if p := handler.ActivePane(); p != nil {
@@ -282,7 +285,7 @@ func applyMenuResult(res menu.Result, sess *cmd.Session, panes []*pane.Pane, han
 				f.SetDot(buffer.Range{Start: dot.Start, End: dot.Start})
 			}
 		}
-	case "Paste":
+	case "paste":
 		if handler.IsCmdWinActive() {
 			handler.CmdWin().Paste()
 		} else if p := handler.ActivePane(); p != nil {
@@ -296,7 +299,12 @@ func applyMenuResult(res menu.Result, sess *cmd.Session, panes []*pane.Pane, han
 				f.SetDot(buffer.Range{Start: dot.Start + n, End: dot.Start + n})
 			}
 		}
-	case "Undo":
+	case "write":
+		ap := handler.ActivePane()
+		if ap != nil {
+			_ = ap.File.Save()
+		}
+	case "undo":
 		sess.DoUndo()
 	}
 
