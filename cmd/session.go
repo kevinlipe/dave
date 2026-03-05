@@ -259,7 +259,7 @@ func (s *Session) tryQuit(force bool) error {
 	for i, f := range modified {
 		names[i] = f.Name()
 	}
-	fmt.Fprintf(s.Output, "modified files: %s\n", strings.Join(names, ", "))
+	fmt.Fprintf(s.Output, "changed files: %s\n", strings.Join(names, ", "))
 	s.quitPending = true
 	return nil
 }
