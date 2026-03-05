@@ -247,7 +247,7 @@ func (h *Handler) HandleScroll(ev *sdl.MouseWheelEvent) {
 		dy = -dy
 	}
 	if h.activePane < 0 {
-		h.cmdWin.ScrollBy(dy)
+		h.cmdWin.ScrollBy(-dy)
 		return
 	}
 	p := h.ActivePane()
