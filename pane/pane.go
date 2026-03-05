@@ -45,6 +45,12 @@ func (p *Pane) TabWidth() int { return p.cfg.TabWidth }
 // ScrollY returns the current vertical scroll offset in pixels.
 func (p *Pane) ScrollY() int32 { return p.scrollY }
 
+// SetFile replaces the file displayed by this pane and invalidates the layout.
+func (p *Pane) SetFile(f *file.File) {
+	p.File = f
+	p.paneW = 0 // force re-layout
+}
+
 // ToggleWordWrap switches word-wrap on/off and invalidates the layout.
 func (p *Pane) ToggleWordWrap() {
 	p.wordWrap = !p.wordWrap

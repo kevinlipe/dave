@@ -238,7 +238,7 @@ func applyMenuResult(res menu.Result, sess *cmd.Session, panes []*pane.Pane, han
 			if ap == nil {
 				ap = panes[0]
 			}
-			ap.File = f
+			ap.SetFile(f)
 		}
 	case "sidebar":
 		if len(panes) < 2 {
@@ -316,10 +316,10 @@ func applyMenuResult(res menu.Result, sess *cmd.Session, panes []*pane.Pane, han
 			if len(panes) == 0 {
 				panes = append(panes, pane.New(res.File, cfg, pal, face))
 			} else {
-				panes[0].File = res.File
+				panes[0].SetFile(res.File)
 			}
 		} else {
-			ap.File = res.File
+			ap.SetFile(res.File)
 		}
 	}
 
