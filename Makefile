@@ -2,6 +2,7 @@
 #
 # Targets:
 #   all     - build dave / dave.exe (dynamically linked) and sdave
+#   sdave   - build sdave only
 #   static  - build self-contained exe with SDL2 statically linked (Windows only)
 #   install - install dave and sdave via go install
 #   clean   - remove build artifacts
@@ -34,10 +35,13 @@ SDL2_STATIC_LDFLAGS = \
 	-lversion -luuid -lsetupapi \
 	-static-libgcc
 
-.PHONY: all static clean install
+.PHONY: all sdave static clean install
 
 all:
 	go build -o $(BINARY) .
+	go build -o sdave/sdave ./sdave
+
+sdave:
 	go build -o sdave/sdave ./sdave
 
 static:

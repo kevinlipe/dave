@@ -11,9 +11,10 @@ The command window at the top accepts Sam commands. Right-click opens the buffer
 ## Building
 
 ```
-make all         # standard build
+make all         # build dave and sdave
+make sdave       # build sdave only
 make static      # build a statically-compiled exe including SDL2
-make install     # install via go install
+make install     # install dave and sdave via go install
 ```
 
 Requires Go and SDL2. The binary embeds Go Mono as a fallback font; no fonts need to be installed.
