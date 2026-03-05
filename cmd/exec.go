@@ -163,6 +163,9 @@ func (s *Session) execDelete(f *file.File, dot buffer.Range, ctx *execCtx) error
 func (s *Session) execPrint(f *file.File, dot buffer.Range) error {
 	text := f.Buffer().ReadAt(dot.Start, dot.Len())
 	s.printf("%s", text)
+	if !strings.HasSuffix(text, "\n") {
+		s.printf("\n")
+	}
 	f.SetDot(dot)
 	return nil
 }
@@ -189,7 +192,33 @@ func (s *Session) execEqual(f *file.File, dot buffer.Range, flag string) error {
 	return nil
 }
 
+// unescapeText converts escape sequences in command text (a/i/c/s replacement).
+// \n → newline, \\ → backslash. Other backslash sequences are passed through.
+func unescapeText(s string) string {
+	if !strings.ContainsRune(s, '\\') {
+		return s
+	}
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\\' && i+1 < len(s) {
+			switch s[i+1] {
+			case 'n':
+				b.WriteByte('\n')
+				i++
+				continue
+			case '\\':
+				b.WriteByte('\\')
+				i++
+				continue
+			}
+		}
+		b.WriteByte(s[i])
+	}
+	return b.String()
+}
+
 func (s *Session) execAppend(f *file.File, dot buffer.Range, text string, ctx *execCtx) error {
+	text = unescapeText(text)
 	if err := ctx.addChange(f, dot.End, 0, text); err != nil {
 		return err
 	}
@@ -199,6 +228,7 @@ func (s *Session) execAppend(f *file.File, dot buffer.Range, text string, ctx *e
 }
 
 func (s *Session) execInsert(f *file.File, dot buffer.Range, text string, ctx *execCtx) error {
+	text = unescapeText(text)
 	if err := ctx.addChange(f, dot.Start, 0, text); err != nil {
 		return err
 	}
@@ -208,6 +238,7 @@ func (s *Session) execInsert(f *file.File, dot buffer.Range, text string, ctx *e
 }
 
 func (s *Session) execChange(f *file.File, dot buffer.Range, text string, ctx *execCtx) error {
+	text = unescapeText(text)
 	if err := ctx.addChange(f, dot.Start, dot.Len(), text); err != nil {
 		return err
 	}
@@ -225,7 +256,8 @@ func (s *Session) execSubst(f *file.File, dot buffer.Range, pat, repl, flag stri
 	}
 	// Get the text within dot.
 	text := f.Buffer().ReadAt(dot.Start, dot.Len())
-	// Normalize & → ${0} for Go's regexp expansion.
+	// Unescape \n etc. in replacement text, then normalize & → ${0}.
+	repl = unescapeText(repl)
 	repl = strings.ReplaceAll(repl, "&", "${0}")
 
 	if flag == "g" {

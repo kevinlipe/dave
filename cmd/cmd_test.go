@@ -91,7 +91,7 @@ func TestDeleteWholeLine(t *testing.T) {
 func TestPrint(t *testing.T) {
 	r := runCmd(t, "hello world", dot(6, 11), "p")
 	assertNoError(t, r.err)
-	assertOutput(t, r.output, "world")
+	assertOutput(t, r.output, "world\n")
 	assertContents(t, r.contents, "hello world") // unchanged
 }
 
@@ -266,8 +266,8 @@ func TestYSamExample(t *testing.T) {
 	// Actually let me just test y/separator/ works
 	r := runCmd(t, "a,b,c", dot(0, 5), `y/,/ p`)
 	assertNoError(t, r.err)
-	// Should print each field: "a", "b", "c"
-	assertOutput(t, r.output, "abc")
+	// Should print each field: "a", "b", "c", each followed by a newline.
+	assertOutput(t, r.output, "a\nb\nc\n")
 }
 
 // ---- Group ------------------------------------------------------------------
@@ -517,7 +517,7 @@ func TestXFile(t *testing.T) {
 
 	// X/foo/ p — print contents of files matching "foo"
 	assertNoError(t, s.ExecString(`X/foo/ ,p`))
-	assertOutput(t, out.String(), "hello")
+	assertOutput(t, out.String(), "hello\n")
 }
 
 // ---- Error handling ---------------------------------------------------------

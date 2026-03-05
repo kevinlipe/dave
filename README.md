@@ -66,11 +66,17 @@ See the [Sam paper](https://doc.cat-v.org/plan_9/4th_edition/papers/sam/) for th
 
 ## sdave
 
-`sdave` is a companion stream editor (like `ssam` for `sam`):
+`sdave` is a companion stream editor (like `ssam` for `sam`). It applies Dave's command language to files or standard input non-interactively.
 
 ```
-sdave -e 's/foo/bar/g' file
-sdave -n ',x/TODO/ p' *.go
+sdave [-n] [-e script] [-f scriptfile] [file ...]
 ```
 
-I haven't actually implemented `sdave` yet, but I will.
+Without `-e` or `-f`, the first positional argument is the script. Without `-n`, the entire buffer is printed after the script runs.
+
+```
+sdave 's/UNIX/& system/g'          # replace in stdin, print result
+sdave -n ',10p' file               # print first 10 lines
+sdave -n ',x/TODO/ p' *.go        # print every line containing TODO
+sdave 'y/[a-zA-Z]+/ c/\n/'        # one word per line
+```

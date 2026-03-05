@@ -1,9 +1,9 @@
 # Dave build rules.
 #
 # Targets:
-#   all     - build dave / dave.exe (dynamically linked)
+#   all     - build dave / dave.exe (dynamically linked) and sdave
 #   static  - build self-contained exe with SDL2 statically linked (Windows only)
-#   install - install dave via go install
+#   install - install dave and sdave via go install
 #   clean   - remove build artifacts
 #
 # On Windows the 'static' target needs the MSYS2 ucrt64 static SDL2 library.
@@ -38,12 +38,14 @@ SDL2_STATIC_LDFLAGS = \
 
 all:
 	go build -o $(BINARY) .
+	go build -o sdave/sdave ./sdave
 
 static:
 	CGO_LDFLAGS="$(SDL2_STATIC_LDFLAGS)" go build -o $(BINARY) .
 
 install:
 	go install dave
+	go install dave/sdave
 
 clean:
-	rm -f $(BINARY)
+	rm -f $(BINARY) sdave/sdave
