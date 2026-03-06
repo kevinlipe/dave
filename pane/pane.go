@@ -146,19 +146,15 @@ func cpAtX(buf *buffer.Buffer, vl VisualLine, x int32, face render.Face, tabWidt
 	if x <= 0 {
 		return vl.Lo
 	}
+	runes := []rune(buf.ReadAt(vl.Lo, vl.Hi-vl.Lo))
 	cur := int32(0)
-	for p := vl.Lo; p < vl.Hi; p++ {
-		s := buf.ReadAt(p, 1)
-		if len(s) == 0 {
-			break
-		}
-		r := []rune(s)[0]
+	for i, r := range runes {
 		if r == '\n' {
-			return p
+			return vl.Lo + i
 		}
 		rw := runeWidth(r, cur, face, tabWidth)
 		if x < cur+rw/2 {
-			return p
+			return vl.Lo + i
 		}
 		cur += rw
 	}
@@ -334,63 +330,53 @@ func (p *Pane) drawLineText(ren *sdl.Renderer, vl VisualLine, selLo, selHi int, 
 		return nil
 	}
 
-	text := buf.ReadAt(vl.Lo, drawHi-vl.Lo)
-	// Replace tab characters with spaces for display.
-	text = expandTabs(buf, vl, drawHi, p.face, p.cfg.TabWidth)
+	// Read the visible portion of the line once, then expand tabs.
+	lineRunes := []rune(buf.ReadAt(vl.Lo, drawHi-vl.Lo))
+	text := expandTabsRunes(lineRunes, 0, len(lineRunes), 0, p.face, p.cfg.TabWidth)
 
 	// Determine if entire line is unselected.
 	if selLo >= selHi || selHi <= vl.Lo || selLo >= drawHi {
 		return p.face.DrawText(text, textX, lineY, p.pal.Text)
 	}
 
-	// Split into up-to three segments: before, during, after selection.
-	pre := max(selLo-vl.Lo, 0)
-	post := max(drawHi-selHi, 0)
-	_ = pre
-	_ = post
-
-	// Simpler: render the whole line, then overlay the selected segment
-	// using selection foreground colour at the correct x position.
-	// First render with normal colour.
+	// Render whole line in normal colour, then overlay the selected portion.
 	if err := p.face.DrawText(text, textX, lineY, p.pal.Text); err != nil {
 		return err
 	}
-	// Overlay selected portion with selection text colour.
 	clipLo := max(selLo, vl.Lo)
 	clipHi := min(selHi, drawHi)
 	if clipLo < clipHi {
-		selText := expandTabs(buf, VisualLine{Lo: clipLo, Hi: clipHi}, clipHi, p.face, p.cfg.TabWidth)
-		sx := textX + XForCP(buf, vl, clipLo, p.face, p.cfg.TabWidth)
-		if err := p.face.DrawText(selText, sx, lineY, p.pal.SelectionFG); err != nil {
+		// Expand just the selected runes, starting at their pixel x offset
+		// within the line so tab stops are computed correctly.
+		startX := measureRunes(lineRunes, 0, clipLo-vl.Lo, p.face, p.cfg.TabWidth)
+		selText := expandTabsRunes(lineRunes, clipLo-vl.Lo, clipHi-vl.Lo, startX, p.face, p.cfg.TabWidth)
+		if err := p.face.DrawText(selText, textX+startX, lineY, p.pal.SelectionFG); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// expandTabs returns the display string for [vl.Lo, drawHi) with tabs
-// replaced by appropriate spaces.
-func expandTabs(buf *buffer.Buffer, vl VisualLine, drawHi int, face render.Face, tabWidth int) string {
+// expandTabsRunes returns the display string for runes[lo:hi] with tabs
+// replaced by appropriate spaces. startX is the pixel x-offset at which
+// runes[lo] begins (needed for correct tab-stop alignment mid-line).
+func expandTabsRunes(runes []rune, lo, hi int, startX int32, face render.Face, tabWidth int) string {
 	spaceW := face.GlyphAdvance(' ')
 	tabW := int32(spaceW * tabWidth)
 	if tabW <= 0 {
 		tabW = int32(spaceW)
 	}
-	x := int32(0)
-	out := make([]rune, 0, drawHi-vl.Lo)
-	for p := vl.Lo; p < drawHi; p++ {
-		s := buf.ReadAt(p, 1)
-		if len(s) == 0 {
-			break
-		}
-		r := []rune(s)[0]
+	x := startX
+	out := make([]rune, 0, hi-lo)
+	for i := lo; i < hi; i++ {
+		r := runes[i]
 		if r == '\t' {
 			col := x / tabW
 			stops := int(tabW*(col+1)-x) / int(spaceW)
 			if stops < 1 {
 				stops = 1
 			}
-			for i := 0; i < stops; i++ {
+			for j := 0; j < stops; j++ {
 				out = append(out, ' ')
 			}
 			x += tabW*(col+1) - x

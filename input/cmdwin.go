@@ -19,9 +19,11 @@ import (
 // Pressing Enter with a null cursor executes the current line.
 // Command output is appended to the end of the buffer.
 type CmdWindow struct {
-	buf     *buffer.Buffer
-	dot     buffer.Range // cursor/selection within buf
-	scrollY int32
+	buf      *buffer.Buffer
+	dot      buffer.Range // cursor/selection within buf
+	scrollY  int32
+	lines    []string // cached result of strings.Split(buf.String(), "\n")
+	linesGen int      // buf.Gen() when lines was last computed
 }
 
 // NewCmdWindow creates an empty command window.
@@ -33,6 +35,16 @@ func NewCmdWindow() *CmdWindow {
 
 // Buf returns the command window buffer.
 func (cw *CmdWindow) Buf() *buffer.Buffer { return cw.buf }
+
+// getLines returns the buffer content split into lines, using a cached result
+// when the buffer hasn't changed since the last call.
+func (cw *CmdWindow) getLines() []string {
+	if gen := cw.buf.Gen(); gen != cw.linesGen {
+		cw.lines = strings.Split(cw.buf.String(), "\n")
+		cw.linesGen = gen
+	}
+	return cw.lines
+}
 
 // Dot returns the current selection.
 func (cw *CmdWindow) Dot() buffer.Range { return cw.dot }
@@ -105,8 +117,7 @@ func (cw *CmdWindow) CPAtXY(x, y int32, face render.Face) int {
 	}
 	lineIdx := int(relY / lineH)
 
-	content := cw.buf.String()
-	lines := strings.Split(content, "\n")
+	lines := cw.getLines()
 	if lineIdx >= len(lines) {
 		lineIdx = len(lines) - 1
 	}
@@ -343,8 +354,7 @@ func (cw *CmdWindow) Draw(ren *sdl.Renderer, rect sdl.Rect, face render.Face, pa
 		return nil
 	}
 
-	content := cw.buf.String()
-	lines := strings.Split(content, "\n")
+	lines := cw.getLines()
 	// Always keep at least one line so the cursor has somewhere to sit.
 	// Do not strip the trailing empty element: the cursor may be on that line.
 

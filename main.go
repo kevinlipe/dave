@@ -90,14 +90,76 @@ func runGUI(cfg *config.Config, sess *cmd.Session) error {
 
 	var activeMenu *menu.Menu
 
-	for {
+	// drawFrame renders the current state to the window.
+	drawFrame := func() {
 		winW, winH := win.Size()
 		cmdRect, paneRects := layout(winW, winH, cmdBorder.Y, len(panes))
 
-		for event := sdl.PollEvent(); event != nil; event = sdl.PollEvent() {
+		// Relayout all panes (also triggers EnsureLoaded if needed).
+		for i, p := range panes {
+			if i < len(paneRects) {
+				p.Relayout(paneRects[i].W - render.ScrollBarW)
+			}
+		}
+
+		win.Ren.SetDrawColor(pal.Background.R, pal.Background.G, pal.Background.B, 255)
+		win.Ren.Clear()
+
+		// Body area: white when no panes open (matching Sam's startup appearance).
+		if len(panes) == 0 {
+			win.Ren.SetDrawColor(255, 255, 255, 255)
+			win.Ren.FillRect(&sdl.Rect{X: 0, Y: cmdRect.H, W: winW, H: winH - cmdRect.H})
+		}
+
+		// Command window.
+		cmdWin.Draw(win.Ren, cmdRect, face, pal, handler.ActivePane() == nil)
+
+		// File panes.
+		for i, p := range panes {
+			if i < len(paneRects) {
+				active := handler.ActivePane() == p
+				p.Draw(win.Ren, paneRects[i], active)
+			}
+		}
+
+		// Vertical divider between two panes.
+		if len(panes) == 2 {
+			mid := paneRects[0].X + paneRects[0].W
+			win.Ren.SetDrawColor(pal.Border.R, pal.Border.G, pal.Border.B, 255)
+			win.Ren.FillRect(&sdl.Rect{X: mid, Y: cmdRect.H, W: 1, H: winH - cmdRect.H})
+		}
+
+		// Menu overlay (drawn last, on top of everything).
+		if activeMenu != nil {
+			activeMenu.Draw(win.Ren, face, pal)
+		}
+
+		win.Ren.Present()
+	}
+
+	// Initial paint before blocking on events.
+	drawFrame()
+
+	for {
+		// Block until at least one event arrives; avoids busy-spinning at idle.
+		event := sdl.WaitEvent()
+		if event == nil {
+			continue
+		}
+
+		winW, winH := win.Size()
+		cmdRect, paneRects := layout(winW, winH, cmdBorder.Y, len(panes))
+
+		// Process the event from WaitEvent, then drain any queued events.
+		for ; event != nil; event = sdl.PollEvent() {
 			switch ev := event.(type) {
 			case *sdl.QuitEvent:
 				return nil
+
+			case *sdl.WindowEvent:
+				if ev.Event == sdl.WINDOWEVENT_SIZE_CHANGED {
+					win.UpdateSize()
+				}
 
 			case *sdl.KeyboardEvent:
 				if ev.Type == sdl.KEYDOWN {
@@ -159,47 +221,7 @@ func runGUI(cfg *config.Config, sess *cmd.Session) error {
 			}
 		}
 
-		// Relayout all panes (also triggers EnsureLoaded if needed).
-		for i, p := range panes {
-			if i < len(paneRects) {
-				p.Relayout(paneRects[i].W - render.ScrollBarW)
-			}
-		}
-
-		// Draw.
-		win.Ren.SetDrawColor(pal.Background.R, pal.Background.G, pal.Background.B, 255)
-		win.Ren.Clear()
-
-		// Body area: white when no panes open (matching Sam's startup appearance).
-		if len(panes) == 0 {
-			win.Ren.SetDrawColor(255, 255, 255, 255)
-			win.Ren.FillRect(&sdl.Rect{X: 0, Y: cmdRect.H, W: winW, H: winH - cmdRect.H})
-		}
-
-		// Command window.
-		cmdWin.Draw(win.Ren, cmdRect, face, pal, handler.ActivePane() == nil)
-
-		// File panes.
-		for i, p := range panes {
-			if i < len(paneRects) {
-				active := handler.ActivePane() == p
-				p.Draw(win.Ren, paneRects[i], active)
-			}
-		}
-
-		// Vertical divider between two panes.
-		if len(panes) == 2 {
-			mid := paneRects[0].X + paneRects[0].W
-			win.Ren.SetDrawColor(pal.Border.R, pal.Border.G, pal.Border.B, 255)
-			win.Ren.FillRect(&sdl.Rect{X: mid, Y: cmdRect.H, W: 1, H: winH - cmdRect.H})
-		}
-
-		// Menu overlay (drawn last, on top of everything).
-		if activeMenu != nil {
-			activeMenu.Draw(win.Ren, face, pal)
-		}
-
-		win.Ren.Present()
+		drawFrame()
 	}
 }
 

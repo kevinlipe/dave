@@ -16,14 +16,21 @@ import (
 	"golang.org/x/image/math/fixed"
 )
 
+// glyphEntry caches the SDL texture and its dimensions for a single rune.
+type glyphEntry struct {
+	tex  *sdl.Texture
+	w, h int32
+}
+
 // TTFFace satisfies Face using an opentype rasterizer.
 type TTFFace struct {
 	face     font.Face
 	height   int
 	ascent   int
 	ren      *sdl.Renderer
-	textures map[rune]*sdl.Texture
-	advances map[rune]int // cached advance widths
+	glyphs   map[rune]glyphEntry  // cached textures + dimensions
+	advances map[rune]int         // cached advance widths
+	kerns    map[[2]rune]int32    // cached kern pairs
 }
 
 // NewTTFFace parses ttfData as a TrueType/OpenType font and returns a
@@ -46,8 +53,9 @@ func NewTTFFace(ttfData []byte, pointSize float64, ren *sdl.Renderer) (*TTFFace,
 		height:   m.Height.Ceil(),
 		ascent:   m.Ascent.Ceil(),
 		ren:      ren,
-		textures: make(map[rune]*sdl.Texture),
+		glyphs:   make(map[rune]glyphEntry),
 		advances: make(map[rune]int),
+		kerns:    make(map[[2]rune]int32),
 	}, nil
 }
 
@@ -67,17 +75,24 @@ func (tf *TTFFace) GlyphAdvance(r rune) int {
 	return v
 }
 
+func (tf *TTFFace) kern(a, b rune) int32 {
+	k := [2]rune{a, b}
+	if v, ok := tf.kerns[k]; ok {
+		return v
+	}
+	v := int32(tf.face.Kern(a, b).Ceil())
+	tf.kerns[k] = v
+	return v
+}
+
 func (tf *TTFFace) MeasureText(s string) int {
 	x := 0
 	var prev rune
 	for i, r := range s {
 		if i > 0 {
-			x += tf.face.Kern(prev, r).Ceil()
+			x += int(tf.kern(prev, r))
 		}
-		adv, ok := tf.face.GlyphAdvance(r)
-		if ok {
-			x += adv.Ceil()
-		}
+		x += tf.GlyphAdvance(r)
 		prev = r
 	}
 	return x
@@ -88,21 +103,18 @@ func (tf *TTFFace) DrawText(s string, x, y int32, col sdl.Color) error {
 	var prev rune
 	for i, r := range s {
 		if i > 0 {
-			cursor += int32(tf.face.Kern(prev, r).Ceil())
+			cursor += tf.kern(prev, r)
 		}
-		tex, err := tf.glyphTexture(r)
+		g, err := tf.glyphTexture(r)
 		if err != nil {
 			prev = r
 			continue // skip unrenderable glyphs silently
 		}
-		if tex != nil {
-			_, _, w, h, err2 := tex.Query()
-			if err2 == nil && w > 0 && h > 0 {
-				dst := sdl.Rect{X: cursor, Y: y, W: w, H: h}
-				tex.SetColorMod(col.R, col.G, col.B)
-				tex.SetAlphaMod(col.A)
-				tf.ren.Copy(tex, nil, &dst)
-			}
+		if g.tex != nil && g.w > 0 && g.h > 0 {
+			dst := sdl.Rect{X: cursor, Y: y, W: g.w, H: g.h}
+			g.tex.SetColorMod(col.R, col.G, col.B)
+			g.tex.SetAlphaMod(col.A)
+			tf.ren.Copy(g.tex, nil, &dst)
 		}
 		cursor += int32(tf.GlyphAdvance(r))
 		prev = r
@@ -111,35 +123,36 @@ func (tf *TTFFace) DrawText(s string, x, y int32, col sdl.Color) error {
 }
 
 func (tf *TTFFace) Close() {
-	for _, tex := range tf.textures {
-		if tex != nil {
-			tex.Destroy()
+	for _, g := range tf.glyphs {
+		if g.tex != nil {
+			g.tex.Destroy()
 		}
 	}
-	tf.textures = make(map[rune]*sdl.Texture)
+	tf.glyphs = make(map[rune]glyphEntry)
 	tf.advances = make(map[rune]int)
+	tf.kerns = make(map[[2]rune]int32)
 	tf.face.Close()
 }
 
-// glyphTexture returns (and caches) the SDL texture for rune r.
-// Returns (nil, nil) for whitespace / zero-advance glyphs.
-func (tf *TTFFace) glyphTexture(r rune) (*sdl.Texture, error) {
-	if tex, ok := tf.textures[r]; ok {
-		return tex, nil
+// glyphTexture returns (and caches) the glyphEntry for rune r.
+// Returns a zero entry for whitespace / zero-advance glyphs.
+func (tf *TTFFace) glyphTexture(r rune) (glyphEntry, error) {
+	if g, ok := tf.glyphs[r]; ok {
+		return g, nil
 	}
-	tex, err := tf.buildGlyphTexture(r)
-	tf.textures[r] = tex // cache even if nil
-	return tex, err
+	g, err := tf.buildGlyphTexture(r)
+	tf.glyphs[r] = g // cache even if zero
+	return g, err
 }
 
-func (tf *TTFFace) buildGlyphTexture(r rune) (*sdl.Texture, error) {
+func (tf *TTFFace) buildGlyphTexture(r rune) (glyphEntry, error) {
 	bounds, adv, ok := tf.face.GlyphBounds(r)
 	if !ok || adv == 0 {
-		return nil, nil
+		return glyphEntry{}, nil
 	}
 	w := (bounds.Max.X - bounds.Min.X).Ceil()
 	if w <= 0 {
-		return nil, nil
+		return glyphEntry{}, nil
 	}
 
 	// Render the glyph into a full-line-height image.
@@ -151,7 +164,7 @@ func (tf *TTFFace) buildGlyphTexture(r rune) (*sdl.Texture, error) {
 	dot := fixed.Point26_6{X: -bounds.Min.X, Y: fixed.Int26_6(tf.ascent * 64)}
 	dr, mask, maskp, _, ok2 := tf.face.Glyph(dot, r)
 	if !ok2 {
-		return nil, nil
+		return glyphEntry{}, nil
 	}
 	draw.DrawMask(img, dr, image.White, image.Point{}, mask, maskp, draw.Over)
 
@@ -161,7 +174,7 @@ func (tf *TTFFace) buildGlyphTexture(r rune) (*sdl.Texture, error) {
 		int32(w), int32(lineH),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("render: create glyph texture: %w", err)
+		return glyphEntry{}, fmt.Errorf("render: create glyph texture: %w", err)
 	}
 	tex.SetBlendMode(sdl.BLENDMODE_BLEND)
 
@@ -180,7 +193,7 @@ func (tf *TTFFace) buildGlyphTexture(r rune) (*sdl.Texture, error) {
 
 	if err := tex.Update(nil, unsafe.Pointer(&pixels[0]), w*4); err != nil {
 		tex.Destroy()
-		return nil, fmt.Errorf("render: upload glyph texture: %w", err)
+		return glyphEntry{}, fmt.Errorf("render: upload glyph texture: %w", err)
 	}
-	return tex, nil
+	return glyphEntry{tex: tex, w: int32(w), h: int32(lineH)}, nil
 }

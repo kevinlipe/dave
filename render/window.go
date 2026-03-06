@@ -33,6 +33,7 @@ type Window struct {
 	Face    Face
 	Palette Palette
 	Scale   float64 // physical pixels per logical pixel (1.0 on most Linux, >1 on HiDPI)
+	W, H   int32   // cached output size; call UpdateSize on window resize events
 }
 
 // Open creates the SDL window and renderer, loads the font, and builds the
@@ -87,12 +88,15 @@ func Open(cfg *config.Config) (*Window, error) {
 
 	sdl.StartTextInput()
 
+	pw, ph, _ := ren.GetOutputSize()
 	return &Window{
 		Win:     win,
 		Ren:     ren,
 		Face:    face,
 		Scale:   scale,
 		Palette: PaletteFromConfig(cfg),
+		W:       pw,
+		H:       ph,
 	}, nil
 }
 
@@ -132,13 +136,18 @@ func DrawCursor(ren *sdl.Renderer, x, y, lineH int32, col sdl.Color) {
 	ren.FillRect(&sdl.Rect{X: x - 1, Y: y + lineH - 2, W: 4, H: 2})
 }
 
-// Size returns the current logical window size in pixels.
+// Size returns the cached output size in pixels.
 func (w *Window) Size() (width, height int32) {
+	return w.W, w.H
+}
+
+// UpdateSize re-queries the renderer output size and updates the cache.
+// Call this when a SDL_WINDOWEVENT_SIZE_CHANGED event is received.
+func (w *Window) UpdateSize() {
 	pw, ph, err := w.Ren.GetOutputSize()
-	if err != nil {
-		return 900, 650
+	if err == nil {
+		w.W, w.H = pw, ph
 	}
-	return pw, ph
 }
 
 // loadFace creates the text rendering face from cfg. Falls back to embedded
