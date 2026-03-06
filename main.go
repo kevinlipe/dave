@@ -166,11 +166,17 @@ func runGUI(cfg *config.Config, sess *cmd.Session) error {
 					if err := handler.HandleKey(ev, winW, winH); errors.Is(err, cmd.ErrQuit) {
 						return nil
 					}
+					if handler.IsCmdWinActive() {
+						handler.CmdWin().EnsureVisible(lineH, cmdRect.H)
+					}
 				}
 
 			case *sdl.TextInputEvent:
 				if activeMenu == nil {
 					handler.HandleText(ev)
+					if handler.IsCmdWinActive() {
+						handler.CmdWin().EnsureVisible(lineH, cmdRect.H)
+					}
 				}
 
 			case *sdl.MouseButtonEvent:

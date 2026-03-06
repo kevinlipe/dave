@@ -60,6 +60,37 @@ func (cw *CmdWindow) ScrollBy(delta int32) {
 // ScrollY returns the current scroll offset.
 func (cw *CmdWindow) ScrollY() int32 { return cw.scrollY }
 
+// EnsureVisible scrolls so that the cursor line is visible within a viewport
+// of height viewH pixels. Call this after any operation that moves dot.
+func (cw *CmdWindow) EnsureVisible(lineH, viewH int32) {
+	if lineH <= 0 || viewH <= 0 {
+		return
+	}
+	// Find the line index containing dot.
+	lines := cw.getLines()
+	lineStart := 0
+	cursorLine := len(lines) - 1
+	for i, line := range lines {
+		lineEnd := lineStart + len([]rune(line))
+		if cw.dot.Start <= lineEnd {
+			cursorLine = i
+			break
+		}
+		lineStart = lineEnd + 1
+	}
+	cursorTop := int32(cursorLine) * lineH
+	cursorBot := cursorTop + lineH
+	if cursorTop < cw.scrollY {
+		cw.scrollY = cursorTop
+	}
+	if cursorBot > cw.scrollY+viewH {
+		cw.scrollY = cursorBot - viewH
+	}
+	if cw.scrollY < 0 {
+		cw.scrollY = 0
+	}
+}
+
 // HandleKey handles a KEYDOWN event targeting the command window.
 // Returns cmd.ErrQuit if the user typed a quit command.
 func (cw *CmdWindow) HandleKey(ev *sdl.KeyboardEvent, sess *cmd.Session) error {

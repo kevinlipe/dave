@@ -34,15 +34,17 @@ type TTFFace struct {
 }
 
 // NewTTFFace parses ttfData as a TrueType/OpenType font and returns a
-// TTFFace that renders at pointSize points (DPI=72 so points == pixels).
-func NewTTFFace(ttfData []byte, pointSize float64, ren *sdl.Renderer) (*TTFFace, error) {
+// TTFFace that renders at pointSize points at the given dpi. Pass the display
+// DPI from sdl.GetDisplayDPI so that point sizes match other applications on
+// the same system (Linux desktops use 96 DPI; macOS uses 72).
+func NewTTFFace(ttfData []byte, pointSize, dpi float64, ren *sdl.Renderer) (*TTFFace, error) {
 	parsed, err := opentype.Parse(ttfData)
 	if err != nil {
 		return nil, fmt.Errorf("render: parse TTF: %w", err)
 	}
 	face, err := opentype.NewFace(parsed, &opentype.FaceOptions{
 		Size: pointSize,
-		DPI:  72, // DPI=72 makes Size in points equal Size in pixels
+		DPI:  dpi,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("render: create face: %w", err)
@@ -50,7 +52,7 @@ func NewTTFFace(ttfData []byte, pointSize float64, ren *sdl.Renderer) (*TTFFace,
 	m := face.Metrics()
 	return &TTFFace{
 		face:     face,
-		height:   m.Height.Ceil(),
+		height:   m.Height.Ceil() + 2, // +2px breathing room below descenders
 		ascent:   m.Ascent.Ceil(),
 		ren:      ren,
 		glyphs:   make(map[rune]glyphEntry),

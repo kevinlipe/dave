@@ -43,7 +43,7 @@ type Plan9Face struct {
 func NewPlan9Face(path string, ren *sdl.Renderer, embiggen bool) (*Plan9Face, error) {
 	scale := 1.0
 	if embiggen {
-		scale = 1.5
+		scale = 1.25
 	}
 	f, err := loadP9Font(path)
 	if err != nil {
@@ -100,7 +100,7 @@ func (pf *Plan9Face) DrawText(s string, x, y int32, col sdl.Color) error {
 		src := sdl.Rect{X: int32(g.x), Y: int32(g.y), W: int32(g.w), H: int32(g.h)}
 		dst := sdl.Rect{
 			X: cursor + pf.sc(g.left),
-			Y: baseline - pf.sc(g.image.ascent) + pf.sc(g.y),
+			Y: baseline + pf.sc(g.y-g.image.ascent),
 			W: pf.sc(g.w),
 			H: pf.sc(g.h),
 		}

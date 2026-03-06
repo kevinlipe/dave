@@ -48,7 +48,7 @@ type Config struct {
 	FontSize    float64 // font size in points (default 14)
 	FontMode    string  // "ttf" or "plan9" (default "ttf")
 	Plan9Font   string  // full path to Plan 9 font file; only used when FontMode = "plan9"
-	Plan9Embiggen bool   // render Plan 9 fonts at 150% scale (default false)
+	Plan9Embiggen bool   // render Plan 9 fonts at 125% scale (default false)
 	WordWrap    bool    // soft word wrap on/off (default true)
 	Margin      int     // olivetti margin width in chars (default 80)
 	Split       string  // "vertical" or "horizontal" (default "vertical")

@@ -78,7 +78,17 @@ func Open(cfg *config.Config) (*Window, error) {
 		}
 	}
 
-	face, err := loadFace(cfg, ren, scale)
+	// Determine the display DPI so that font point sizes match other apps on
+	// this system. Linux desktops use 96 DPI; macOS uses 72. SDL's reported
+	// value is trusted if it's in a plausible range [72, 300].
+	displayDPI := 96.0
+	if idx, err := win.GetDisplayIndex(); err == nil {
+		if _, _, vdpi, err := sdl.GetDisplayDPI(idx); err == nil && vdpi >= 72 && vdpi <= 300 {
+			displayDPI = float64(vdpi)
+		}
+	}
+
+	face, err := loadFace(cfg, ren, scale, displayDPI)
 	if err != nil {
 		ren.Destroy()
 		win.Destroy()
@@ -151,9 +161,10 @@ func (w *Window) UpdateSize() {
 }
 
 // loadFace creates the text rendering face from cfg. Falls back to embedded
-// Go Mono on any error. scale is the physical-to-logical pixel ratio for DPI
-// compensation; pass 1.0 on non-HiDPI displays.
-func loadFace(cfg *config.Config, ren *sdl.Renderer, scale float64) (Face, error) {
+// Go Mono on any error. scale is the physical-to-logical pixel ratio for HiDPI
+// compensation; pass 1.0 on non-HiDPI displays. dpi is the display DPI used to
+// convert point sizes to pixels (96 on Linux desktops, 72 on macOS, etc.).
+func loadFace(cfg *config.Config, ren *sdl.Renderer, scale, dpi float64) (Face, error) {
 	if cfg.FontMode == "plan9" && cfg.Plan9Font != "" {
 		face, err := NewPlan9Face(cfg.Plan9Font, ren, cfg.Plan9Embiggen)
 		if err != nil {
@@ -170,7 +181,7 @@ func loadFace(cfg *config.Config, ren *sdl.Renderer, scale float64) (Face, error
 		}
 		// On failure: fall through to embedded Go Mono silently.
 	}
-	face, err := NewTTFFace(data, cfg.FontSize*scale, ren)
+	face, err := NewTTFFace(data, cfg.FontSize*scale, dpi, ren)
 	if err != nil {
 		return nil, fmt.Errorf("render: load font: %w", err)
 	}
