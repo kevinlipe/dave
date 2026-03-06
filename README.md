@@ -81,3 +81,7 @@ sdave -n ',10p' file               # print first 10 lines
 sdave -n ',x/TODO/ p' *.go        # print every line containing TODO
 sdave 'y/[a-zA-Z]+/ c/\n/'        # one word per line
 ```
+
+## License
+
+0BSD. See `LICENSE` in the repo.
