@@ -38,7 +38,7 @@ SDL2_STATIC_LDFLAGS = \
 .PHONY: all sdave static clean install
 
 all:
-# 	go build -v -o $(BINARY) .
+	go build -v -o $(BINARY) .
 	go build -v -o sdave/sdave ./sdave
 
 sdave:
