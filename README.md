@@ -28,9 +28,9 @@ Dave supports two font rendering modes. Set `font_mode` in the config file:
 
 ## Window management
 
-Sam manages its own windows, dividing the display into a column of resizable frames. Dave does not. Each Dave window shows one file at a time. Right-clicking opens a list of open buffers; selecting one brings it into view. To compare two files side by side, open two OS windows.
+Sam manages its own windows, dividing the display into a column of resizable frames. Dave does not. Each Dave window shows one file at a time. Right-clicking opens a list of open buffers; selecting one brings it into view.
 
-This is a deliberate simplification. The OS already provides a window manager. Reimplementing one inside the editor adds complexity without adding capability.
+To view two files side by side, right-click and choose **sidebar** from the buffer menu. This splits the window vertically into two panes. Choose a file in the sidebar pane the same way. To close the sidebar, right-click and choose **kill sidebar**.
 
 ## Configuration
 
