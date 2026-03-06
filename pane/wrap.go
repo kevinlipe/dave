@@ -24,7 +24,14 @@ func Wrap(buf *buffer.Buffer, face render.Face, paneWidthPx int32, wordWrap bool
 	lineH := int32(face.Height())
 
 	// Compute wrap width and centering offset.
-	charW := int32(face.GlyphAdvance('M'))
+	// Use average lowercase width rather than 'M' so that proportional fonts
+	// (e.g. lucidasans) get a realistic character width and don't blow past
+	// paneWidthPx before olivetti mode can kick in.
+	const sample = "abcdefghijklmnopqrstuvwxyz"
+	charW := int32(face.MeasureText(sample)) / int32(len(sample))
+	if charW <= 0 {
+		charW = int32(face.GlyphAdvance('M'))
+	}
 	if charW <= 0 {
 		charW = int32(face.GlyphAdvance(' '))
 	}
