@@ -137,8 +137,10 @@ func runGUI(cfg *config.Config, sess *cmd.Session) error {
 		win.Ren.Present()
 	}
 
-	// Initial paint before blocking on events.
+	// Initial paint before blocking on events. Show the window only after
+	// the first frame is ready to avoid a blank-window flash on startup.
 	drawFrame()
+	win.Win.Show()
 
 	for {
 		// Block until at least one event arrives; avoids busy-spinning at idle.

@@ -51,7 +51,7 @@ func Open(cfg *config.Config) (*Window, error) {
 		"dave",
 		sdl.WINDOWPOS_CENTERED, sdl.WINDOWPOS_CENTERED,
 		900, 650,
-		sdl.WINDOW_SHOWN|sdl.WINDOW_RESIZABLE|sdl.WINDOW_ALLOW_HIGHDPI,
+		sdl.WINDOW_HIDDEN|sdl.WINDOW_RESIZABLE|sdl.WINDOW_ALLOW_HIGHDPI,
 	)
 	if err != nil {
 		sdl.Quit()
@@ -115,6 +115,9 @@ func (w *Window) Close() {
 	sdl.StopTextInput()
 	if w.Face != nil {
 		w.Face.Close()
+	}
+	if w.Win != nil {
+		w.Win.Hide()
 	}
 	if w.Ren != nil {
 		w.Ren.Destroy()
