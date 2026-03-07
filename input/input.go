@@ -300,12 +300,12 @@ func (h *Handler) handleDoubleClick(paneIdx, cp int, paneRects []sdl.Rect) {
 	if err := f.EnsureLoaded(); err != nil {
 		return
 	}
-	lo, hi := wordBounds(f.Buffer(), cp)
+	lo, hi := WordBounds(f.Buffer(), cp)
 	f.SetDot(buffer.Range{Start: lo, End: hi})
 }
 
-// wordBounds returns the start and end of the word (or bracket pair) at cp.
-func wordBounds(buf *buffer.Buffer, cp int) (lo, hi int) {
+// WordBounds returns the start and end of the word (or bracket pair) at cp.
+func WordBounds(buf *buffer.Buffer, cp int) (lo, hi int) {
 	n := buf.Len()
 	if cp >= n {
 		cp = n - 1

@@ -192,7 +192,7 @@ func runGUI(cfg *config.Config, sess *cmd.Session) error {
 					if ev.Type == sdl.MOUSEBUTTONUP {
 						res, _ := activeMenu.HandleMouseUp(ev.X, ev.Y, face)
 						activeMenu = nil
-						panes = applyMenuResult(res, sess, panes, handler, cfg, pal, face)
+						panes = applyMenuResult(res, sess, panes, handler, cfg, pal, face, winH)
 					}
 					continue
 				}
@@ -266,7 +266,7 @@ func layout(winW, winH, cmdH int32, nPanes int) (cmdRect sdl.Rect, paneRects []s
 
 // applyMenuResult handles a selection from the buffer or edit menu.
 // Returns the (possibly updated) panes slice.
-func applyMenuResult(res menu.Result, sess *cmd.Session, panes []*pane.Pane, handler *input.Handler, cfg *config.Config, pal render.Palette, face render.Face) []*pane.Pane {
+func applyMenuResult(res menu.Result, sess *cmd.Session, panes []*pane.Pane, handler *input.Handler, cfg *config.Config, pal render.Palette, face render.Face, winH int32) []*pane.Pane {
 	switch res.Action {
 	case "new":
 		f := file.New()
@@ -346,6 +346,31 @@ func applyMenuResult(res menu.Result, sess *cmd.Session, panes []*pane.Pane, han
 		}
 	case "undo":
 		sess.DoUndo()
+	case "look":
+		ap := handler.ActivePane()
+		if ap != nil {
+			if err := ap.File.EnsureLoaded(); err != nil {
+				break
+			}
+			f := ap.File
+			dot := f.Dot()
+			buf := f.Buffer()
+
+			// Needle: use selection if non-null, else word under cursor.
+			var needle string
+			if dot.Start != dot.End {
+				needle = buf.ReadAt(dot.Start, dot.End-dot.Start)
+			} else {
+				lo, hi := input.WordBounds(buf, dot.Start)
+				needle = buf.ReadAt(lo, hi-lo)
+			}
+			if needle != "" {
+				if found, end := lookForward(buf, needle, dot.End); found >= 0 {
+					f.SetDot(buffer.Range{Start: found, End: end})
+					ap.EnsureVisible(found, winH)
+				}
+			}
+		}
 	}
 
 	if res.File != nil {
@@ -365,6 +390,42 @@ func applyMenuResult(res menu.Result, sess *cmd.Session, panes []*pane.Pane, han
 
 	handler.SetPanes(panes)
 	return panes
+}
+
+// lookForward searches buf for the first occurrence of needle at or after
+// start (codepoint offset), wrapping around to 0 if not found. Returns the
+// start and end codepoint offsets of the match, or (-1, -1) if not found.
+func lookForward(buf interface{ String() string; Len() int }, needle string, start int) (int, int) {
+	runes := []rune(buf.String())
+	n := len(runes)
+	needleRunes := []rune(needle)
+	nLen := len(needleRunes)
+	if nLen == 0 || nLen > n {
+		return -1, -1
+	}
+	// Search from start to end of buffer, then wrap from 0 to start.
+	for _, from := range []int{start, 0} {
+		limit := n - nLen + 1
+		if from == 0 {
+			// Wrap: only search up to original start to avoid re-matching.
+			if limit > start {
+				limit = start
+			}
+		}
+		for i := from; i < limit; i++ {
+			match := true
+			for j := 0; j < nLen; j++ {
+				if runes[i+j] != needleRunes[j] {
+					match = false
+					break
+				}
+			}
+			if match {
+				return i, i + nLen
+			}
+		}
+	}
+	return -1, -1
 }
 
 // ---- headless (-d) mode -----------------------------------------------------
