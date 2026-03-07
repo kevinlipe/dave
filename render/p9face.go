@@ -138,6 +138,14 @@ func (pf *Plan9Face) texture(img *p9SubfontImage) (*sdl.Texture, error) {
 	rgba := make([]byte, int(w)*int(h)*4)
 	for i, lum := range img.pix {
 		opacity := 255 - lum
+		// When scaling up, apply a gamma curve to push semi-transparent edge
+		// pixels toward fully transparent. This counteracts the "fat stroke"
+		// effect from bilinear filtering of bitmap glyphs. gamma=2.0 works
+		// well for moderate scale factors (1.1–1.25).
+		if pf.scale > 1.0 {
+			a := float64(opacity) / 255.0
+			opacity = uint8(math.Pow(a, 3.0) * 255.0)
+		}
 		base := i * 4
 		rgba[base+0] = 255
 		rgba[base+1] = 255
