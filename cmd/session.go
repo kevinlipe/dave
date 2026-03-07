@@ -21,6 +21,10 @@ type Session struct {
 	Output  io.Writer // where p, =, n, etc. write their output
 	Undo    *UndoLog
 
+	// OpenRequest is set by the B command to signal the GUI to open this file
+	// in a pane when no pane is currently open. The GUI clears it after handling.
+	OpenRequest *file.File
+
 	// quitPending is true after the first 'q' when modified files exist.
 	quitPending bool
 }

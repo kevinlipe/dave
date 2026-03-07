@@ -29,7 +29,8 @@ type CmdWindow struct {
 // NewCmdWindow creates an empty command window.
 func NewCmdWindow() *CmdWindow {
 	return &CmdWindow{
-		buf: buffer.New(),
+		buf:      buffer.New(),
+		linesGen: -1, // force getLines() to populate on first call (buf.Gen() starts at 0)
 	}
 }
 

@@ -28,11 +28,13 @@ type Color struct {
 
 // Colors holds the full Dave color scheme.
 type Colors struct {
-	Background   Color // pane/buffer background         #FFFFEA
-	Text         Color // normal text                    #000000
-	SelectionBG  Color // selection highlight background #9FEEEE
-	SelectionFG  Color // selection highlight text       #000000
-	Border       Color // pane border and divider        #888888
+	Background       Color // pane/buffer background              #FFFFEA
+	Text             Color // normal text                         #000000
+	SelectionBG      Color // cmdwin selection background         #9FEEEE
+	SelectionFG      Color // cmdwin selection text               #000000
+	BodySelectionBG  Color // body/pane selection background      #EEEE9E
+	BodySelectionFG  Color // body/pane selection text            #000000
+	Border           Color // pane border and divider             #888888
 	HeaderBG     Color // pane header background         #EEEEDD
 	HeaderFG     Color // pane header text               #000000
 	Scrollbar    Color // file pane scrollbar            #99994C
@@ -74,8 +76,10 @@ func Default() *Config {
 		Colors: Colors{
 			Background:   Color{0xFF, 0xFF, 0xEA},
 			Text:         Color{0x00, 0x00, 0x00},
-			SelectionBG:  Color{0x9F, 0xEE, 0xEE},
-			SelectionFG:  Color{0x00, 0x00, 0x00},
+			SelectionBG:     Color{0x9F, 0xEE, 0xEE},
+			SelectionFG:     Color{0x00, 0x00, 0x00},
+			BodySelectionBG: Color{0xEE, 0xEE, 0x9E},
+			BodySelectionFG: Color{0x00, 0x00, 0x00},
 			Border:       Color{0x88, 0x88, 0x88},
 			HeaderBG:     Color{0xEE, 0xEE, 0xDD},
 			HeaderFG:     Color{0x00, 0x00, 0x00},
@@ -143,8 +147,10 @@ const defaultConfigText = `# Dave configuration file
 
 # color_background    = #FFFFEA
 # color_text          = #000000
-# color_selection_bg  = #9FEEEE
-# color_selection_fg  = #000000
+# color_selection_bg       = #9FEEEE
+# color_selection_fg       = #000000
+# color_body_selection_bg  = #EEEE9E
+# color_body_selection_fg  = #000000
 # color_border        = #888888
 # color_header_bg     = #EEEEDD
 # color_header_fg     = #000000
@@ -294,6 +300,18 @@ func applyKey(cfg *Config, k, v string) error {
 			return err
 		}
 		cfg.Colors.SelectionFG = c
+	case "color_body_selection_bg":
+		c, err := parseHexColor(v)
+		if err != nil {
+			return err
+		}
+		cfg.Colors.BodySelectionBG = c
+	case "color_body_selection_fg":
+		c, err := parseHexColor(v)
+		if err != nil {
+			return err
+		}
+		cfg.Colors.BodySelectionFG = c
 	case "color_border":
 		c, err := parseHexColor(v)
 		if err != nil {

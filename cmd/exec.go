@@ -460,7 +460,7 @@ func (s *Session) execXFile(pat string, body []*Command, ctx *execCtx) error {
 		return err
 	}
 	for _, f := range s.Files {
-		ml := f.MenuLine(f == s.Current)
+		ml := f.MenuLine(f == s.Current, false)
 		if re.MatchString(ml) {
 			s.Current = f
 			for _, cmd := range body {
@@ -479,7 +479,7 @@ func (s *Session) execYFile(pat string, body []*Command, ctx *execCtx) error {
 		return err
 	}
 	for _, f := range s.Files {
-		ml := f.MenuLine(f == s.Current)
+		ml := f.MenuLine(f == s.Current, false)
 		if !re.MatchString(ml) {
 			s.Current = f
 			for _, cmd := range body {
@@ -509,7 +509,7 @@ func (s *Session) execGroup(f *file.File, dot buffer.Range, body []*Command, ctx
 
 func (s *Session) execN() error {
 	for _, f := range s.Files {
-		ml := f.MenuLine(f == s.Current)
+		ml := f.MenuLine(f == s.Current, false)
 		s.printf("%s\n", ml)
 	}
 	return nil
@@ -539,7 +539,8 @@ func (s *Session) execBig(arg string) error {
 			s.AddFile(f)
 		}
 		s.Current = f
-		s.printf("%s\n", f.MenuLine(true))
+		s.OpenRequest = f
+		s.printf("%s\n", f.MenuLine(true, false))
 	}
 	return nil
 }
@@ -633,7 +634,7 @@ func (s *Session) execF(f *file.File, name string) error {
 	if name != "" {
 		f.SetName(name)
 	}
-	s.printf("%s\n", f.MenuLine(f == s.Current))
+	s.printf("%s\n", f.MenuLine(f == s.Current, false))
 	return nil
 }
 

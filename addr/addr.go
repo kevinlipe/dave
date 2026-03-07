@@ -173,7 +173,7 @@ func FindFileByPat(pat string, files []*file.File, current *file.File) (*file.Fi
 	}
 	var matched []*file.File
 	for _, ff := range files {
-		ml := ff.MenuLine(ff == current)
+		ml := ff.MenuLine(ff == current, false)
 		if re.MatchString(ml) {
 			matched = append(matched, ff)
 		}

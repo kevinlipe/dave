@@ -60,7 +60,7 @@ func TestModifiedBit(t *testing.T) {
 
 func TestMenuLineUnmodifiedNotCurrent(t *testing.T) {
 	f := NewNamed("foo.txt")
-	ml := f.MenuLine(false)
+	ml := f.MenuLine(false, false)
 	if ml != "-- foo.txt" {
 		t.Errorf("MenuLine = %q, want %q", ml, "-- foo.txt")
 	}
@@ -69,7 +69,7 @@ func TestMenuLineUnmodifiedNotCurrent(t *testing.T) {
 func TestMenuLineModifiedCurrent(t *testing.T) {
 	f := NewNamed("foo.txt")
 	f.SetModified(true)
-	ml := f.MenuLine(true)
+	ml := f.MenuLine(true, false)
 	if ml != "'. foo.txt" {
 		t.Errorf("MenuLine = %q, want %q", ml, "'. foo.txt")
 	}
@@ -77,7 +77,7 @@ func TestMenuLineModifiedCurrent(t *testing.T) {
 
 func TestMenuLineUnnamed(t *testing.T) {
 	f := New()
-	ml := f.MenuLine(false)
+	ml := f.MenuLine(false, false)
 	if ml != "-- (unnamed)" {
 		t.Errorf("MenuLine = %q, want %q", ml, "-- (unnamed)")
 	}

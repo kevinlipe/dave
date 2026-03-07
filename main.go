@@ -70,7 +70,7 @@ func runGUI(cfg *config.Config, sess *cmd.Session) error {
 
 	// Print menu lines for files loaded from command-line arguments.
 	for _, f := range sess.Files {
-		cmdWin.AppendOutput(f.MenuLine(f == sess.Current) + "\n")
+		cmdWin.AppendOutput(f.MenuLine(f == sess.Current, false) + "\n")
 	}
 
 	// Start with no panes open. Files are in sess.Files but no view is created
@@ -169,6 +169,14 @@ func runGUI(cfg *config.Config, sess *cmd.Session) error {
 					if handler.IsCmdWinActive() {
 						handler.CmdWin().EnsureVisible(lineH, cmdRect.H)
 					}
+					// B command requests a pane when none is open.
+					if f := sess.OpenRequest; f != nil && len(panes) == 0 {
+						sess.OpenRequest = nil
+						panes = append(panes, pane.New(f, cfg, pal, face))
+						handler.SetPanes(panes)
+					} else {
+						sess.OpenRequest = nil
+					}
 				}
 
 			case *sdl.TextInputEvent:
@@ -200,7 +208,11 @@ func runGUI(cfg *config.Config, sess *cmd.Session) error {
 						activeMenu = menu.NewEditMenu(ev.X, ev.Y)
 					} else if ev.Button == sdl.BUTTON_RIGHT {
 						// Plain right-click → buffer menu.
-						activeMenu = menu.NewBufferMenu(sess.Files, len(panes) > 1, ev.X, ev.Y)
+						inPane := make(map[*file.File]bool, len(panes))
+						for _, p := range panes {
+							inPane[p.File] = true
+						}
+						activeMenu = menu.NewBufferMenu(sess.Files, inPane, len(panes) > 1, ev.X, ev.Y)
 					}
 					if activeMenu != nil {
 						activeMenu.Clamp(winW, winH, face)

@@ -33,11 +33,13 @@ var (
 
 // Palette holds the active colors for a Dave session, derived from config.
 type Palette struct {
-	Background   sdl.Color
-	Text         sdl.Color
-	SelectionBG  sdl.Color
-	SelectionFG  sdl.Color
-	Border       sdl.Color
+	Background      sdl.Color
+	Text            sdl.Color
+	SelectionBG     sdl.Color // cmdwin selection
+	SelectionFG     sdl.Color
+	BodySelectionBG sdl.Color // body/pane selection
+	BodySelectionFG sdl.Color
+	Border          sdl.Color
 	HeaderBG     sdl.Color
 	HeaderFG     sdl.Color
 	Scrollbar    sdl.Color
@@ -56,8 +58,10 @@ func PaletteFromConfig(cfg *config.Config) Palette {
 	return Palette{
 		Background:   toSDL(cfg.Colors.Background),
 		Text:         toSDL(cfg.Colors.Text),
-		SelectionBG:  toSDL(cfg.Colors.SelectionBG),
-		SelectionFG:  toSDL(cfg.Colors.SelectionFG),
+		SelectionBG:     toSDL(cfg.Colors.SelectionBG),
+		SelectionFG:     toSDL(cfg.Colors.SelectionFG),
+		BodySelectionBG: toSDL(cfg.Colors.BodySelectionBG),
+		BodySelectionFG: toSDL(cfg.Colors.BodySelectionFG),
 		Border:       toSDL(cfg.Colors.Border),
 		HeaderBG:     toSDL(cfg.Colors.HeaderBG),
 		HeaderFG:     toSDL(cfg.Colors.HeaderFG),

@@ -204,7 +204,7 @@ func (p *Pane) drawHeader(ren *sdl.Renderer, rect sdl.Rect, active bool) {
 
 	// Header text: menu line.
 	isCurrent := active
-	_ = p.face.DrawText(p.File.MenuLine(isCurrent),
+	_ = p.face.DrawText(p.File.MenuLine(isCurrent, true),
 		rect.X+render.ScrollBarW+render.PanePad, rect.Y+render.HeaderPad, p.pal.HeaderFG)
 }
 
@@ -305,7 +305,7 @@ func (p *Pane) drawLineSelection(ren *sdl.Renderer, vl VisualLine, selLo, selHi 
 		x1 = rect.X + rect.W
 	}
 	if x1 > x0 {
-		sel := p.pal.SelectionBG
+		sel := p.pal.BodySelectionBG
 		ren.SetDrawColor(sel.R, sel.G, sel.B, 255)
 		ren.FillRect(&sdl.Rect{X: x0, Y: lineY, W: x1 - x0, H: lineH})
 	}
@@ -350,7 +350,7 @@ func (p *Pane) drawLineText(ren *sdl.Renderer, vl VisualLine, selLo, selHi int, 
 		// within the line so tab stops are computed correctly.
 		startX := measureRunes(lineRunes, 0, clipLo-vl.Lo, p.face, p.cfg.TabWidth)
 		selText := expandTabsRunes(lineRunes, clipLo-vl.Lo, clipHi-vl.Lo, startX, p.face, p.cfg.TabWidth)
-		if err := p.face.DrawText(selText, textX+startX, lineY, p.pal.SelectionFG); err != nil {
+		if err := p.face.DrawText(selText, textX+startX, lineY, p.pal.BodySelectionFG); err != nil {
 			return err
 		}
 	}

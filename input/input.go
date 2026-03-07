@@ -535,6 +535,9 @@ func moveDotVisualLine(f *file.File, p *pane.Pane, dir int, extend bool, winH in
 	}
 	dot := f.Dot()
 	layout := p.Layout()
+	if len(layout.Lines) == 0 {
+		return
+	}
 	cp := dot.Start
 	lineIdx := layout.LineAt(cp)
 	lineIdx += dir
@@ -616,6 +619,9 @@ func moveDotLineStart(f *file.File, p *pane.Pane, extend bool) {
 	}
 	dot := f.Dot()
 	layout := p.Layout()
+	if len(layout.Lines) == 0 {
+		return
+	}
 	lineIdx := layout.LineAt(dot.Start)
 	newPos := layout.Lines[lineIdx].Lo
 	moveDotAbsolute(f, newPos, extend)
@@ -627,6 +633,9 @@ func moveDotLineEnd(f *file.File, p *pane.Pane, extend bool) {
 	}
 	dot := f.Dot()
 	layout := p.Layout()
+	if len(layout.Lines) == 0 {
+		return
+	}
 	lineIdx := layout.LineAt(dot.Start)
 	vl := layout.Lines[lineIdx]
 	// End of visual line: one before the newline (or Hi for last line).

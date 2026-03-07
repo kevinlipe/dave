@@ -56,7 +56,7 @@ const padX = 10
 
 // NewBufferMenu creates the right-click buffer menu with the given open files.
 // hasSidebar controls whether "Sidebar" or "Kill sidebar" is shown.
-func NewBufferMenu(files []*file.File, hasSidebar bool, x, y int32) *Menu {
+func NewBufferMenu(files []*file.File, inPane map[*file.File]bool, hasSidebar bool, x, y int32) *Menu {
 	sidebarLabel := "sidebar"
 	if hasSidebar {
 		sidebarLabel = "kill sidebar"
@@ -69,7 +69,7 @@ func NewBufferMenu(files []*file.File, hasSidebar bool, x, y int32) *Menu {
 		{Kind: ItemDave, Label: "~~dave~~"},
 	}
 	for _, f := range files {
-		items = append(items, Item{Kind: ItemFile, Label: f.MenuLine(false), File: f})
+		items = append(items, Item{Kind: ItemFile, Label: f.MenuLine(false, inPane[f]), File: f})
 	}
 	return &Menu{items: items, x: x, y: y, hovered: -1, open: true}
 }

@@ -127,10 +127,12 @@ func (f *File) String() string { return f.buf.String() }
 // to the rendering layer.
 //
 // For headless (-d) mode, pass isCurrent=false.
-func (f *File) MenuLine(isCurrent bool) string {
+func (f *File) MenuLine(isCurrent, isInPane bool) string {
 	mod := '-'
 	if f.modified {
 		mod = '\''
+	} else if isInPane {
+		mod = '+'
 	}
 	cur := '-'
 	if isCurrent {

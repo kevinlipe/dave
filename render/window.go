@@ -48,7 +48,7 @@ func Open(cfg *config.Config) (*Window, error) {
 	}
 
 	win, err := sdl.CreateWindow(
-		"Dave",
+		"dave",
 		sdl.WINDOWPOS_CENTERED, sdl.WINDOWPOS_CENTERED,
 		900, 650,
 		sdl.WINDOW_SHOWN|sdl.WINDOW_RESIZABLE|sdl.WINDOW_ALLOW_HIGHDPI,
