@@ -166,7 +166,7 @@ func (w *Window) UpdateSize() {
 // convert point sizes to pixels (96 on Linux desktops, 72 on macOS, etc.).
 func loadFace(cfg *config.Config, ren *sdl.Renderer, scale, dpi float64) (Face, error) {
 	if cfg.FontMode == "plan9" && cfg.Plan9Font != "" {
-		face, err := NewPlan9Face(cfg.Plan9Font, ren, cfg.Plan9Embiggen)
+		face, err := NewPlan9Face(cfg.Plan9Font, ren, cfg.Plan9Scale)
 		if err != nil {
 			return nil, fmt.Errorf("render: load plan9 font %q: %w", cfg.Plan9Font, err)
 		}

@@ -247,18 +247,19 @@ func (h *Handler) HandleMouseMotion(ev *sdl.MouseMotionEvent, cmdRect sdl.Rect, 
 }
 
 // HandleScroll scrolls the active pane.
+// We use ev.Y directly so natural scrolling configured at the OS/driver
+// level is honoured. SDL's MOUSEWHEEL_FLIPPED flag is not reliably set on
+// Linux (libinput pre-inverts the values without flagging them), so
+// normalising it would double-invert and reverse the direction.
 func (h *Handler) HandleScroll(ev *sdl.MouseWheelEvent) {
 	dy := ev.Y
-	if ev.Direction == sdl.MOUSEWHEEL_FLIPPED {
-		dy = -dy
-	}
 	if h.activePane < 0 {
-		h.cmdWin.ScrollBy(-dy)
+		h.cmdWin.ScrollBy(dy)
 		return
 	}
 	p := h.ActivePane()
 	if p != nil {
-		p.ScrollBy(-dy * 3)
+		p.ScrollBy(dy * 3)
 	}
 }
 

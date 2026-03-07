@@ -39,11 +39,10 @@ type Plan9Face struct {
 }
 
 // NewPlan9Face loads a Plan 9 .font file and returns a Face ready for drawing.
-// If embiggen is true, glyphs are rendered at 150% scale.
-func NewPlan9Face(path string, ren *sdl.Renderer, embiggen bool) (*Plan9Face, error) {
-	scale := 1.0
-	if embiggen {
-		scale = 1.25
+// scale is a multiplier applied to all glyph metrics (1.0 = no scaling).
+func NewPlan9Face(path string, ren *sdl.Renderer, scale float64) (*Plan9Face, error) {
+	if scale <= 0 {
+		scale = 1.0
 	}
 	f, err := loadP9Font(path)
 	if err != nil {
