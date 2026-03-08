@@ -166,12 +166,23 @@ func runGUI(cfg *config.Config, sess *cmd.Session) error {
 
 			case *sdl.KeyboardEvent:
 				if ev.Type == sdl.KEYDOWN {
+					wasEnter := ev.Keysym.Sym == sdl.K_RETURN || ev.Keysym.Sym == sdl.K_KP_ENTER
 					if err := handler.HandleKey(ev, winW, winH); errors.Is(err, cmd.ErrQuit) {
 						win.Win.Hide()
 						return nil
 					}
 					if handler.IsCmdWinActive() {
 						handler.CmdWin().EnsureVisible(lineH, cmdRect.H)
+						// After executing a command, scroll the pane showing the
+						// current file to its (possibly updated) dot.
+						if wasEnter {
+							for _, p := range panes {
+								if p.File == sess.Current {
+									p.EnsureVisible(sess.Current.Dot().Start, winH)
+									break
+								}
+							}
+						}
 					}
 					// B command requests a pane when none is open.
 					if f := sess.OpenRequest; f != nil && len(panes) == 0 {
@@ -196,7 +207,7 @@ func runGUI(cfg *config.Config, sess *cmd.Session) error {
 					if ev.Type == sdl.MOUSEBUTTONUP {
 						res, _ := activeMenu.HandleMouseUp(ev.X, ev.Y, face)
 						activeMenu = nil
-						panes = applyMenuResult(res, sess, panes, handler, cfg, pal, face, winH)
+						panes = applyMenuResult(res, sess, panes, handler, cmdWin, cfg, pal, face, winH)
 					}
 					continue
 				}
@@ -275,7 +286,7 @@ func layout(winW, winH, cmdH int32, nPanes int) (cmdRect sdl.Rect, paneRects []s
 
 // applyMenuResult handles a selection from the buffer or edit menu.
 // Returns the (possibly updated) panes slice.
-func applyMenuResult(res menu.Result, sess *cmd.Session, panes []*pane.Pane, handler *input.Handler, cfg *config.Config, pal render.Palette, face render.Face, winH int32) []*pane.Pane {
+func applyMenuResult(res menu.Result, sess *cmd.Session, panes []*pane.Pane, handler *input.Handler, cmdWin *input.CmdWindow, cfg *config.Config, pal render.Palette, face render.Face, winH int32) []*pane.Pane {
 	switch res.Action {
 	case "new":
 		f := file.New()
@@ -304,14 +315,20 @@ func applyMenuResult(res menu.Result, sess *cmd.Session, panes []*pane.Pane, han
 		}
 	case "close":
 		ap := handler.ActivePane()
-		for i, p := range panes {
-			if p == ap {
-				panes = append(panes[:i], panes[i+1:]...)
-				break
+		if ap != nil {
+			if err := sess.RemoveFile(ap.File, false); err != nil {
+				cmdWin.AppendOutput(err.Error() + "\n")
+			} else {
+				for i, p := range panes {
+					if p == ap {
+						panes = append(panes[:i], panes[i+1:]...)
+						break
+					}
+				}
+				if len(panes) == 0 {
+					panes = nil
+				}
 			}
-		}
-		if len(panes) == 0 {
-			panes = nil
 		}
 	case "snarf":
 		if handler.IsCmdWinActive() {

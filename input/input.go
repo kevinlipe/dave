@@ -194,6 +194,7 @@ func (h *Handler) HandleMouseDown(ev *sdl.MouseButtonEvent, cmdRect sdl.Rect, pa
 			cp = p.CPAtXY(x-paneRects[idx].X, y-paneRects[idx].Y)
 			f := p.File
 			f.SetDot(buffer.Range{Start: cp, End: cp})
+			h.session.Current = f
 		}
 
 		h.dragging = true
