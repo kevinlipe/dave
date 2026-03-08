@@ -134,6 +134,9 @@ type execCtx struct {
 	perFile    map[*file.File]*filePending
 	// order tracks which files were touched, in order.
 	order      []*file.File
+	// nest counts how many levels of structural commands (x, g, {, …) we're
+	// inside. Shell commands only print "!\n" at the top level (nest==0).
+	nest       int
 }
 
 type filePending struct {

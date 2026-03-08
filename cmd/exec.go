@@ -134,7 +134,7 @@ func (s *Session) execCmd(cmd *Command, f *file.File, ctx *execCtx) error {
 	case '<':
 		return s.execShellIn(f, dot, cmd.Args[0], ctx)
 	case '>':
-		return s.execShellOut(f, dot, cmd.Args[0])
+		return s.execShellOut(f, dot, cmd.Args[0], ctx)
 	case '|':
 		return s.execShellPipe(f, dot, cmd.Args[0], ctx)
 	}
@@ -171,8 +171,15 @@ func (s *Session) execPrint(f *file.File, dot buffer.Range) error {
 }
 
 func (s *Session) execEqual(f *file.File, dot buffer.Range, flag string) error {
+	if name := f.Name(); name != "" {
+		s.printf("%s:", name)
+	}
 	if flag == "#" {
-		s.printf("#%d,#%d\n", dot.Start, dot.End)
+		if dot.IsNull() {
+			s.printf("#%d\n", dot.Start)
+		} else {
+			s.printf("#%d,#%d\n", dot.Start, dot.End)
+		}
 		return nil
 	}
 	str := f.String()
@@ -339,11 +346,14 @@ func (s *Session) execG(f *file.File, dot buffer.Range, pat string, body []*Comm
 	lo, _ := re.FindForward(text, 0, len(text))
 	if lo != -1 {
 		f.SetDot(dot)
+		ctx.nest++
 		for _, cmd := range body {
 			if err := s.execCmd(cmd, f, ctx); err != nil {
+				ctx.nest--
 				return err
 			}
 		}
+		ctx.nest--
 	}
 	return nil
 }
@@ -357,11 +367,14 @@ func (s *Session) execV(f *file.File, dot buffer.Range, pat string, body []*Comm
 	lo, _ := re.FindForward(text, 0, len(text))
 	if lo == -1 {
 		f.SetDot(dot)
+		ctx.nest++
 		for _, cmd := range body {
 			if err := s.execCmd(cmd, f, ctx); err != nil {
+				ctx.nest--
 				return err
 			}
 		}
+		ctx.nest--
 	}
 	return nil
 }
@@ -403,14 +416,17 @@ func (s *Session) execX(f *file.File, dot buffer.Range, pat string, body []*Comm
 		prevEnd = hi
 	}
 
+	ctx.nest++
 	for _, m := range matches {
 		f.SetDot(m.r)
 		for _, cmd := range body {
 			if err := s.execCmd(cmd, f, ctx); err != nil {
+				ctx.nest--
 				return err
 			}
 		}
 	}
+	ctx.nest--
 	return nil
 }
 
@@ -443,14 +459,17 @@ func (s *Session) execY(f *file.File, dot buffer.Range, pat string, body []*Comm
 		betweens = append(betweens, buffer.Range{Start: lo, End: dot.End})
 	}
 
+	ctx.nest++
 	for _, r := range betweens {
 		f.SetDot(r)
 		for _, cmd := range body {
 			if err := s.execCmd(cmd, f, ctx); err != nil {
+				ctx.nest--
 				return err
 			}
 		}
 	}
+	ctx.nest--
 	return nil
 }
 
@@ -459,17 +478,20 @@ func (s *Session) execXFile(pat string, body []*Command, ctx *execCtx) error {
 	if err != nil {
 		return err
 	}
+	ctx.nest++
 	for _, f := range s.Files {
 		ml := f.MenuLine(f == s.Current, false)
 		if re.MatchString(ml) {
 			s.Current = f
 			for _, cmd := range body {
 				if err := s.execCmd(cmd, f, ctx); err != nil {
+					ctx.nest--
 					return err
 				}
 			}
 		}
 	}
+	ctx.nest--
 	return nil
 }
 
@@ -478,17 +500,20 @@ func (s *Session) execYFile(pat string, body []*Command, ctx *execCtx) error {
 	if err != nil {
 		return err
 	}
+	ctx.nest++
 	for _, f := range s.Files {
 		ml := f.MenuLine(f == s.Current, false)
 		if !re.MatchString(ml) {
 			s.Current = f
 			for _, cmd := range body {
 				if err := s.execCmd(cmd, f, ctx); err != nil {
+					ctx.nest--
 					return err
 				}
 			}
 		}
 	}
+	ctx.nest--
 	return nil
 }
 
@@ -497,11 +522,14 @@ func (s *Session) execYFile(pat string, body []*Command, ctx *execCtx) error {
 // by each command for the next one to see.
 func (s *Session) execGroup(f *file.File, dot buffer.Range, body []*Command, ctx *execCtx) error {
 	f.SetDot(dot)
+	ctx.nest++
 	for _, cmd := range body {
 		if err := s.execCmd(cmd, f, ctx); err != nil {
+			ctx.nest--
 			return err
 		}
 	}
+	ctx.nest--
 	return nil
 }
 
@@ -589,6 +617,7 @@ func (s *Session) execE(f *file.File, name string, ctx *execCtx) error {
 	}
 	f.SetName(name)
 	f.SetDot(buffer.Range{})
+	s.printf("%s: #%d\n", name, utf8.RuneCountInString(newContent))
 	return nil
 }
 
@@ -606,6 +635,7 @@ func (s *Session) execR(f *file.File, dot buffer.Range, name string, ctx *execCt
 	}
 	n := utf8.RuneCountInString(content)
 	f.SetDot(buffer.Range{Start: dot.Start, End: dot.Start + n})
+	s.printf("%s: #%d\n", name, n)
 	return nil
 }
 
@@ -618,14 +648,24 @@ func (s *Session) execW(f *file.File, dot buffer.Range, name string) error {
 		return fmt.Errorf("w: no filename")
 	}
 	// Write addressed range, restoring original line endings if needed.
-	content := f.EncodeContent(f.Buffer().ReadAt(dot.Start, dot.Len()))
+	_, statErr := os.Stat(name)
+	isNew := os.IsNotExist(statErr)
+	runes := f.Buffer().ReadAt(dot.Start, dot.Len())
+	content := f.EncodeContent(runes)
 	if err := os.WriteFile(name, []byte(content), 0o644); err != nil {
 		return fmt.Errorf("w: %w", err)
 	}
 	if name == f.Name() {
 		f.SetModified(false)
 	}
-	s.printf("%s\n", name)
+	s.printf("%s: ", name)
+	if isNew {
+		s.printf("(new file) ")
+	}
+	if len(runes) > 0 && runes[len(runes)-1] != '\n' {
+		s.printf("?warning: last char not newline\n")
+	}
+	s.printf("#%d\n", len(runes))
 	return nil
 }
 
@@ -712,17 +752,26 @@ func (s *Session) execShellIn(f *file.File, dot buffer.Range, shellCmd string, c
 	}
 	n := utf8.RuneCountInString(text)
 	f.SetDot(buffer.Range{Start: dot.Start, End: dot.Start + n})
+	if ctx.nest == 0 {
+		s.printf("!\n")
+	}
 	return nil
 }
 
-func (s *Session) execShellOut(f *file.File, dot buffer.Range, shellCmd string) error {
+func (s *Session) execShellOut(f *file.File, dot buffer.Range, shellCmd string, ctx *execCtx) error {
 	text := f.Buffer().ReadAt(dot.Start, dot.Len())
 	prog, args := shellCommand()
 	cmd := exec.Command(prog, append(args, shellCmd)...)
 	cmd.Stdin = strings.NewReader(text)
 	cmd.Stdout = s.Output
 	cmd.Stderr = s.Output
-	return cmd.Run()
+	if err := cmd.Run(); err != nil {
+		return err
+	}
+	if ctx.nest == 0 {
+		s.printf("!\n")
+	}
+	return nil
 }
 
 func (s *Session) execShellPipe(f *file.File, dot buffer.Range, shellCmd string, ctx *execCtx) error {
@@ -742,6 +791,9 @@ func (s *Session) execShellPipe(f *file.File, dot buffer.Range, shellCmd string,
 	}
 	n := utf8.RuneCountInString(result)
 	f.SetDot(buffer.Range{Start: dot.Start, End: dot.Start + n})
+	if ctx.nest == 0 {
+		s.printf("!\n")
+	}
 	return nil
 }
 
