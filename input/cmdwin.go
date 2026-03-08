@@ -81,10 +81,7 @@ func (cw *CmdWindow) EnsureVisible(lineH, viewH int32) {
 	}
 	cursorTop := int32(cursorLine) * lineH
 	cursorBot := cursorTop + lineH
-	if cursorTop < cw.scrollY {
-		cw.scrollY = cursorTop
-	}
-	if cursorBot > cw.scrollY+viewH {
+	if cursorTop < cw.scrollY || cursorBot > cw.scrollY+viewH {
 		cw.scrollY = cursorBot - viewH
 	}
 	if cw.scrollY < 0 {

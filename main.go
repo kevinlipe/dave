@@ -167,6 +167,7 @@ func runGUI(cfg *config.Config, sess *cmd.Session) error {
 			case *sdl.KeyboardEvent:
 				if ev.Type == sdl.KEYDOWN {
 					if err := handler.HandleKey(ev, winW, winH); errors.Is(err, cmd.ErrQuit) {
+						win.Win.Hide()
 						return nil
 					}
 					if handler.IsCmdWinActive() {
@@ -216,7 +217,11 @@ func runGUI(cfg *config.Config, sess *cmd.Session) error {
 							inPane[p.File] = true
 						}
 						scaleLabel := plan9ScaleLabel(face, cfg.Plan9Scale)
-					activeMenu = menu.NewBufferMenu(sess.Files, inPane, len(panes) > 1, scaleLabel, ev.X, ev.Y)
+						var activeFile *file.File
+						if ap := handler.ActivePane(); ap != nil {
+							activeFile = ap.File
+						}
+						activeMenu = menu.NewBufferMenu(sess.Files, inPane, len(panes) > 1, scaleLabel, activeFile, ev.X, ev.Y)
 					}
 					if activeMenu != nil {
 						activeMenu.Clamp(winW, winH, face)

@@ -57,7 +57,9 @@ const padX = 10
 // NewBufferMenu creates the right-click buffer menu with the given open files.
 // hasSidebar controls whether "Sidebar" or "Kill sidebar" is shown.
 // scaleLabel, if non-empty, adds a "scale font"/"unscale font" item (Plan 9 fonts only).
-func NewBufferMenu(files []*file.File, inPane map[*file.File]bool, hasSidebar bool, scaleLabel string, x, y int32) *Menu {
+// activeFile, if non-nil, is positioned under the click point so that action items
+// (like "new") appear above the cursor and require deliberate upward movement.
+func NewBufferMenu(files []*file.File, inPane map[*file.File]bool, hasSidebar bool, scaleLabel string, activeFile *file.File, x, y int32) *Menu {
 	sidebarLabel := "sidebar"
 	if hasSidebar {
 		sidebarLabel = "kill sidebar"
@@ -72,10 +74,21 @@ func NewBufferMenu(files []*file.File, inPane map[*file.File]bool, hasSidebar bo
 		items = append(items, Item{Kind: ItemAction, Label: scaleLabel})
 	}
 	items = append(items, Item{Kind: ItemDave, Label: "~~dave~~"})
+	// Add non-active files first, then active file last so it sits under the cursor.
 	for _, f := range files {
-		items = append(items, Item{Kind: ItemFile, Label: f.MenuLine(false, inPane[f]), File: f})
+		if f != activeFile {
+			items = append(items, Item{Kind: ItemFile, Label: f.MenuLine(false, inPane[f]), File: f})
+		}
 	}
-	return &Menu{items: items, x: x, y: y, hovered: -1, open: true}
+	if activeFile != nil {
+		items = append(items, Item{Kind: ItemFile, Label: activeFile.MenuLine(false, inPane[activeFile]), File: activeFile})
+	}
+
+	// Position so the last item is under the cursor: accidental click-and-release
+	// selects the already-open file (no-op), just like sam.
+	adjustedY := y - int32(len(items)-1)*itemH
+
+	return &Menu{items: items, x: x, y: adjustedY, hovered: -1, open: true}
 }
 
 // NewEditMenu creates the shift-right-click editing menu.
@@ -214,7 +227,7 @@ func (m *Menu) Draw(ren *sdl.Renderer, face render.Face, pal render.Palette) {
 	ren.FillRect(&sdl.Rect{X: m.x, Y: m.y, W: w, H: h})
 
 	// Menu border.
-	ren.SetDrawColor(pal.Border.R, pal.Border.G, pal.Border.B, 255)
+	ren.SetDrawColor(pal.MenuBorder.R, pal.MenuBorder.G, pal.MenuBorder.B, 255)
 	ren.DrawRect(&sdl.Rect{X: m.x, Y: m.y, W: w, H: h})
 
 	y := m.y
@@ -242,7 +255,11 @@ func (m *Menu) Draw(ren *sdl.Renderer, face render.Face, pal render.Palette) {
 			ren.FillRect(&sdl.Rect{X: m.x + 1, Y: y + 1, W: w - 2, H: itemH - 2})
 		}
 
-		face.DrawText(it.Label, m.x+padX, y+(itemH-int32(face.Height()))/2, pal.MenuFG)
+		fg := pal.MenuFG
+		if i == m.hovered {
+			fg = pal.MenuHilightFG
+		}
+		face.DrawText(it.Label, m.x+padX, y+(itemH-int32(face.Height()))/2, fg)
 		y += itemH
 	}
 }

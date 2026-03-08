@@ -25,10 +25,12 @@ var (
 	ColCmdwinBorder = sdl.Color{R: 0x88, G: 0x88, B: 0xCC, A: 0xFF} // #8888CC
 	ColCmdwinScroll = sdl.Color{R: 0x88, G: 0x88, B: 0xCC, A: 0xFF} // #8888CC
 
-	// Menu colors (not overridable via config).
-	ColMenuBG      = sdl.Color{R: 0xFF, G: 0xFF, B: 0xFF, A: 0xFF} // #FFFFFF
-	ColMenuFG      = sdl.Color{R: 0x00, G: 0x00, B: 0x00, A: 0xFF} // #000000
-	ColMenuHilight = sdl.Color{R: 0x9F, G: 0xEE, B: 0xEE, A: 0xFF} // #9FEEEE (same as selection)
+	// Menu colors (not overridable via config). Sam classic green palette.
+	ColMenuBG         = sdl.Color{R: 0xEA, G: 0xFF, B: 0xEA, A: 0xFF} // #EAFFEA
+	ColMenuFG         = sdl.Color{R: 0x00, G: 0x00, B: 0x00, A: 0xFF} // #000000
+	ColMenuHilight    = sdl.Color{R: 0x44, G: 0x88, B: 0x44, A: 0xFF} // #448844
+	ColMenuHilightFG  = sdl.Color{R: 0xEA, G: 0xFF, B: 0xEA, A: 0xFF} // #EAFFEA
+	ColMenuBorder     = sdl.Color{R: 0x88, G: 0xCC, B: 0x88, A: 0xFF} // #88CC88
 )
 
 // Palette holds the active colors for a Dave session, derived from config.
@@ -47,9 +49,11 @@ type Palette struct {
 	CmdwinFG     sdl.Color
 	CmdwinBorder sdl.Color
 	CmdwinScroll sdl.Color
-	MenuBG       sdl.Color
-	MenuFG       sdl.Color
-	MenuHilight  sdl.Color
+	MenuBG        sdl.Color
+	MenuFG        sdl.Color
+	MenuHilight   sdl.Color
+	MenuHilightFG sdl.Color
+	MenuBorder    sdl.Color
 }
 
 // PaletteFromConfig builds a Palette from config, using spec defaults for
@@ -70,9 +74,11 @@ func PaletteFromConfig(cfg *config.Config) Palette {
 		CmdwinFG:     toSDL(cfg.Colors.CmdwinFG),
 		CmdwinBorder: toSDL(cfg.Colors.CmdwinBorder),
 		CmdwinScroll: toSDL(cfg.Colors.CmdwinScroll),
-		MenuBG:       ColMenuBG,
-		MenuFG:       ColMenuFG,
-		MenuHilight:  ColMenuHilight,
+		MenuBG:        ColMenuBG,
+		MenuFG:        ColMenuFG,
+		MenuHilight:   ColMenuHilight,
+		MenuHilightFG: ColMenuHilightFG,
+		MenuBorder:    ColMenuBorder,
 	}
 }
 

@@ -112,12 +112,13 @@ func Open(cfg *config.Config) (*Window, error) {
 
 // Close releases all window resources. Safe to call multiple times.
 func (w *Window) Close() {
+	// Hide first so the window disappears before any teardown work is visible.
+	if w.Win != nil {
+		w.Win.Hide()
+	}
 	sdl.StopTextInput()
 	if w.Face != nil {
 		w.Face.Close()
-	}
-	if w.Win != nil {
-		w.Win.Hide()
 	}
 	if w.Ren != nil {
 		w.Ren.Destroy()
