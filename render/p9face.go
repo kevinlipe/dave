@@ -118,6 +118,22 @@ func (pf *Plan9Face) Close() {
 	pf.textures = make(map[*p9SubfontImage]*sdl.Texture)
 }
 
+// Scale returns the current scale factor.
+func (pf *Plan9Face) Scale() float64 { return pf.scale }
+
+// SetScale changes the scale factor and clears the texture cache so glyphs
+// are re-rendered at the new size on the next draw call.
+func (pf *Plan9Face) SetScale(scale float64) {
+	if scale <= 0 {
+		scale = 1.0
+	}
+	pf.scale = scale
+	for _, tex := range pf.textures {
+		tex.Destroy()
+	}
+	pf.textures = make(map[*p9SubfontImage]*sdl.Texture)
+}
+
 // texture returns (building if necessary) the SDL2 texture for img.
 // Ink pixels are stored as white+alpha so SetColorMod tints at draw time.
 func (pf *Plan9Face) texture(img *p9SubfontImage) (*sdl.Texture, error) {

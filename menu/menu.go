@@ -56,7 +56,8 @@ const padX = 10
 
 // NewBufferMenu creates the right-click buffer menu with the given open files.
 // hasSidebar controls whether "Sidebar" or "Kill sidebar" is shown.
-func NewBufferMenu(files []*file.File, inPane map[*file.File]bool, hasSidebar bool, x, y int32) *Menu {
+// scaleLabel, if non-empty, adds a "scale font"/"unscale font" item (Plan 9 fonts only).
+func NewBufferMenu(files []*file.File, inPane map[*file.File]bool, hasSidebar bool, scaleLabel string, x, y int32) *Menu {
 	sidebarLabel := "sidebar"
 	if hasSidebar {
 		sidebarLabel = "kill sidebar"
@@ -66,8 +67,11 @@ func NewBufferMenu(files []*file.File, inPane map[*file.File]bool, hasSidebar bo
 		{Kind: ItemAction, Label: sidebarLabel},
 		{Kind: ItemAction, Label: "close"},
 		{Kind: ItemAction, Label: "write"},
-		{Kind: ItemDave, Label: "~~dave~~"},
 	}
+	if scaleLabel != "" {
+		items = append(items, Item{Kind: ItemAction, Label: scaleLabel})
+	}
+	items = append(items, Item{Kind: ItemDave, Label: "~~dave~~"})
 	for _, f := range files {
 		items = append(items, Item{Kind: ItemFile, Label: f.MenuLine(false, inPane[f]), File: f})
 	}

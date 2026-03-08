@@ -214,7 +214,8 @@ func runGUI(cfg *config.Config, sess *cmd.Session) error {
 						for _, p := range panes {
 							inPane[p.File] = true
 						}
-						activeMenu = menu.NewBufferMenu(sess.Files, inPane, len(panes) > 1, ev.X, ev.Y)
+						scaleLabel := plan9ScaleLabel(face, cfg.Plan9Scale)
+					activeMenu = menu.NewBufferMenu(sess.Files, inPane, len(panes) > 1, scaleLabel, ev.X, ev.Y)
 					}
 					if activeMenu != nil {
 						activeMenu.Clamp(winW, winH, face)
@@ -348,6 +349,14 @@ func applyMenuResult(res menu.Result, sess *cmd.Session, panes []*pane.Pane, han
 		}
 	case "undo":
 		sess.DoUndo()
+	case "scale font", "unscale font":
+		if p9, ok := face.(*render.Plan9Face); ok {
+			if p9.Scale() == 1.0 {
+				p9.SetScale(cfg.Plan9Scale)
+			} else {
+				p9.SetScale(1.0)
+			}
+		}
 	case "look":
 		ap := handler.ActivePane()
 		if ap != nil {
@@ -428,6 +437,20 @@ func lookForward(buf interface{ String() string; Len() int }, needle string, sta
 		}
 	}
 	return -1, -1
+}
+
+// plan9ScaleLabel returns "scale font" or "unscale font" when face is a
+// Plan9Face and configScale differs from 1.0, so the menu item is only
+// shown for Plan 9 fonts where toggling has a visible effect.
+func plan9ScaleLabel(face render.Face, configScale float64) string {
+	p9, ok := face.(*render.Plan9Face)
+	if !ok || configScale == 1.0 {
+		return ""
+	}
+	if p9.Scale() == 1.0 {
+		return "scale font"
+	}
+	return "unscale font"
 }
 
 // ---- headless (-d) mode -----------------------------------------------------
