@@ -156,6 +156,7 @@ func runGUI(cfg *config.Config, sess *cmd.Session) error {
 		for ; event != nil; event = sdl.PollEvent() {
 			switch ev := event.(type) {
 			case *sdl.QuitEvent:
+				win.Win.Hide()
 				return nil
 
 			case *sdl.WindowEvent:

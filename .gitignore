@@ -9,6 +9,9 @@ sdave/sdave
 # ignore the claude folder
 .claude/
 
+# ignore the markdown spec files
+md/
+
 # ignore kate swap files
 *.kate-swp
 
