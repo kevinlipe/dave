@@ -157,7 +157,7 @@ func runGUI(cfg *config.Config, sess *cmd.Session) error {
 			switch ev := event.(type) {
 			case *sdl.QuitEvent:
 				win.Win.Hide()
-				os.Exit(0)
+				return nil
 
 			case *sdl.WindowEvent:
 				if ev.Event == sdl.WINDOWEVENT_SIZE_CHANGED {
@@ -168,7 +168,7 @@ func runGUI(cfg *config.Config, sess *cmd.Session) error {
 				if ev.Type == sdl.KEYDOWN {
 					if err := handler.HandleKey(ev, winW, winH); errors.Is(err, cmd.ErrQuit) {
 						win.Win.Hide()
-						os.Exit(0)
+						return nil
 					}
 					if handler.IsCmdWinActive() {
 						handler.CmdWin().EnsureVisible(lineH, cmdRect.H)
