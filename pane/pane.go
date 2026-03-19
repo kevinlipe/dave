@@ -45,6 +45,19 @@ func (p *Pane) TabWidth() int { return p.cfg.TabWidth }
 // ScrollY returns the current vertical scroll offset in pixels.
 func (p *Pane) ScrollY() int32 { return p.scrollY }
 
+// InvalidateLayout forces a full re-layout on the next draw without resetting
+// the scroll position. Use after config changes that affect text metrics.
+func (p *Pane) InvalidateLayout() { p.paneW = 0 }
+
+// SetFace replaces the font face and invalidates the layout.
+func (p *Pane) SetFace(face render.Face) {
+	p.face = face
+	p.paneW = 0
+}
+
+// SetPalette replaces the color palette used for rendering.
+func (p *Pane) SetPalette(pal render.Palette) { p.pal = pal }
+
 // SetFile replaces the file displayed by this pane and invalidates the layout.
 // The scroll position is reset to the top so the new file is visible from the start.
 func (p *Pane) SetFile(f *file.File) {

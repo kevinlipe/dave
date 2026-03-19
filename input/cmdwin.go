@@ -248,6 +248,12 @@ func (cw *CmdWindow) execute(sess *cmd.Session) error {
 		return nil
 	}
 
+	// "Config" is a GUI command handled by the event loop, not the text engine.
+	if cmdText == "Config" {
+		sess.ConfigRequest = true
+		return nil
+	}
+
 	var sb strings.Builder
 	origOut := sess.Output
 	sess.Output = &sb

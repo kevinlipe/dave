@@ -36,7 +36,8 @@ type Window struct {
 	Face    Face
 	Palette Palette
 	Scale   float64 // physical pixels per logical pixel (1.0 on most Linux, >1 on HiDPI)
-	W, H   int32   // cached output size; call UpdateSize on window resize events
+	W, H    int32   // cached output size; call UpdateSize on window resize events
+	dpi     float64 // display DPI used when loading fonts; set once in Open
 }
 
 // Open creates the SDL window and renderer, loads the font, and builds the
@@ -107,6 +108,7 @@ func Open(cfg *config.Config) (*Window, error) {
 		Ren:     ren,
 		Face:    face,
 		Scale:   scale,
+		dpi:     displayDPI,
 		Palette: PaletteFromConfig(cfg),
 		W:       pw,
 		H:       ph,
@@ -165,6 +167,13 @@ func (w *Window) UpdateSize() {
 	if err == nil {
 		w.W, w.H = pw, ph
 	}
+}
+
+// ReloadFace creates a new font face from cfg using the display scale and DPI
+// that were determined when the window was opened. The caller is responsible
+// for closing the old face after swapping it out.
+func (w *Window) ReloadFace(cfg *config.Config) (Face, error) {
+	return loadFace(cfg, w.Ren, w.Scale, w.dpi)
 }
 
 // loadFace creates the text rendering face from cfg. Falls back to embedded

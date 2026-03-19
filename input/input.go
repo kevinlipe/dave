@@ -78,6 +78,12 @@ func (h *Handler) CurrentFilePane() *pane.Pane {
 	return h.panes[h.currentFilePane]
 }
 
+// SetFace updates the font face used for hit-testing.
+func (h *Handler) SetFace(face render.Face) { h.face = face }
+
+// SetPalette updates the color palette.
+func (h *Handler) SetPalette(pal render.Palette) { h.pal = pal }
+
 // --- Keyboard ----------------------------------------------------------------
 
 // HandleKey processes a KEYDOWN event. Returns cmd.ErrQuit if the user quit.

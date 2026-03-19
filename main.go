@@ -194,6 +194,14 @@ func runGUI(cfg *config.Config, sess *cmd.Session) error {
 					} else {
 						sess.OpenRequest = nil
 					}
+
+					// Config command: reload config file and reapply all preferences.
+					if sess.ConfigRequest {
+						sess.ConfigRequest = false
+						msg := applyConfig(win, cfg, &pal, &face, panes, handler, cmdBorder)
+						lineH = int32(face.Height())
+						cmdWin.AppendOutput(msg)
+					}
 				}
 
 			case *sdl.TextInputEvent:
@@ -480,6 +488,58 @@ func plan9ScaleLabel(face render.Face, configScale float64) string {
 		return "scale font"
 	}
 	return "unscale font"
+}
+
+// applyConfig reloads the config file and pushes all new values into the
+// running GUI. cfg is updated in-place so all panes that hold a *Config
+// pointer pick up the new values automatically. Returns a one-line status
+// message suitable for appending to the command window.
+func applyConfig(win *render.Window, cfg *config.Config, pal *render.Palette, face *render.Face, panes []*pane.Pane, handler *input.Handler, cmdBorder *pane.Border) string {
+	newCfg, err := config.Load()
+	if err != nil {
+		return "Config: " + err.Error() + "\n"
+	}
+
+	// Reload the font face whenever font-related settings may have changed.
+	newFace, err := win.ReloadFace(newCfg)
+	if err != nil {
+		// Keep the old face; still apply everything else.
+		newCfg.Font = cfg.Font
+		newCfg.FontSize = cfg.FontSize
+		newCfg.FontMode = cfg.FontMode
+		newCfg.Plan9Font = cfg.Plan9Font
+		newCfg.Plan9Scale = cfg.Plan9Scale
+	} else {
+		(*face).Close()
+		*face = newFace
+		handler.SetFace(newFace)
+		for _, p := range panes {
+			p.SetFace(newFace)
+		}
+	}
+
+	// Apply new values into the existing *Config so panes see them via their pointer.
+	*cfg = *newCfg
+
+	// Rebuild and push the new palette.
+	newPal := render.PaletteFromConfig(cfg)
+	*pal = newPal
+	win.Palette = newPal
+	handler.SetPalette(newPal)
+	for _, p := range panes {
+		p.SetPalette(newPal)
+	}
+
+	// Update command-window height from command_lines (respects the new line height).
+	lineH := int32((*face).Height())
+	cmdBorder.Y = int32(cfg.CommandLines) * lineH
+	cmdBorder.MinAbove = lineH
+	cmdBorder.MinBelow = lineH
+
+	if err != nil {
+		return "Config reloaded (font error: " + err.Error() + ")\n"
+	}
+	return "Config reloaded.\n"
 }
 
 // ---- headless (-d) mode -----------------------------------------------------

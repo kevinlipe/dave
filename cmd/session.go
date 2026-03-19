@@ -25,6 +25,10 @@ type Session struct {
 	// in a pane when no pane is currently open. The GUI clears it after handling.
 	OpenRequest *file.File
 
+	// ConfigRequest is set when the user executes the "Config" GUI command.
+	// The GUI reloads the config file and clears this flag.
+	ConfigRequest bool
+
 	// quitPending is true after the first 'q' when modified files exist.
 	quitPending bool
 }
