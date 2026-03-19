@@ -201,6 +201,9 @@ func runGUI(cfg *config.Config, sess *cmd.Session) error {
 						msg := applyConfig(win, cfg, &pal, &face, panes, handler, cmdBorder)
 						lineH = int32(face.Height())
 						cmdWin.AppendOutput(msg)
+						// EnsureVisible ran before AppendOutput moved the cursor;
+						// call it again so the output is actually in view.
+						cmdWin.EnsureVisible(lineH, cmdRect.H)
 					}
 				}
 
