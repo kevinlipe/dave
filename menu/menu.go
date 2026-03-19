@@ -55,18 +55,18 @@ const sepH = 8
 const padX = 10
 
 // NewBufferMenu creates the right-click buffer menu with the given open files.
-// hasSidebar controls whether "Sidebar" or "Kill sidebar" is shown.
+// hasSecondPane controls whether "pane" or "kill pane" is shown.
 // scaleLabel, if non-empty, adds a "scale font"/"unscale font" item (Plan 9 fonts only).
 // activeFile, if non-nil, is positioned under the click point so that action items
 // (like "new") appear above the cursor and require deliberate upward movement.
-func NewBufferMenu(files []*file.File, inPane map[*file.File]bool, hasSidebar bool, scaleLabel string, activeFile *file.File, x, y int32) *Menu {
-	sidebarLabel := "pane"
-	if hasSidebar {
-		sidebarLabel = "kill pane"
+func NewBufferMenu(files []*file.File, inPane map[*file.File]bool, hasSecondPane bool, scaleLabel string, activeFile *file.File, x, y int32) *Menu {
+	paneLabel := "pane"
+	if hasSecondPane {
+		paneLabel = "kill pane"
 	}
 	items := []Item{
 		{Kind: ItemAction, Label: "new"},
-		{Kind: ItemAction, Label: sidebarLabel},
+		{Kind: ItemAction, Label: paneLabel},
 		{Kind: ItemAction, Label: "close"},
 		{Kind: ItemAction, Label: "write"},
 	}
