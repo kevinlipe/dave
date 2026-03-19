@@ -15,12 +15,13 @@ import (
 
 // Handler routes SDL events to the correct pane or command window.
 type Handler struct {
-	session    *cmd.Session
-	cmdWin     *CmdWindow
-	panes      []*pane.Pane // 0, 1, or 2 file panes
-	activePane int          // index into panes; -1 = command window active
-	face       render.Face
-	pal        render.Palette
+	session         *cmd.Session
+	cmdWin          *CmdWindow
+	panes           []*pane.Pane // 0, 1, or 2 file panes
+	activePane      int          // index into panes; -1 = command window active (keyboard focus)
+	currentFilePane int          // last clicked file pane; -1 if none yet (never cleared by cmdwin click)
+	face            render.Face
+	pal             render.Palette
 
 	// Mouse drag state.
 	dragging     bool
@@ -34,11 +35,12 @@ type Handler struct {
 // NewHandler creates an input handler wired to the given session and UI.
 func NewHandler(sess *cmd.Session, cmdWin *CmdWindow, face render.Face, pal render.Palette) *Handler {
 	return &Handler{
-		session:    sess,
-		cmdWin:     cmdWin,
-		face:       face,
-		pal:        pal,
-		activePane: -1, // start with command window focused
+		session:         sess,
+		cmdWin:          cmdWin,
+		face:            face,
+		pal:             pal,
+		activePane:      -1, // start with command window focused
+		currentFilePane: -1, // no file pane selected yet
 	}
 }
 
@@ -53,13 +55,27 @@ func (h *Handler) SetPanes(panes []*pane.Pane) {
 	h.panes = panes
 }
 
-// ActivePane returns the currently focused pane, or nil if the command
-// window is active.
+// ActivePane returns the currently focused pane (keyboard target), or nil if
+// the command window has keyboard focus.
 func (h *Handler) ActivePane() *pane.Pane {
 	if h.activePane < 0 || h.activePane >= len(h.panes) {
 		return nil
 	}
 	return h.panes[h.activePane]
+}
+
+// CurrentFilePane returns the most recently clicked file pane.  This is the
+// pane the command window operates on and the one shown with the heavy border.
+// Clicking the command window does NOT change the current file pane.
+// Returns nil if no file pane has ever been clicked.
+func (h *Handler) CurrentFilePane() *pane.Pane {
+	if h.currentFilePane < 0 || h.currentFilePane >= len(h.panes) {
+		if len(h.panes) > 0 {
+			return h.panes[0]
+		}
+		return nil
+	}
+	return h.panes[h.currentFilePane]
 }
 
 // --- Keyboard ----------------------------------------------------------------
@@ -183,6 +199,10 @@ func (h *Handler) HandleMouseDown(ev *sdl.MouseButtonEvent, cmdRect sdl.Rect, pa
 		// Determine which pane was clicked.
 		idx := h.hitTest(x, y, cmdRect, paneRects)
 		h.activePane = idx
+		// Left-clicking a file pane makes it current; cmdwin click leaves it unchanged.
+		if idx >= 0 {
+			h.currentFilePane = idx
+		}
 
 		var cp int
 		if idx < 0 {
@@ -209,7 +229,14 @@ func (h *Handler) HandleMouseDown(ev *sdl.MouseButtonEvent, cmdRect sdl.Rect, pa
 		h.lastClickCP = cp
 
 	case sdl.BUTTON_RIGHT:
-		// Right-click: buffer menu (handled by caller via MenuRequest).
+		// Right-clicking a file pane makes it current (so the menu result
+		// goes to the right pane) without stealing keyboard focus from cmdwin.
+		idx := h.hitTest(x, y, cmdRect, paneRects)
+		if idx >= 0 {
+			h.activePane = idx
+			h.currentFilePane = idx
+			h.session.Current = h.panes[idx].File
+		}
 	}
 }
 

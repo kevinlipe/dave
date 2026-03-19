@@ -46,9 +46,11 @@ func (p *Pane) TabWidth() int { return p.cfg.TabWidth }
 func (p *Pane) ScrollY() int32 { return p.scrollY }
 
 // SetFile replaces the file displayed by this pane and invalidates the layout.
+// The scroll position is reset to the top so the new file is visible from the start.
 func (p *Pane) SetFile(f *file.File) {
 	p.File = f
-	p.paneW = 0 // force re-layout
+	p.paneW = 0  // force re-layout
+	p.scrollY = 0 // reset scroll to top of new file
 }
 
 // ToggleWordWrap switches word-wrap on/off and invalidates the layout.
@@ -181,10 +183,14 @@ func (p *Pane) Draw(ren *sdl.Renderer, rect sdl.Rect, active bool) error {
 		return err
 	}
 
-	// --- Active border (drawn last so it sits on top) ---
+	// --- Border (drawn last so it sits on top) ---
+	// Current pane: thick border (BorderW). All other panes: thin border (ThinBorderW).
 	if active {
 		ren.SetDrawColor(p.pal.Scrollbar.R, p.pal.Scrollbar.G, p.pal.Scrollbar.B, 255)
 		render.DrawBorder(ren, rect, render.BorderW)
+	} else {
+		ren.SetDrawColor(p.pal.Border.R, p.pal.Border.G, p.pal.Border.B, 255)
+		render.DrawBorder(ren, rect, render.ThinBorderW)
 	}
 	return nil
 }

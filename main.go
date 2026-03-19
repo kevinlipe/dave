@@ -117,8 +117,10 @@ func runGUI(cfg *config.Config, sess *cmd.Session) error {
 		// File panes.
 		for i, p := range panes {
 			if i < len(paneRects) {
-				active := handler.ActivePane() == p
-				p.Draw(win.Ren, paneRects[i], active)
+				// Use CurrentFilePane (not ActivePane) so the current pane keeps
+				// its heavy border even when the command window has keyboard focus.
+				current := handler.CurrentFilePane() == p
+				p.Draw(win.Ren, paneRects[i], current)
 			}
 		}
 
@@ -228,9 +230,16 @@ func runGUI(cfg *config.Config, sess *cmd.Session) error {
 							inPane[p.File] = true
 						}
 						scaleLabel := plan9ScaleLabel(face, cfg.Plan9Scale)
+						// Only pass activeFile if it is tracked in the session;
+						// an empty sidebar placeholder must not appear in the list.
 						var activeFile *file.File
 						if ap := handler.ActivePane(); ap != nil {
-							activeFile = ap.File
+							for _, f := range sess.Files {
+								if f == ap.File {
+									activeFile = ap.File
+									break
+								}
+							}
 						}
 						activeMenu = menu.NewBufferMenu(sess.Files, inPane, len(panes) > 1, scaleLabel, activeFile, ev.X, ev.Y)
 					}
@@ -302,12 +311,9 @@ func applyMenuResult(res menu.Result, sess *cmd.Session, panes []*pane.Pane, han
 		}
 	case "sidebar":
 		if len(panes) < 2 {
-			f := sess.Current
-			if f == nil {
-				f = file.New()
-				sess.AddFile(f)
-			}
-			panes = append(panes, pane.New(f, cfg, pal, face))
+			// Open sidebar as an empty pane; user right-clicks to pick a file.
+			// Don't add the placeholder to the session so it won't clutter the menu.
+			panes = append(panes, pane.New(file.New(), cfg, pal, face))
 		}
 	case "kill sidebar":
 		if len(panes) > 1 {

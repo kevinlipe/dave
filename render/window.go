@@ -22,8 +22,11 @@ const (
 	// PanePad is the horizontal inner padding of a pane's text area.
 	PanePad int32 = 4
 
-	// BorderW is the pixel width of the active-frame highlight border.
-	BorderW int32 = 3
+	// BorderW is the pixel width of the current-frame highlight border.
+	BorderW int32 = 2
+
+	// ThinBorderW is the pixel width of the inactive-frame border.
+	ThinBorderW int32 = 1
 )
 
 // Window wraps an SDL window and renderer pair.
