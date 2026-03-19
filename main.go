@@ -342,15 +342,8 @@ func applyMenuResult(res menu.Result, sess *cmd.Session, panes []*pane.Pane, han
 			if err := sess.RemoveFile(ap.File, false); err != nil {
 				cmdWin.AppendOutput(err.Error() + "\n")
 			} else {
-				for i, p := range panes {
-					if p == ap {
-						panes = append(panes[:i], panes[i+1:]...)
-						break
-					}
-				}
-				if len(panes) == 0 {
-					panes = nil
-				}
+				// Leave the pane open but empty; user can pick a new file via right-click.
+				ap.SetFile(file.New())
 			}
 		}
 	case "snarf":
