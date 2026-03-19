@@ -342,7 +342,17 @@ func applyMenuResult(res menu.Result, sess *cmd.Session, panes []*pane.Pane, han
 	case "close":
 		ap := handler.ActivePane()
 		if ap != nil && ap.File != nil {
-			if err := sess.RemoveFile(ap.File, false); err != nil {
+			// Only remove from session if no other pane still has this file.
+			fileInOtherPane := false
+			for _, p := range panes {
+				if p != ap && p.File == ap.File {
+					fileInOtherPane = true
+					break
+				}
+			}
+			if fileInOtherPane {
+				ap.SetFile(nil)
+			} else if err := sess.RemoveFile(ap.File, false); err != nil {
 				cmdWin.AppendOutput(err.Error() + "\n")
 			} else {
 				// Clear the pane; it stays open but empty (white, no header).
