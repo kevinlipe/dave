@@ -320,15 +320,21 @@ func applyMenuResult(res menu.Result, sess *cmd.Session, panes []*pane.Pane, han
 			}
 			ap.SetFile(f)
 		}
-	case "sidebar":
+	case "pane":
 		if len(panes) < 2 {
-			// Open sidebar as an empty pane; user right-clicks to pick a file.
+			// Open a second pane empty; user right-clicks to pick a file.
 			// Don't add the placeholder to the session so it won't clutter the menu.
 			panes = append(panes, pane.New(file.New(), cfg, pal, face))
 		}
-	case "kill sidebar":
+	case "kill pane":
 		if len(panes) > 1 {
-			panes = panes[:1]
+			// Close the active pane and promote the other to sole pane.
+			ap := handler.ActivePane()
+			if ap == panes[0] {
+				panes = panes[1:]
+			} else {
+				panes = panes[:1]
+			}
 		}
 	case "close":
 		ap := handler.ActivePane()

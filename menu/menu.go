@@ -60,9 +60,9 @@ const padX = 10
 // activeFile, if non-nil, is positioned under the click point so that action items
 // (like "new") appear above the cursor and require deliberate upward movement.
 func NewBufferMenu(files []*file.File, inPane map[*file.File]bool, hasSidebar bool, scaleLabel string, activeFile *file.File, x, y int32) *Menu {
-	sidebarLabel := "sidebar"
+	sidebarLabel := "pane"
 	if hasSidebar {
-		sidebarLabel = "kill sidebar"
+		sidebarLabel = "kill pane"
 	}
 	items := []Item{
 		{Kind: ItemAction, Label: "new"},
