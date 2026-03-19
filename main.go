@@ -322,9 +322,12 @@ func applyMenuResult(res menu.Result, sess *cmd.Session, panes []*pane.Pane, han
 		}
 	case "pane":
 		if len(panes) < 2 {
-			// Open a second pane empty; user right-clicks to pick a file.
-			// Don't add the placeholder to the session so it won't clutter the menu.
-			panes = append(panes, pane.New(file.New(), cfg, pal, face))
+			// Open a second pane showing the current file.
+			var f *file.File
+			if ap := handler.ActivePane(); ap != nil {
+				f = ap.File
+			}
+			panes = append(panes, pane.New(f, cfg, pal, face))
 		}
 	case "kill pane":
 		if len(panes) > 1 {
@@ -338,18 +341,18 @@ func applyMenuResult(res menu.Result, sess *cmd.Session, panes []*pane.Pane, han
 		}
 	case "close":
 		ap := handler.ActivePane()
-		if ap != nil {
+		if ap != nil && ap.File != nil {
 			if err := sess.RemoveFile(ap.File, false); err != nil {
 				cmdWin.AppendOutput(err.Error() + "\n")
 			} else {
-				// Leave the pane open but empty; user can pick a new file via right-click.
-				ap.SetFile(file.New())
+				// Clear the pane; it stays open but empty (white, no header).
+				ap.SetFile(nil)
 			}
 		}
 	case "snarf":
 		if handler.IsCmdWinActive() {
 			handler.CmdWin().Snarf()
-		} else if p := handler.ActivePane(); p != nil {
+		} else if p := handler.ActivePane(); p != nil && p.File != nil {
 			dot := p.File.Dot()
 			if dot.Start != dot.End {
 				sdl.SetClipboardText(p.File.Buffer().ReadAt(dot.Start, dot.End-dot.Start))
@@ -358,7 +361,7 @@ func applyMenuResult(res menu.Result, sess *cmd.Session, panes []*pane.Pane, han
 	case "cut":
 		if handler.IsCmdWinActive() {
 			handler.CmdWin().Cut()
-		} else if p := handler.ActivePane(); p != nil {
+		} else if p := handler.ActivePane(); p != nil && p.File != nil {
 			f := p.File
 			dot := f.Dot()
 			if dot.Start != dot.End {
@@ -370,7 +373,7 @@ func applyMenuResult(res menu.Result, sess *cmd.Session, panes []*pane.Pane, han
 	case "paste":
 		if handler.IsCmdWinActive() {
 			handler.CmdWin().Paste()
-		} else if p := handler.ActivePane(); p != nil {
+		} else if p := handler.ActivePane(); p != nil && p.File != nil {
 			text, err := sdl.GetClipboardText()
 			if err == nil && text != "" {
 				f := p.File
@@ -383,7 +386,7 @@ func applyMenuResult(res menu.Result, sess *cmd.Session, panes []*pane.Pane, han
 		}
 	case "write":
 		ap := handler.ActivePane()
-		if ap != nil {
+		if ap != nil && ap.File != nil {
 			_ = ap.File.Save()
 		}
 	case "undo":
@@ -398,7 +401,7 @@ func applyMenuResult(res menu.Result, sess *cmd.Session, panes []*pane.Pane, han
 		}
 	case "look":
 		ap := handler.ActivePane()
-		if ap != nil {
+		if ap != nil && ap.File != nil {
 			if err := ap.File.EnsureLoaded(); err != nil {
 				break
 			}

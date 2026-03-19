@@ -76,6 +76,9 @@ func (p *Pane) ToggleWordWrap() {
 // contentW is the full text-area width (pane width minus scrollbar).
 // Must be called after any text change or resize before drawing.
 func (p *Pane) Relayout(contentW int32) {
+	if p.File == nil {
+		return
+	}
 	// Ensure the file is loaded before we access its buffer. This is the
 	// earliest point in the render path where we touch the buffer, so it is
 	// the right place to trigger lazy loading.
@@ -138,6 +141,9 @@ func (p *Pane) EnsureVisible(cp int, paneH int32) {
 // CPAtXY returns the codepoint offset closest to pixel position (x, y)
 // within the pane body (y is relative to the pane's top edge, not the body).
 func (p *Pane) CPAtXY(x, y int32) int {
+	if p.File == nil {
+		return 0
+	}
 	hdrH := HeaderH(p.face)
 	bodyY := y - hdrH + p.scrollY
 
@@ -179,6 +185,12 @@ func cpAtX(buf *buffer.Buffer, vl VisualLine, x int32, face render.Face, tabWidt
 // Draw renders the pane into the current SDL viewport.
 // rect is the pane's bounding box in window coordinates.
 func (p *Pane) Draw(ren *sdl.Renderer, rect sdl.Rect, active bool) error {
+	if p.File == nil {
+		// Empty pane: plain white, no header or file chrome.
+		ren.SetDrawColor(255, 255, 255, 255)
+		ren.FillRect(&rect)
+		return nil
+	}
 	p.Relayout(rect.W - render.ScrollBarW)
 
 	// --- Background ---

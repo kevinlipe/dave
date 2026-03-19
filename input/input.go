@@ -108,7 +108,7 @@ func (h *Handler) HandleKey(ev *sdl.KeyboardEvent, winW, winH int32) error {
 	}
 
 	p := h.ActivePane()
-	if p == nil {
+	if p == nil || p.File == nil {
 		return nil
 	}
 	f := p.File
@@ -186,7 +186,7 @@ func (h *Handler) HandleText(ev *sdl.TextInputEvent) {
 		return
 	}
 	p := h.ActivePane()
-	if p == nil {
+	if p == nil || p.File == nil {
 		return
 	}
 	insertText(h.session, p.File, ev.GetText())
@@ -216,10 +216,12 @@ func (h *Handler) HandleMouseDown(ev *sdl.MouseButtonEvent, cmdRect sdl.Rect, pa
 			h.cmdWin.SetDotStart(cp)
 		} else {
 			p := h.panes[idx]
-			cp = p.CPAtXY(x-paneRects[idx].X, y-paneRects[idx].Y)
-			f := p.File
-			f.SetDot(buffer.Range{Start: cp, End: cp})
-			h.session.Current = f
+			if p.File != nil {
+				cp = p.CPAtXY(x-paneRects[idx].X, y-paneRects[idx].Y)
+				f := p.File
+				f.SetDot(buffer.Range{Start: cp, End: cp})
+				h.session.Current = f
+			}
 		}
 
 		h.dragging = true
@@ -241,7 +243,9 @@ func (h *Handler) HandleMouseDown(ev *sdl.MouseButtonEvent, cmdRect sdl.Rect, pa
 		if idx >= 0 {
 			h.activePane = idx
 			h.currentFilePane = idx
-			h.session.Current = h.panes[idx].File
+			if h.panes[idx].File != nil {
+				h.session.Current = h.panes[idx].File
+			}
 		}
 	}
 }
@@ -269,6 +273,9 @@ func (h *Handler) HandleMouseMotion(ev *sdl.MouseMotionEvent, cmdRect sdl.Rect, 
 		return
 	}
 	p := h.panes[h.dragPane]
+	if p.File == nil {
+		return
+	}
 	rect := paneRects[h.dragPane]
 	cp := p.CPAtXY(x-rect.X, y-rect.Y)
 	f := p.File
@@ -326,6 +333,9 @@ func (h *Handler) handleDoubleClick(paneIdx, cp int, paneRects []sdl.Rect) {
 		return
 	}
 	p := h.panes[paneIdx]
+	if p.File == nil {
+		return
+	}
 	f := p.File
 	if err := f.EnsureLoaded(); err != nil {
 		return
