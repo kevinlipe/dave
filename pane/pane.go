@@ -17,6 +17,7 @@ type Pane struct {
 	face      render.Face
 	layout    Layout
 	paneW     int32 // last computed content width (widthPx passed to Wrap)
+	paneH     int32 // last known pane height in pixels (set during Draw)
 	layoutGen int   // buffer generation when layout was last computed
 	scrollY   int32 // pixel scroll offset (0 = top)
 	wordWrap  bool  // current word-wrap state (starts from cfg.WordWrap)
@@ -120,7 +121,8 @@ func (p *Pane) ScrollBy(deltaLines int32) {
 }
 
 // EnsureVisible scrolls so that codepoint cp is visible.
-func (p *Pane) EnsureVisible(cp int, paneH int32) {
+func (p *Pane) EnsureVisible(cp int) {
+	p.Relayout(p.paneW) // refresh layout if buffer changed since last Draw
 	lineIdx := p.layout.LineAt(cp)
 	if lineIdx < 0 || lineIdx >= len(p.layout.Lines) {
 		return
@@ -132,7 +134,7 @@ func (p *Pane) EnsureVisible(cp int, paneH int32) {
 		p.ScrollTo(vl.Y)
 	}
 	// Scroll down if line bottom is below the viewport.
-	bodyH := paneH - HeaderH(p.face)
+	bodyH := p.paneH - HeaderH(p.face)
 	if vl.Y+lineH > p.scrollY+bodyH {
 		p.ScrollTo(vl.Y + lineH - bodyH)
 	}
@@ -185,6 +187,7 @@ func cpAtX(buf *buffer.Buffer, vl VisualLine, x int32, face render.Face, tabWidt
 // Draw renders the pane into the current SDL viewport.
 // rect is the pane's bounding box in window coordinates.
 func (p *Pane) Draw(ren *sdl.Renderer, rect sdl.Rect, active bool) error {
+	p.paneH = rect.H
 	if p.File == nil {
 		// Empty pane: plain white, no header or file chrome.
 		ren.SetDrawColor(255, 255, 255, 255)

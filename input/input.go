@@ -116,19 +116,19 @@ func (h *Handler) HandleKey(ev *sdl.KeyboardEvent, winW, winH int32) error {
 	switch sym {
 	case sdl.K_RETURN, sdl.K_KP_ENTER:
 		insertText(h.session, f, "\n")
-		p.EnsureVisible(f.Dot().Start, winH)
+		p.EnsureVisible(f.Dot().Start)
 
 	case sdl.K_BACKSPACE:
 		deleteBackward(h.session, f)
-		p.EnsureVisible(f.Dot().Start, winH)
+		p.EnsureVisible(f.Dot().Start)
 
 	case sdl.K_DELETE:
 		deleteForward(h.session, f)
-		p.EnsureVisible(f.Dot().Start, winH)
+		p.EnsureVisible(f.Dot().Start)
 
 	case sdl.K_TAB:
 		insertText(h.session, f, "\t")
-		p.EnsureVisible(f.Dot().Start, winH)
+		p.EnsureVisible(f.Dot().Start)
 
 	case sdl.K_LEFT:
 		if ctrl {
@@ -136,7 +136,7 @@ func (h *Handler) HandleKey(ev *sdl.KeyboardEvent, winW, winH int32) error {
 		} else {
 			moveDotChar(f, -1, shift)
 		}
-		p.EnsureVisible(f.Dot().Start, winH)
+		p.EnsureVisible(f.Dot().Start)
 
 	case sdl.K_RIGHT:
 		if ctrl {
@@ -144,7 +144,7 @@ func (h *Handler) HandleKey(ev *sdl.KeyboardEvent, winW, winH int32) error {
 		} else {
 			moveDotChar(f, +1, shift)
 		}
-		p.EnsureVisible(f.Dot().Start, winH)
+		p.EnsureVisible(f.Dot().Start)
 
 	case sdl.K_UP:
 		moveDotVisualLine(f, p, -1, shift, winH)
@@ -158,7 +158,7 @@ func (h *Handler) HandleKey(ev *sdl.KeyboardEvent, winW, winH int32) error {
 		} else {
 			moveDotLineStart(f, p, shift)
 		}
-		p.EnsureVisible(f.Dot().Start, winH)
+		p.EnsureVisible(f.Dot().Start)
 
 	case sdl.K_END:
 		if ctrl {
@@ -166,7 +166,7 @@ func (h *Handler) HandleKey(ev *sdl.KeyboardEvent, winW, winH int32) error {
 		} else {
 			moveDotLineEnd(f, p, shift)
 		}
-		p.EnsureVisible(f.Dot().Start, winH)
+		p.EnsureVisible(f.Dot().Start)
 
 	case sdl.K_PAGEUP:
 		p.ScrollBy(-int32(visibleLines(p, winH)))
@@ -190,6 +190,7 @@ func (h *Handler) HandleText(ev *sdl.TextInputEvent) {
 		return
 	}
 	insertText(h.session, p.File, ev.GetText())
+	p.EnsureVisible(p.File.Dot().Start)
 }
 
 // --- Mouse -------------------------------------------------------------------

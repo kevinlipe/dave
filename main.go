@@ -180,7 +180,7 @@ func runGUI(cfg *config.Config, sess *cmd.Session) error {
 						if wasEnter {
 							for _, p := range panes {
 								if p.File == sess.Current {
-									p.EnsureVisible(sess.Current.Dot().Start, winH)
+									p.EnsureVisible(sess.Current.Dot().Start)
 									break
 								}
 							}
@@ -420,7 +420,7 @@ func applyMenuResult(res menu.Result, sess *cmd.Session, panes []*pane.Pane, han
 			if needle != "" {
 				if found, end := lookForward(buf, needle, dot.End); found >= 0 {
 					f.SetDot(buffer.Range{Start: found, End: end})
-					ap.EnsureVisible(found, winH)
+					ap.EnsureVisible(found)
 				}
 			}
 		}

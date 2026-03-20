@@ -262,7 +262,7 @@ func moveDotVisualLine(f *file.File, p *pane.Pane, dir int, extend bool, winH in
 	} else {
 		f.SetDot(buffer.Range{Start: newCP, End: newCP})
 	}
-	p.EnsureVisible(f.Dot().Start, winH)
+	p.EnsureVisible(f.Dot().Start)
 }
 
 func cpAtTargetX(buf *buffer.Buffer, vl pane.VisualLine, targetX int32, face render.Face, tabWidth int) int {
