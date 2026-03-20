@@ -23,7 +23,7 @@ const (
 	PanePad int32 = 4
 
 	// BorderW is the pixel width of the current-frame highlight border.
-	BorderW int32 = 2
+	BorderW int32 = 3
 
 	// ThinBorderW is the pixel width of the inactive-frame border.
 	ThinBorderW int32 = 1

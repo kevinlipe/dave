@@ -282,11 +282,10 @@ func (h *Handler) HandleMouseMotion(ev *sdl.MouseMotionEvent, cmdRect sdl.Rect, 
 	rect := paneRects[h.dragPane]
 
 	// Auto-scroll and clamp when dragging above or below the pane body.
-	hdrH := pane.HeaderH(h.face)
 	localY := y - rect.Y
-	if y < rect.Y+hdrH {
+	if y < rect.Y {
 		p.ScrollBy(-1)
-		localY = hdrH + 1 // clamp to top of body
+		localY = 1 // clamp to top of body
 	} else if y >= rect.Y+rect.H {
 		p.ScrollBy(1)
 		localY = rect.H - 1 // clamp to bottom of body

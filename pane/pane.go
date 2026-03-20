@@ -46,6 +46,9 @@ func (p *Pane) TabWidth() int { return p.cfg.TabWidth }
 // ScrollY returns the current vertical scroll offset in pixels.
 func (p *Pane) ScrollY() int32 { return p.scrollY }
 
+// PaneH returns the last known pane height in pixels (set during Draw).
+func (p *Pane) PaneH() int32 { return p.paneH }
+
 // InvalidateLayout forces a full re-layout on the next draw without resetting
 // the scroll position. Use after config changes that affect text metrics.
 func (p *Pane) InvalidateLayout() { p.paneW = 0 }
@@ -134,20 +137,18 @@ func (p *Pane) EnsureVisible(cp int) {
 		p.ScrollTo(vl.Y)
 	}
 	// Scroll down if line bottom is below the viewport.
-	bodyH := p.paneH - HeaderH(p.face)
-	if vl.Y+lineH > p.scrollY+bodyH {
-		p.ScrollTo(vl.Y + lineH - bodyH)
+	if vl.Y+lineH > p.scrollY+p.paneH {
+		p.ScrollTo(vl.Y + lineH - p.paneH)
 	}
 }
 
 // CPAtXY returns the codepoint offset closest to pixel position (x, y)
-// within the pane body (y is relative to the pane's top edge, not the body).
+// within the pane body (y is relative to the pane's top edge).
 func (p *Pane) CPAtXY(x, y int32) int {
 	if p.File == nil {
 		return 0
 	}
-	hdrH := HeaderH(p.face)
-	bodyY := y - hdrH + p.scrollY
+	bodyY := y + p.scrollY
 
 	// Find the visual line at this y.
 	for i := len(p.layout.Lines) - 1; i >= 0; i-- {
@@ -186,10 +187,11 @@ func cpAtX(buf *buffer.Buffer, vl VisualLine, x int32, face render.Face, tabWidt
 
 // Draw renders the pane into the current SDL viewport.
 // rect is the pane's bounding box in window coordinates.
-func (p *Pane) Draw(ren *sdl.Renderer, rect sdl.Rect, active bool) error {
+// focused is true when this pane has keyboard focus (drives border thickness).
+func (p *Pane) Draw(ren *sdl.Renderer, rect sdl.Rect, focused bool) error {
 	p.paneH = rect.H
 	if p.File == nil {
-		// Empty pane: plain white, no header or file chrome.
+		// Empty pane: plain white background.
 		ren.SetDrawColor(255, 255, 255, 255)
 		ren.FillRect(&rect)
 		return nil
@@ -198,10 +200,7 @@ func (p *Pane) Draw(ren *sdl.Renderer, rect sdl.Rect, active bool) error {
 
 	// --- Background ---
 	ren.SetDrawColor(p.pal.Background.R, p.pal.Background.G, p.pal.Background.B, 255)
-	ren.FillRect(&sdl.Rect{X: rect.X + render.ScrollBarW, Y: rect.Y + HeaderH(p.face), W: rect.W - render.ScrollBarW, H: rect.H - HeaderH(p.face)})
-
-	// --- Pane header ---
-	p.drawHeader(ren, rect, active)
+	ren.FillRect(&sdl.Rect{X: rect.X + render.ScrollBarW, Y: rect.Y, W: rect.W - render.ScrollBarW, H: rect.H})
 
 	// --- Scrollbar ---
 	p.drawScrollbar(ren, rect, false)
@@ -212,8 +211,8 @@ func (p *Pane) Draw(ren *sdl.Renderer, rect sdl.Rect, active bool) error {
 	}
 
 	// --- Border (drawn last so it sits on top) ---
-	// Current pane: thick border (BorderW). All other panes: thin border (ThinBorderW).
-	if active {
+	// Keyboard-focused pane: thick border (BorderW). All other panes: thin border (ThinBorderW).
+	if focused {
 		ren.SetDrawColor(p.pal.Scrollbar.R, p.pal.Scrollbar.G, p.pal.Scrollbar.B, 255)
 		render.DrawBorder(ren, rect, render.BorderW)
 	} else {
@@ -221,25 +220,6 @@ func (p *Pane) Draw(ren *sdl.Renderer, rect sdl.Rect, active bool) error {
 		render.DrawBorder(ren, rect, render.ThinBorderW)
 	}
 	return nil
-}
-
-// drawHeader renders the single-line pane header.
-func (p *Pane) drawHeader(ren *sdl.Renderer, rect sdl.Rect, active bool) {
-	hdrH := HeaderH(p.face)
-	hdrRect := sdl.Rect{X: rect.X, Y: rect.Y, W: rect.W, H: hdrH}
-
-	// Header background (always the same regardless of active state).
-	ren.SetDrawColor(p.pal.HeaderBG.R, p.pal.HeaderBG.G, p.pal.HeaderBG.B, 255)
-	ren.FillRect(&hdrRect)
-
-	// Header bottom border.
-	ren.SetDrawColor(p.pal.Border.R, p.pal.Border.G, p.pal.Border.B, 255)
-	ren.DrawLine(rect.X, rect.Y+hdrH-1, rect.X+rect.W, rect.Y+hdrH-1)
-
-	// Header text: menu line.
-	isCurrent := active
-	_ = p.face.DrawText(p.File.MenuLine(isCurrent, true),
-		rect.X+render.ScrollBarW+render.PanePad, rect.Y+render.HeaderPad, p.pal.HeaderFG)
 }
 
 // drawScrollbar renders the scrollbar strip on the left edge.
@@ -251,9 +231,8 @@ func (p *Pane) drawScrollbar(ren *sdl.Renderer, rect sdl.Rect, isCmd bool) {
 		trackCol = p.pal.CmdwinBG
 		thumbCol = p.pal.CmdwinScroll
 	}
-	hdrH := HeaderH(p.face)
-	bodyH := rect.H - hdrH
-	sbRect := sdl.Rect{X: rect.X, Y: rect.Y + hdrH, W: render.ScrollBarW, H: bodyH}
+	bodyH := rect.H
+	sbRect := sdl.Rect{X: rect.X, Y: rect.Y, W: render.ScrollBarW, H: bodyH}
 
 	// Track background.
 	ren.SetDrawColor(trackCol.R, trackCol.G, trackCol.B, 255)
@@ -261,7 +240,7 @@ func (p *Pane) drawScrollbar(ren *sdl.Renderer, rect sdl.Rect, isCmd bool) {
 
 	// Right-edge border in thumb color.
 	ren.SetDrawColor(thumbCol.R, thumbCol.G, thumbCol.B, 255)
-	ren.DrawLine(rect.X+render.ScrollBarW-1, rect.Y+hdrH, rect.X+render.ScrollBarW-1, rect.Y+rect.H-1)
+	ren.DrawLine(rect.X+render.ScrollBarW-1, rect.Y, rect.X+render.ScrollBarW-1, rect.Y+rect.H-1)
 
 	// Thumb: only drawn when content exceeds the viewport; avoids overflow when
 	// thumbH = bodyH²/total would be larger than bodyH (total < bodyH case).
@@ -276,15 +255,14 @@ func (p *Pane) drawScrollbar(ren *sdl.Renderer, rect sdl.Rect, isCmd bool) {
 			thumbY = bodyH - thumbH
 		}
 		ren.SetDrawColor(thumbCol.R, thumbCol.G, thumbCol.B, 255)
-		ren.FillRect(&sdl.Rect{X: rect.X, Y: rect.Y + hdrH + thumbY, W: render.ScrollBarW, H: thumbH})
+		ren.FillRect(&sdl.Rect{X: rect.X, Y: rect.Y + thumbY, W: render.ScrollBarW, H: thumbH})
 	}
 }
 
 // drawBody renders the visible text lines into the pane body area.
 func (p *Pane) drawBody(ren *sdl.Renderer, rect sdl.Rect) error {
-	hdrH := HeaderH(p.face)
-	bodyY := rect.Y + hdrH
-	bodyH := rect.H - hdrH
+	bodyY := rect.Y
+	bodyH := rect.H
 	// textX includes the scrollbar, the inner pad, and the olivetti margin offset.
 	textX := rect.X + render.ScrollBarW + render.PanePad + p.layout.MarginLeft
 	lineH := int32(p.face.Height())
@@ -422,10 +400,6 @@ func expandTabsRunes(runes []rune, lo, hi int, startX int32, face render.Face, t
 	return string(out)
 }
 
-// HeaderH returns the pixel height of a pane header.
-func HeaderH(face render.Face) int32 {
-	return int32(face.Height()) + render.HeaderPad*2
-}
 
 // ScrollbarJump returns the codepoint offset corresponding to a click at
 // pixel y within the scrollbar (y relative to the body top).

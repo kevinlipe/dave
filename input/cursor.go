@@ -366,13 +366,11 @@ func moveDotToTopOfView(f *file.File, p *pane.Pane, winH int32) {
 }
 
 func visibleLines(p *pane.Pane, winH int32) int {
-	hdrH := pane.HeaderH(p.Face())
-	bodyH := winH - hdrH
 	lineH := int32(p.Face().Height())
 	if lineH <= 0 {
 		return 1
 	}
-	return int(bodyH / lineH)
+	return int(p.PaneH() / lineH)
 }
 
 func isWordRune(r rune) bool {
