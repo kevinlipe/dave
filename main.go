@@ -1,5 +1,3 @@
-// test of writing to file
-
 package main
 
 import (
@@ -117,18 +115,30 @@ func runGUI(cfg *config.Config, sess *cmd.Session) error {
 		// File panes.
 		for i, p := range panes {
 			if i < len(paneRects) {
-				// Use CurrentFilePane (not ActivePane) so the current pane keeps
-				// its heavy border even when the command window has keyboard focus.
-				current := handler.CurrentFilePane() == p
-				p.Draw(win.Ren, paneRects[i], current)
+				focused := handler.ActivePane() == p
+				p.Draw(win.Ren, paneRects[i], focused)
 			}
+		}
+
+		// Window title: "dave: <status><name> ..." for each open pane.
+		if len(panes) > 0 {
+			cf := handler.CurrentFilePane()
+			title := "dave - "
+			for _, p := range panes {
+				if p.File != nil {
+					title += " " + p.File.MenuLine(p == cf, true)
+				}
+			}
+			win.Win.SetTitle(title)
+		} else {
+			win.Win.SetTitle("dave")
 		}
 
 		// Vertical divider between two panes.
 		if len(panes) == 2 {
 			mid := paneRects[0].X + paneRects[0].W
 			win.Ren.SetDrawColor(pal.Border.R, pal.Border.G, pal.Border.B, 255)
-			win.Ren.FillRect(&sdl.Rect{X: mid, Y: cmdRect.H, W: 1, H: winH - cmdRect.H})
+			win.Ren.FillRect(&sdl.Rect{X: mid, Y: paneRects[0].Y, W: 1, H: winH - paneRects[0].Y})
 		}
 
 		// Menu overlay (drawn last, on top of everything).
@@ -180,7 +190,7 @@ func runGUI(cfg *config.Config, sess *cmd.Session) error {
 						if wasEnter {
 							for _, p := range panes {
 								if p.File == sess.Current {
-									p.EnsureVisible(sess.Current.Dot().Start, winH)
+									p.EnsureVisible(sess.Current.Dot().Start)
 									break
 								}
 							}
@@ -430,7 +440,7 @@ func applyMenuResult(res menu.Result, sess *cmd.Session, panes []*pane.Pane, han
 			if needle != "" {
 				if found, end := lookForward(buf, needle, dot.End); found >= 0 {
 					f.SetDot(buffer.Range{Start: found, End: end})
-					ap.EnsureVisible(found, winH)
+					ap.EnsureVisible(found)
 				}
 			}
 		}
