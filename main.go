@@ -123,7 +123,7 @@ func runGUI(cfg *config.Config, sess *cmd.Session) error {
 		// Window title: "dave: <status><name> ..." for each open pane.
 		if len(panes) > 0 {
 			cf := handler.CurrentFilePane()
-			title := "dave - "
+			title := "dave: "
 			for _, p := range panes {
 				if p.File != nil {
 					title += " " + p.File.MenuLine(p == cf, true)
