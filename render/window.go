@@ -22,6 +22,9 @@ const (
 	// PanePad is the horizontal inner padding of a pane's text area.
 	PanePad int32 = 4
 
+	// BodyTopPad is the vertical gap between the top border and the first line of text.
+	BodyTopPad int32 = 6
+
 	// BorderW is the pixel width of the current-frame highlight border.
 	BorderW int32 = 3
 

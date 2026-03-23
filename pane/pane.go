@@ -137,8 +137,9 @@ func (p *Pane) EnsureVisible(cp int) {
 		p.ScrollTo(vl.Y)
 	}
 	// Scroll down if line bottom is below the viewport.
-	if vl.Y+lineH > p.scrollY+p.paneH {
-		p.ScrollTo(vl.Y + lineH - p.paneH)
+	viewH := p.paneH - render.BodyTopPad
+	if vl.Y+lineH > p.scrollY+viewH {
+		p.ScrollTo(vl.Y + lineH - viewH)
 	}
 }
 
@@ -148,7 +149,7 @@ func (p *Pane) CPAtXY(x, y int32) int {
 	if p.File == nil {
 		return 0
 	}
-	bodyY := y + p.scrollY
+	bodyY := y - render.BodyTopPad + p.scrollY
 
 	// Find the visual line at this y.
 	for i := len(p.layout.Lines) - 1; i >= 0; i-- {
@@ -277,7 +278,7 @@ func (p *Pane) drawBody(ren *sdl.Renderer, rect sdl.Rect) error {
 			continue
 		}
 		// Stop at lines below the viewport.
-		lineScreenY := bodyY + vl.Y - p.scrollY
+		lineScreenY := bodyY + render.BodyTopPad + vl.Y - p.scrollY
 		if lineScreenY > rect.Y+rect.H {
 			break
 		}
