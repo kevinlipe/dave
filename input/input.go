@@ -103,6 +103,12 @@ func (h *Handler) HandleKey(ev *sdl.KeyboardEvent, winW, winH int32) error {
 		return nil
 	}
 
+	// Ctrl+K: cycle focus between command window and file pane(s).
+	if ctrl && sym == sdl.K_k {
+		h.cycleFocus()
+		return nil
+	}
+
 	if h.activePane < 0 {
 		return h.cmdWin.HandleKey(ev, h.session)
 	}
@@ -356,4 +362,32 @@ func (h *Handler) handleDoubleClick(paneIdx, cp int, paneRects []sdl.Rect) {
 	}
 	lo, hi := WordBounds(f.Buffer(), cp)
 	f.SetDot(buffer.Range{Start: lo, End: hi})
+}
+
+// cycleFocus advances keyboard focus in order:
+// command window → pane 0 → pane 1 (if open) → command window.
+// Mirrors what a mouse click does: the cycled-to pane becomes active and current.
+func (h *Handler) cycleFocus() {
+	if len(h.panes) == 0 {
+		return
+	}
+	switch {
+	case h.activePane < 0:
+		// command window → pane 0
+		h.activePane = 0
+		h.currentFilePane = 0
+		if h.panes[0].File != nil {
+			h.session.Current = h.panes[0].File
+		}
+	case h.activePane == 0 && len(h.panes) > 1:
+		// pane 0 → pane 1
+		h.activePane = 1
+		h.currentFilePane = 1
+		if h.panes[1].File != nil {
+			h.session.Current = h.panes[1].File
+		}
+	default:
+		// pane 0 (sole pane) or pane 1 → command window
+		h.activePane = -1
+	}
 }
