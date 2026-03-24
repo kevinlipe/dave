@@ -18,8 +18,9 @@ import (
 
 // glyphEntry caches the SDL texture and its dimensions for a single rune.
 type glyphEntry struct {
-	tex  *sdl.Texture
-	w, h int32
+	tex      *sdl.Texture
+	w, h     int32
+	bearingX int32 // pixels from pen to left edge of glyph (bounds.Min.X)
 }
 
 // TTFFace satisfies Face using an opentype rasterizer.
@@ -114,7 +115,7 @@ func (tf *TTFFace) DrawText(s string, x, y int32, col sdl.Color) error {
 			continue // skip unrenderable glyphs silently
 		}
 		if g.tex != nil && g.w > 0 && g.h > 0 {
-			dst := sdl.Rect{X: cursor, Y: y, W: g.w, H: g.h}
+			dst := sdl.Rect{X: cursor + g.bearingX, Y: y, W: g.w, H: g.h}
 			g.tex.SetColorMod(col.R, col.G, col.B)
 			g.tex.SetAlphaMod(col.A)
 			tf.ren.Copy(g.tex, nil, &dst)
@@ -198,5 +199,5 @@ func (tf *TTFFace) buildGlyphTexture(r rune) (glyphEntry, error) {
 		tex.Destroy()
 		return glyphEntry{}, fmt.Errorf("render: upload glyph texture: %w", err)
 	}
-	return glyphEntry{tex: tex, w: int32(w), h: int32(lineH)}, nil
+	return glyphEntry{tex: tex, w: int32(w), h: int32(lineH), bearingX: int32(bounds.Min.X.Round())}, nil
 }
