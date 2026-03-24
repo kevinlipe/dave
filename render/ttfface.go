@@ -43,8 +43,9 @@ func NewTTFFace(ttfData []byte, pointSize, dpi float64, ren *sdl.Renderer) (*TTF
 		return nil, fmt.Errorf("render: parse TTF: %w", err)
 	}
 	face, err := opentype.NewFace(parsed, &opentype.FaceOptions{
-		Size: pointSize,
-		DPI:  dpi,
+		Size:    pointSize,
+		DPI:     dpi,
+		Hinting: font.HintingFull,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("render: create face: %w", err)
@@ -71,7 +72,7 @@ func (tf *TTFFace) GlyphAdvance(r rune) int {
 	adv, ok := tf.face.GlyphAdvance(r)
 	v := 0
 	if ok {
-		v = adv.Ceil()
+		v = adv.Round()
 	}
 	tf.advances[r] = v
 	return v
