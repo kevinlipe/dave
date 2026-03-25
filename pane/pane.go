@@ -207,7 +207,12 @@ func (p *Pane) Draw(ren *sdl.Renderer, rect sdl.Rect, focused bool) error {
 	p.drawScrollbar(ren, rect, false)
 
 	// --- Text body ---
-	if err := p.drawBody(ren, rect); err != nil {
+	// Clip to the pane bounds so partially-visible lines at the top or bottom
+	// of the viewport don't bleed glyph pixels into adjacent panes.
+	ren.SetClipRect(&rect)
+	err := p.drawBody(ren, rect)
+	ren.SetClipRect(nil)
+	if err != nil {
 		return err
 	}
 

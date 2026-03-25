@@ -409,6 +409,8 @@ func (cw *CmdWindow) Draw(ren *sdl.Renderer, rect sdl.Rect, face render.Face, pa
 		ren.FillRect(&sdl.Rect{X: rect.X, Y: rect.Y + thumbY, W: render.ScrollBarW, H: thumbH})
 	}
 
+	// Clip to the cmdwin rect so partially-visible lines don't bleed into adjacent panes.
+	ren.SetClipRect(&rect)
 	dot := cw.dot
 	lineStart := 0 // codepoint offset of the start of the current line
 	for i, line := range lines {
@@ -459,5 +461,6 @@ func (cw *CmdWindow) Draw(ren *sdl.Renderer, rect sdl.Rect, face render.Face, pa
 		lineStart = lineEnd + 1 // +1 for the \n
 	}
 
+	ren.SetClipRect(nil)
 	return nil
 }
