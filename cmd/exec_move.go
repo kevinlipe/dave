@@ -29,16 +29,17 @@ func (s *Session) execMove(f *file.File, dot buffer.Range, dest *addr.Addr, ctx 
 		}
 		f.SetDot(buffer.Range{Start: destRange.End, End: destRange.End + n})
 	} else {
-		// Move forward.
+		// Move forward. Transcript positions are ORIGINAL coordinates —
+		// Apply computes the delta from the earlier delete. The final
+		// insertion lands at destRange.End - dot.Len() in the mutated buffer.
 		if err := ctx.addChange(f, dot.Start, dot.Len(), ""); err != nil {
 			return err
 		}
-		// After deletion, destination shifts left by dot.Len().
-		adj := destRange.End - dot.Len()
-		if err := ctx.addChange(f, adj, 0, text); err != nil {
+		if err := ctx.addChange(f, destRange.End, 0, text); err != nil {
 			return err
 		}
-		f.SetDot(buffer.Range{Start: adj, End: adj + n})
+		finalStart := destRange.End - dot.Len()
+		f.SetDot(buffer.Range{Start: finalStart, End: finalStart + n})
 	}
 	return nil
 }

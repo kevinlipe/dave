@@ -163,30 +163,39 @@ func (f *File) Save() error {
 	if f.name == "" {
 		return fmt.Errorf("file: no filename to save to")
 	}
-	// Ensure the directory exists.
-	dir := filepath.Dir(f.name)
+	if err := WriteAtomic(f.name, f.EncodeContent(f.buf.String())); err != nil {
+		return err
+	}
+	f.modified = false
+	return nil
+}
+
+// WriteAtomic writes content to path via a temp file and rename, creating
+// parent directories as needed. Either the destination is fully replaced or
+// it is unchanged; a crash mid-write cannot leave a truncated file at path.
+func WriteAtomic(path, content string) error {
+	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("file: creating directory %q: %w", dir, err)
 	}
-	tmp := f.name + ".dave-tmp"
+	tmp := path + ".dave-tmp"
 	fh, err := os.Create(tmp)
 	if err != nil {
 		return fmt.Errorf("file: creating temp file: %w", err)
 	}
-	if _, err := io.WriteString(fh, f.EncodeContent(f.buf.String())); err != nil {
+	if _, err := io.WriteString(fh, content); err != nil {
 		fh.Close()
 		os.Remove(tmp)
-		return fmt.Errorf("file: writing %q: %w", f.name, err)
+		return fmt.Errorf("file: writing %q: %w", path, err)
 	}
 	if err := fh.Close(); err != nil {
 		os.Remove(tmp)
 		return err
 	}
-	if err := os.Rename(tmp, f.name); err != nil {
+	if err := os.Rename(tmp, path); err != nil {
 		os.Remove(tmp)
-		return fmt.Errorf("file: renaming to %q: %w", f.name, err)
+		return fmt.Errorf("file: renaming to %q: %w", path, err)
 	}
-	f.modified = false
 	return nil
 }
 

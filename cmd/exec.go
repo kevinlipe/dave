@@ -103,9 +103,9 @@ func (s *Session) execCmd(cmd *Command, f *file.File, ctx *execCtx) error {
 	case 's':
 		return s.execSubst(f, dot, cmd.Pat, cmd.Pat2, cmd.Flag, ctx)
 	case 'g':
-		return s.execG(f, dot, cmd.Pat, cmd.Body, ctx)
+		return s.execGuard(f, dot, cmd.Pat, cmd.Body, ctx, true)
 	case 'v':
-		return s.execV(f, dot, cmd.Pat, cmd.Body, ctx)
+		return s.execGuard(f, dot, cmd.Pat, cmd.Body, ctx, false)
 	case 'x':
 		return s.execX(f, dot, cmd.Pat, cmd.Body, ctx)
 	case 'y':

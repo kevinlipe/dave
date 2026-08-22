@@ -126,7 +126,7 @@ func (s *Session) execW(f *file.File, dot buffer.Range, name string) error {
 	isNew := os.IsNotExist(statErr)
 	runes := f.Buffer().ReadAt(dot.Start, dot.Len())
 	content := f.EncodeContent(runes)
-	if err := os.WriteFile(name, []byte(content), 0o644); err != nil {
+	if err := file.WriteAtomic(name, content); err != nil {
 		return fmt.Errorf("w: %w", err)
 	}
 	if name == f.Name() {
@@ -136,10 +136,10 @@ func (s *Session) execW(f *file.File, dot buffer.Range, name string) error {
 	if isNew {
 		s.printf("(new file) ")
 	}
-	if len(runes) > 0 && runes[len(runes)-1] != '\n' {
+	if !strings.HasSuffix(runes, "\n") && dot.Len() > 0 {
 		s.printf("?warning: last char not newline\n")
 	}
-	s.printf("#%d\n", len(runes))
+	s.printf("#%d\n", dot.Len())
 	return nil
 }
 

@@ -445,6 +445,60 @@ func TestW(t *testing.T) {
 	}
 }
 
+func TestWReportsCodepointCount(t *testing.T) {
+	// "café" is 4 codepoints, 5 bytes in UTF-8.
+	dir := t.TempDir()
+	path := dir + "/out.txt"
+
+	var out strings.Builder
+	s := NewSession(&out)
+	f := file.NewNamed(path)
+	f.EnsureLoaded()
+	f.Buffer().Insert(0, "café")
+	f.SetDot(dot(0, 4))
+	s.AddFile(f)
+
+	assertNoError(t, s.ExecString("w"))
+	if !strings.Contains(out.String(), "#4") {
+		t.Errorf("w output should report #4 codepoints, got %q", out.String())
+	}
+	if strings.Contains(out.String(), "#5") {
+		t.Errorf("w should not report byte count (#5), got %q", out.String())
+	}
+}
+
+// ---- Move / Copy ------------------------------------------------------------
+
+func TestMoveForward(t *testing.T) {
+	// dot=[0,3)="AAA" moved to $ (end of file).
+	r := runCmd(t, "AAABBBCCC", dot(0, 3), "m $")
+	assertNoError(t, r.err)
+	assertContents(t, r.contents, "BBBCCCAAA")
+	assertDot(t, r.dot, 6, 9)
+}
+
+func TestMoveBackward(t *testing.T) {
+	// dot=[6,9)="CCC" moved to 0.
+	r := runCmd(t, "AAABBBCCC", dot(6, 9), "m 0")
+	assertNoError(t, r.err)
+	assertContents(t, r.contents, "CCCAAABBB")
+	assertDot(t, r.dot, 0, 3)
+}
+
+func TestCopyForward(t *testing.T) {
+	r := runCmd(t, "AAABBBCCC", dot(0, 3), "t $")
+	assertNoError(t, r.err)
+	assertContents(t, r.contents, "AAABBBCCCAAA")
+	assertDot(t, r.dot, 9, 12)
+}
+
+func TestCopyBackward(t *testing.T) {
+	r := runCmd(t, "AAABBBCCC", dot(6, 9), "t 0")
+	assertNoError(t, r.err)
+	assertContents(t, r.contents, "CCCAAABBBCCC")
+	assertDot(t, r.dot, 0, 3)
+}
+
 func TestF(t *testing.T) {
 	var out strings.Builder
 	s := NewSession(&out)

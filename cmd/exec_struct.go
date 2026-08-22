@@ -7,44 +7,25 @@ import (
 	"unicode/utf8"
 )
 
-func (s *Session) execG(f *file.File, dot buffer.Range, pat string, body []*Command, ctx *execCtx) error {
+// execGuard implements g (wantMatch=true) and v (wantMatch=false):
+// run body iff whether pat matches inside dot equals wantMatch.
+func (s *Session) execGuard(f *file.File, dot buffer.Range, pat string, body []*Command, ctx *execCtx, wantMatch bool) error {
 	re, err := dregs.Compile(pat)
 	if err != nil {
 		return err
 	}
 	text := f.Buffer().ReadAt(dot.Start, dot.Len())
 	lo, _ := re.FindForward(text, 0, len(text))
-	if lo != -1 {
-		f.SetDot(dot)
-		ctx.nest++
-		for _, cmd := range body {
-			if err := s.execCmd(cmd, f, ctx); err != nil {
-				ctx.nest--
-				return err
-			}
-		}
-		ctx.nest--
+	if (lo != -1) != wantMatch {
+		return nil
 	}
-	return nil
-}
-
-func (s *Session) execV(f *file.File, dot buffer.Range, pat string, body []*Command, ctx *execCtx) error {
-	re, err := dregs.Compile(pat)
-	if err != nil {
-		return err
-	}
-	text := f.Buffer().ReadAt(dot.Start, dot.Len())
-	lo, _ := re.FindForward(text, 0, len(text))
-	if lo == -1 {
-		f.SetDot(dot)
-		ctx.nest++
-		for _, cmd := range body {
-			if err := s.execCmd(cmd, f, ctx); err != nil {
-				ctx.nest--
-				return err
-			}
+	f.SetDot(dot)
+	ctx.nest++
+	defer func() { ctx.nest-- }()
+	for _, cmd := range body {
+		if err := s.execCmd(cmd, f, ctx); err != nil {
+			return err
 		}
-		ctx.nest--
 	}
 	return nil
 }
