@@ -61,10 +61,15 @@ func (cw *CmdWindow) ScrollBy(delta int32) {
 // ScrollY returns the current scroll offset.
 func (cw *CmdWindow) ScrollY() int32 { return cw.scrollY }
 
-// EnsureVisible scrolls so that the cursor line is visible within a viewport
-// of height viewH pixels. Call this after any operation that moves dot.
-func (cw *CmdWindow) EnsureVisible(lineH, viewH int32) {
-	if lineH <= 0 || viewH <= 0 {
+// EnsureVisible scrolls so that the cursor line is visible within a command
+// window whose outer rect has height rectH pixels. The border and top/bottom
+// pad are subtracted so the cursor never overlaps the border.
+func (cw *CmdWindow) EnsureVisible(lineH, rectH int32) {
+	if lineH <= 0 || rectH <= 0 {
+		return
+	}
+	viewH := rectH - 2*render.BorderW - 2*render.HeaderPad
+	if viewH <= 0 {
 		return
 	}
 	// Find the line index containing dot.
@@ -139,8 +144,9 @@ func (cw *CmdWindow) CPAtXY(x, y int32, face render.Face) int {
 		return cw.buf.Len()
 	}
 
-	// Mirror the Draw layout: text begins at (ScrollBarW+PanePad, HeaderPad-scrollY).
-	relY := y - render.HeaderPad + cw.scrollY
+	// Mirror the Draw layout: text begins at (ScrollBarW+PanePad,
+	// BorderW+HeaderPad-scrollY) relative to the cmdwin rect's top-left.
+	relY := y - render.BorderW - render.HeaderPad + cw.scrollY
 	if relY < 0 {
 		relY = 0
 	}
@@ -381,11 +387,22 @@ func (cw *CmdWindow) Draw(ren *sdl.Renderer, rect sdl.Rect, face render.Face, pa
 	}
 
 	textX := rect.X + render.ScrollBarW + render.PanePad
-	textY := rect.Y + render.HeaderPad - cw.scrollY
+	textY := rect.Y + render.BorderW + render.HeaderPad - cw.scrollY
+
+	// Interior region — inside the border strip on all four sides.
+	// All text drawing is clipped to this so nothing bleeds into the border.
+	inner := sdl.Rect{
+		X: rect.X + render.BorderW,
+		Y: rect.Y + render.BorderW,
+		W: rect.W - 2*render.BorderW,
+		H: rect.H - 2*render.BorderW,
+	}
 
 	// Render the buffer line by line.
 	if cw.buf.Len() == 0 {
+		ren.SetClipRect(&inner)
 		render.DrawCursor(ren, textX, textY, lineH, pal.CmdwinFG)
+		ren.SetClipRect(nil)
 		return nil
 	}
 
@@ -409,8 +426,8 @@ func (cw *CmdWindow) Draw(ren *sdl.Renderer, rect sdl.Rect, face render.Face, pa
 		ren.FillRect(&sdl.Rect{X: rect.X, Y: rect.Y + thumbY, W: render.ScrollBarW, H: thumbH})
 	}
 
-	// Clip to the cmdwin rect so partially-visible lines don't bleed into adjacent panes.
-	ren.SetClipRect(&rect)
+	// Clip to the border-free interior so text can't bleed onto the border.
+	ren.SetClipRect(&inner)
 	dot := cw.dot
 	lineStart := 0 // codepoint offset of the start of the current line
 	for i, line := range lines {
