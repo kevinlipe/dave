@@ -31,6 +31,11 @@ type Buffer struct {
 	// Line-start table, rebuilt lazily when gen moves; see lines.go.
 	lines lineIndex
 
+	// Bounded ring of recent edits, so consumers can ask what changed since
+	// a generation they remember; see edits.go.
+	edits    []edit
+	editHead int
+
 	// Memo of the previous runeToBytePos answer, used as an extra anchor so
 	// that sequential access is cheap. The pair is in logical coordinates,
 	// which do not shift when the gap moves, so only a content change can
@@ -238,8 +243,10 @@ func (b *Buffer) delete(bytePos, n int) {
 // Insert inserts text at codepoint position pos.
 func (b *Buffer) Insert(pos int, text string) {
 	bytePos := b.runeToBytePos(pos)
+	before := b.totalRunes
 	b.insert(bytePos, []byte(text))
 	b.gen++
+	b.recordEdit(pos, 0, b.totalRunes-before)
 }
 
 // Delete removes n codepoints starting at codepoint position pos.
@@ -249,8 +256,10 @@ func (b *Buffer) Delete(pos, n int) {
 	}
 	byteStart := b.runeToBytePos(pos)
 	byteEnd := b.runeToBytePos(pos + n)
+	before := b.totalRunes
 	b.delete(byteStart, byteEnd-byteStart)
 	b.gen++
+	b.recordEdit(pos, before-b.totalRunes, 0)
 }
 
 // ReadAt returns the string of n codepoints starting at codepoint offset pos.
