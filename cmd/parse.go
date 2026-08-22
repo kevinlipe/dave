@@ -17,14 +17,13 @@ type Command struct {
 	Op byte
 
 	// Arguments depending on Op:
-	Args    []string // text args (a/i/c/s replacement, shell command)
-	Pat     string   // regexp pattern (x/y/g/v/s/X/Y)
-	Pat2    string   // second regexp (s command: replacement)
-	Flag    string   // modifier flag (s command: 'g' or digit)
-	N       int      // numeric arg (u command)
-	Body    []*Command // x/y/g/v/X/Y body; { } group
-	Body2   []*Command // unused for now
-	Dest    *addr.Addr // m/t command destination
+	Args []string   // text args (a/i/c/s replacement, shell command)
+	Pat  string     // regexp pattern (x/y/g/v/s/X/Y)
+	Pat2 string     // second regexp (s command: replacement)
+	Flag string     // modifier flag (s command: 'g' or digit)
+	N    int        // numeric arg (u command)
+	Body []*Command // x/y/g/v/X/Y body; { } group
+	Dest *addr.Addr // m/t command destination
 }
 
 // ParseCommand parses one command (with optional address prefix) from s
@@ -119,155 +118,167 @@ func (p *cmdParser) parseOne() (*Command, error) {
 	}
 
 	op := p.consume()
+	spec := lookupCmd(op)
+	if spec == nil {
+		return nil, fmt.Errorf("unknown command %q", string(op))
+	}
 	cmd := &Command{Addr: addrNode, Op: op}
+	if err := p.parseArgs(spec, cmd); err != nil {
+		return nil, err
+	}
+	return cmd, nil
+}
 
-	switch op {
-	case 'a', 'i', 'c':
+// cmdSpec says how to read the arguments of each command in ops. Between
+// them these fields describe every command's syntax except the two shapes
+// that are genuinely one-off, which supply a parse function instead.
+type cmdSpec struct {
+	ops   string // the command letters this row describes
+	text  bool   // a text argument follows: /text/ or an ed-style block
+	pat   bool   // a delimited regexp follows
+	spPat string // if a space stands in for the delimiter, use this pattern
+	body  bool   // a body command follows
+	group bool   // a { } group follows
+	count bool   // an optional single digit follows
+	rest  bool   // the rest of the line is the argument
+	dest  bool   // a destination address follows
+
+	parse func(p *cmdParser, c *Command) error
+}
+
+// cmdtab is the command language. Adding a command means adding its letter
+// to a row here plus its implementation in exec.go; the parser itself does
+// not change.
+var cmdtab = []cmdSpec{
+	{ops: "aic", text: true},
+	{ops: "dpknq"},
+	{ops: "=", parse: parseEqualsFlag},
+	{ops: "s", parse: parseSubst},
+	// x and friends accept a space in place of the delimiter, standing for
+	// "every line". X and Y do not.
+	{ops: "xygv", pat: true, spPat: `.*\n`, body: true},
+	{ops: "XY", pat: true, body: true},
+	{ops: "{", group: true},
+	{ops: "u", count: true},
+	{ops: "mt", dest: true},
+	{ops: "bBDerfw<>|", rest: true},
+}
+
+func lookupCmd(op byte) *cmdSpec {
+	for i := range cmdtab {
+		if strings.IndexByte(cmdtab[i].ops, op) >= 0 {
+			return &cmdtab[i]
+		}
+	}
+	return nil
+}
+
+// parseArgs reads a command's arguments as its table row describes them.
+func (p *cmdParser) parseArgs(spec *cmdSpec, cmd *Command) error {
+	if spec.parse != nil {
+		return spec.parse(p, cmd)
+	}
+	if spec.text {
 		text, err := p.parseTextArg()
 		if err != nil {
-			return nil, err
+			return err
 		}
 		cmd.Args = []string{text}
-
-	case 'd', 'p', 'k', 'n':
-		// No arguments.
-
-	case '=':
-		// Optional '#' suffix.
-		if p.peek() == '#' {
-			p.consume()
-			cmd.Flag = "#"
-		}
-
-	case 's':
-		// s[n]/re/text/[g]
-		// An optional digit n before the delimiter selects the nth match.
-		if p.pos >= len(p.input) {
-			return nil, fmt.Errorf("s: missing pattern")
-		}
-		if ch := p.peek(); ch >= '2' && ch <= '9' {
-			cmd.Flag = string(p.consume()) // nth-match flag
-		}
-		if p.pos >= len(p.input) {
-			return nil, fmt.Errorf("s: missing delimiter")
-		}
-		delim := p.consume()
-		pat, err := p.scanDelimited(delim)
-		if err != nil {
-			return nil, fmt.Errorf("s: %w", err)
-		}
-		repl, err := p.scanDelimited(delim)
-		if err != nil {
-			return nil, fmt.Errorf("s: %w", err)
-		}
-		cmd.Pat = pat
-		cmd.Pat2 = repl
-		// Optional trailing 'g' flag (global substitution).
-		if p.pos < len(p.input) && p.peek() == 'g' {
-			cmd.Flag = string(p.consume())
-		}
-
-	case 'x', 'y', 'g', 'v':
-		// x/re/ cmd or x (space) cmd (using .*\n as pattern)
-		if p.pos < len(p.input) && p.input[p.pos] == ' ' {
-			// x (space) — use .*\n pattern (match each line)
-			cmd.Pat = `.*\n`
+	}
+	if spec.pat && p.pos < len(p.input) {
+		if spec.spPat != "" && p.input[p.pos] == ' ' {
+			cmd.Pat = spec.spPat
 			p.skipWS()
-		} else if p.pos < len(p.input) {
+		} else {
 			delim := p.consume()
 			pat, err := p.scanDelimited(delim)
 			if err != nil {
-				return nil, fmt.Errorf("%c: %w", op, err)
+				return fmt.Errorf("%c: %w", cmd.Op, err)
 			}
 			cmd.Pat = pat
 		}
+	}
+	if spec.body {
 		body, err := p.parseBody()
 		if err != nil {
-			return nil, err
+			return err
 		}
 		cmd.Body = body
-
-	case 'X', 'Y':
-		if p.pos < len(p.input) {
-			delim := p.consume()
-			pat, err := p.scanDelimited(delim)
-			if err != nil {
-				return nil, fmt.Errorf("%c: %w", op, err)
-			}
-			cmd.Pat = pat
-		}
-		body, err := p.parseBody()
-		if err != nil {
-			return nil, err
-		}
-		cmd.Body = body
-
-	case '{':
-		// Group of commands terminated by '}'.
+	}
+	if spec.group {
 		cmds, err := p.parseGroup()
 		if err != nil {
-			return nil, err
+			return err
 		}
 		cmd.Body = cmds
-
-	case 'u':
-		// u or un (undo n commands)
+	}
+	if spec.count {
 		cmd.N = 1
 		if p.pos < len(p.input) && p.input[p.pos] >= '1' && p.input[p.pos] <= '9' {
 			cmd.N = int(p.consume() - '0')
 		}
-
-	case 'b', 'B':
-		// b/B filename (rest of line)
+	}
+	if spec.rest {
 		p.skipWS()
 		cmd.Args = []string{p.restOfLine()}
-
-	case 'D':
-		// D filename (rest of line, optional)
-		p.skipWS()
-		cmd.Args = []string{p.restOfLine()}
-
-	case 'e', 'r', 'f':
-		// e/r/f filename
-		p.skipWS()
-		cmd.Args = []string{p.restOfLine()}
-
-	case 'w':
-		// w filename (optional)
-		p.skipWS()
-		cmd.Args = []string{p.restOfLine()}
-
-	case 'm', 't':
-		// m/t address
+	}
+	if spec.dest {
 		p.skipWS()
 		a, consumed, err := addr.Parse(p.input[p.pos:])
 		if err != nil {
-			return nil, fmt.Errorf("%c: %w", op, err)
+			return fmt.Errorf("%c: %w", cmd.Op, err)
 		}
 		if a == nil {
-			return nil, fmt.Errorf("%c: missing destination address", op)
+			return fmt.Errorf("%c: missing destination address", cmd.Op)
 		}
 		p.pos += consumed
 		cmd.Dest = a
-
-	case '<', '>', '|':
-		// Shell command — rest of line.
-		p.skipWS()
-		cmd.Args = []string{p.restOfLine()}
-
-	case 'q':
-		// No arguments.
-
-	default:
-		return nil, fmt.Errorf("unknown command %q", string(op))
 	}
+	return nil
+}
 
-	return cmd, nil
+// parseEqualsFlag reads the optional '#' suffix on =.
+func parseEqualsFlag(p *cmdParser, c *Command) error {
+	if p.peek() == '#' {
+		p.consume()
+		c.Flag = "#"
+	}
+	return nil
+}
+
+// parseSubst reads s[n]/re/repl/[g]. The optional digit before the
+// delimiter selects the nth match; a trailing g substitutes every match.
+func parseSubst(p *cmdParser, c *Command) error {
+	if p.pos >= len(p.input) {
+		return fmt.Errorf("s: missing pattern")
+	}
+	if ch := p.peek(); ch >= '2' && ch <= '9' {
+		c.Flag = string(p.consume())
+	}
+	if p.pos >= len(p.input) {
+		return fmt.Errorf("s: missing delimiter")
+	}
+	delim := p.consume()
+	pat, err := p.scanDelimited(delim)
+	if err != nil {
+		return fmt.Errorf("s: %w", err)
+	}
+	repl, err := p.scanDelimited(delim)
+	if err != nil {
+		return fmt.Errorf("s: %w", err)
+	}
+	c.Pat = pat
+	c.Pat2 = repl
+	if p.pos < len(p.input) && p.peek() == 'g' {
+		c.Flag = string(p.consume())
+	}
+	return nil
 }
 
 // parseTextArg parses a text argument in the forms:
-//   a/text/  →  returns "text"
-//   a\nline1\nline2\n.  →  ed-style multi-line
+//
+//	a/text/  →  returns "text"
+//	a\nline1\nline2\n.  →  ed-style multi-line
 func (p *cmdParser) parseTextArg() (string, error) {
 	if p.pos >= len(p.input) {
 		return "", nil
