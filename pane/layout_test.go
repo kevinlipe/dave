@@ -16,9 +16,9 @@ func mkLayout(n, runesPer int) *Layout {
 		l.Lines = append(l.Lines, VisualLine{
 			Lo: i * runesPer,
 			Hi: i*runesPer + runesPer - 1,
-			Y:  int32(i) * testLineH,
 		})
 	}
+	l.LineH = testLineH
 	l.TotalHeight = int32(n) * testLineH
 	return l
 }
@@ -26,7 +26,7 @@ func mkLayout(n, runesPer int) *Layout {
 // naiveLineAtY is the backward scan LineAtY replaced, kept as the reference.
 func naiveLineAtY(l *Layout, y int32) int {
 	for i := len(l.Lines) - 1; i >= 0; i-- {
-		if l.Lines[i].Y <= y {
+		if l.Y(i) <= y {
 			return i
 		}
 	}
@@ -51,7 +51,7 @@ func TestLineAtYLandsInsideItsLineBox(t *testing.T) {
 	l := mkLayout(50, 10)
 	for y := int32(0); y < 50*testLineH; y++ {
 		i := l.LineAtY(y)
-		lo := l.Lines[i].Y
+		lo := l.Y(i)
 		if y < lo || y >= lo+testLineH {
 			t.Fatalf("LineAtY(%d) = %d, whose box is [%d,%d)",
 				y, i, lo, lo+testLineH)
@@ -66,7 +66,7 @@ func TestLineAtYSkipsOnlyOffscreenLines(t *testing.T) {
 	for scrollY := int32(0); scrollY < 200*testLineH; scrollY += 3 {
 		start := l.LineAtY(scrollY)
 		for i := 0; i < start; i++ {
-			if bottom := l.Lines[i].Y + testLineH; bottom > scrollY {
+			if bottom := l.Y(i) + testLineH; bottom > scrollY {
 				t.Fatalf("scrollY=%d: start=%d skips line %d, "+
 					"whose bottom %d is still visible", scrollY, start, i, bottom)
 			}
@@ -119,8 +119,8 @@ func TestFirstLineAtOrBelowDerivation(t *testing.T) {
 	l := mkLayout(40, 10)
 	for scrollY := int32(0); scrollY < 40*testLineH; scrollY++ {
 		want := -1
-		for i, vl := range l.Lines {
-			if vl.Y >= scrollY {
+		for i := range l.Lines {
+			if l.Y(i) >= scrollY {
 				want = i
 				break
 			}
@@ -129,7 +129,7 @@ func TestFirstLineAtOrBelowDerivation(t *testing.T) {
 			continue // no such line; caller leaves dot alone
 		}
 		got := l.LineAtY(scrollY)
-		if l.Lines[got].Y < scrollY && got+1 < len(l.Lines) {
+		if l.Y(got) < scrollY && got+1 < len(l.Lines) {
 			got++
 		}
 		if got != want {

@@ -58,7 +58,8 @@ func Wrap(buf *buffer.Buffer, face render.Face, paneWidthPx int32, wordWrap bool
 
 	if n == 0 {
 		return Layout{
-			Lines:       []VisualLine{{Lo: 0, Hi: 0, Y: 0, Wrapped: false}},
+			Lines:       []VisualLine{{Lo: 0, Hi: 0, Wrapped: false}},
+			LineH:       lineH,
 			TotalHeight: lineH,
 			MarginLeft:  marginLeft,
 			WrapWidth:   wrapPx,
@@ -75,7 +76,7 @@ func Wrap(buf *buffer.Buffer, face render.Face, paneWidthPx int32, wordWrap bool
 	inWord := false
 
 	flushLine := func(lo, hi int, wrapped bool) {
-		lines = append(lines, VisualLine{Lo: lo, Hi: hi, Y: int32(lineIdx) * lineH, Wrapped: wrapped})
+		lines = append(lines, VisualLine{Lo: lo, Hi: hi, Wrapped: wrapped})
 		lineIdx++
 	}
 
@@ -133,7 +134,7 @@ func Wrap(buf *buffer.Buffer, face render.Face, paneWidthPx int32, wordWrap bool
 	}
 
 	flushLine(lineStart, n, lineWrapped)
-	return Layout{Lines: lines, TotalHeight: int32(lineIdx) * lineH, MarginLeft: marginLeft, WrapWidth: wrapPx}
+	return Layout{Lines: lines, LineH: lineH, TotalHeight: int32(lineIdx) * lineH, MarginLeft: marginLeft, WrapWidth: wrapPx}
 }
 
 // LineAt returns the index of the visual line containing codepoint offset cp.
@@ -159,22 +160,20 @@ func (l *Layout) LineAt(cp int) int {
 // screen). A y above the first line clamps to line 0; a y past the last line
 // clamps to the last line. Always returns a valid index.
 //
-// Lines are emitted in increasing Y with a uniform line height, so this is a
-// binary search rather than a scan. drawBody calls it every frame.
+// Every line box is LineH tall and they are stacked in order, so the line
+// containing y is just y/LineH.
 func (l *Layout) LineAtY(y int32) int {
-	if len(l.Lines) == 0 {
+	if len(l.Lines) == 0 || l.LineH <= 0 {
 		return 0
 	}
-	lo, hi := 0, len(l.Lines)-1
-	for lo < hi {
-		mid := (lo + hi + 1) / 2
-		if l.Lines[mid].Y <= y {
-			lo = mid
-		} else {
-			hi = mid - 1
-		}
+	i := int(y / l.LineH)
+	if y < 0 {
+		i = 0 // Go truncates toward zero, so -1 line rounds up to 0
 	}
-	return lo
+	if i >= len(l.Lines) {
+		i = len(l.Lines) - 1
+	}
+	return i
 }
 
 // XForCP returns the pixel x-offset within vl at which codepoint cp appears,

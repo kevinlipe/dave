@@ -364,7 +364,7 @@ func moveDotToTopOfView(f *file.File, p *pane.Pane, winH int32) {
 	// containing scrollY, or the next one down when scrollY falls partway
 	// through it.
 	i := layout.LineAtY(scrollY)
-	if layout.Lines[i].Y < scrollY && i+1 < len(layout.Lines) {
+	if layout.Y(i) < scrollY && i+1 < len(layout.Lines) {
 		i++
 	}
 	f.SetDot(buffer.Range{Start: layout.Lines[i].Lo, End: layout.Lines[i].Lo})

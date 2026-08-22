@@ -146,9 +146,12 @@ func TestWrapYIsIndexTimesLineHeight(t *testing.T) {
 	lineH := int32(newFakeFace().Height())
 	for _, c := range wrapCases {
 		l := layoutFor(c)
-		for i, vl := range l.Lines {
-			if want := int32(i) * lineH; vl.Y != want {
-				t.Fatalf("%s: line %d has Y=%d, want %d", c.name, i, vl.Y, want)
+		if l.LineH != lineH {
+			t.Fatalf("%s: LineH=%d, want %d", c.name, l.LineH, lineH)
+		}
+		for i := range l.Lines {
+			if want := int32(i) * lineH; l.Y(i) != want {
+				t.Fatalf("%s: line %d has Y=%d, want %d", c.name, i, l.Y(i), want)
 			}
 		}
 		if want := int32(len(l.Lines)) * lineH; l.TotalHeight != want {

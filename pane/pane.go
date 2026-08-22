@@ -130,16 +130,16 @@ func (p *Pane) EnsureVisible(cp int) {
 	if lineIdx < 0 || lineIdx >= len(p.layout.Lines) {
 		return
 	}
-	vl := p.layout.Lines[lineIdx]
+	lineY := p.layout.Y(lineIdx)
 	lineH := int32(p.face.Height())
 	// Scroll up if line is above the viewport.
-	if vl.Y < p.scrollY {
-		p.ScrollTo(vl.Y)
+	if lineY < p.scrollY {
+		p.ScrollTo(lineY)
 	}
 	// Scroll down if line bottom is below the viewport.
 	viewH := p.paneH - render.BodyTopPad
-	if vl.Y+lineH > p.scrollY+viewH {
-		p.ScrollTo(vl.Y + lineH - viewH)
+	if lineY+lineH > p.scrollY+viewH {
+		p.ScrollTo(lineY + lineH - viewH)
 	}
 }
 
@@ -274,14 +274,16 @@ func (p *Pane) drawBody(ren *sdl.Renderer, rect sdl.Rect) error {
 	// Start at the line containing the top of the viewport rather than
 	// scanning every line in the file. The skip below still applies: on the
 	// last line, scrollY can sit past the line box entirely.
-	for _, vl := range p.layout.Lines[p.layout.LineAtY(p.scrollY):] {
+	first := p.layout.LineAtY(p.scrollY)
+	for i, vl := range p.layout.Lines[first:] {
+		lineTop := p.layout.Y(first + i)
 		// Skip lines above the scroll viewport.
-		lineBottom := vl.Y + lineH
+		lineBottom := lineTop + lineH
 		if lineBottom <= p.scrollY {
 			continue
 		}
 		// Stop at lines below the viewport.
-		lineScreenY := bodyY + render.BodyTopPad + vl.Y - p.scrollY
+		lineScreenY := bodyY + render.BodyTopPad + lineTop - p.scrollY
 		if lineScreenY > rect.Y+rect.H {
 			break
 		}

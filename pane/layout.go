@@ -23,10 +23,6 @@ type VisualLine struct {
 	// and the newline is not rendered.
 	Hi int
 
-	// Y is the top-of-line-box pixel position within the pane's text area
-	// (i.e. relative to the top of the scrollable content, not the screen).
-	Y int32
-
 	// Wrapped is true when this visual line is a soft-wrap continuation of
 	// the previous logical line (i.e. it does not start after a '\n').
 	Wrapped bool
@@ -36,6 +32,11 @@ type VisualLine struct {
 // It is recomputed whenever the text changes or the pane is resized.
 type Layout struct {
 	Lines []VisualLine
+	// LineH is the pixel height of one line. Every line box is this tall, so
+	// a line's Y is simply its index times LineH — see Y. Keeping the height
+	// rather than each line's position means splicing lines in or out does
+	// not renumber anything.
+	LineH int32
 	// TotalHeight is the pixel height of all lines combined.
 	TotalHeight int32
 	// MarginLeft is the pixel x-offset from the left edge of the text area to
@@ -45,3 +46,8 @@ type Layout struct {
 	// WrapWidth is the pixel width at which lines were broken.
 	WrapWidth int32
 }
+
+// Y returns the top-of-line-box pixel position of visual line i within the
+// pane's text area (relative to the top of the scrollable content, not the
+// screen). All line boxes are LineH tall, so this is pure arithmetic.
+func (l *Layout) Y(i int) int32 { return int32(i) * l.LineH }
