@@ -25,25 +25,34 @@ on-screen. Dave has room to close both gaps significantly.
 
 ### Tier 1 — the ones that turn small files into big ones
 
-#### `buffer.runeToBytePos` scans from position 0 every call
-- **Where:** `buffer/buffer.go:55`
-- **Smell:** Walks `data[:gapStart]` counting runes on every `Insert`,
-  `Delete`, and `ReadAt`. Typing a character 90% through a 1MB file
-  forces a scan of 900KB of text just to find the insert byte offset.
-- **Fix:** Maintain a `preGapRunes int` cache; update it in `moveGap`
-  (add/subtract as bytes shuffle across the gap) and after
-  `insert`/`delete`. Then `runeToBytePos(runePos)` becomes a comparison
-  and a bounded walk within one side. Classic gap-buffer optimization;
-  roughly a 100× speedup on large-file edits.
-- **Priority:** highest-leverage change in the codebase.
+#### ~~`buffer.runeToBytePos` scans from position 0 every call~~ — DONE 2026-08-22
+#### ~~`buffer.Len()` scans the whole buffer~~ — DONE 2026-08-22
 
-#### `buffer.Len()` scans the whole buffer
-- **Where:** `buffer/buffer.go:43`
-- **Smell:** Called constantly (every relayout, every address eval,
-  every draw). Walks both sides of the gap counting runes.
-- **Fix:** Cache total rune count, invalidate/update in `Insert` and
-  `Delete`. Cheap to add once `preGapRunes` exists — total is
-  `preGapRunes + postGapRunes`.
+Both fixed by one change: `Buffer` now carries `preGapRunes` (runes in
+`data[:gapStart]`) and `totalRunes`, maintained incrementally in
+`moveGap`, `insert`, and `delete`. `Len()` is a field read.
+`runeToBytePos` now knows three fixed points — buffer start, the gap,
+and the end — and walks from whichever bounds the target most closely,
+using `byteOffsetFromEnd` (a `DecodeLastRune` walk) for the backward
+direction. Editing at the gap, which is where editing normally happens,
+is O(1). `ReadAt` was rewritten on top of it to slice the two segments
+directly instead of re-counting runes, and `RuneAt` no longer allocates.
+
+Measured on a 1MB buffer (`go test ./buffer/ -bench .`, before → after):
+
+| benchmark | before | after |
+|---|---|---|
+| `InsertAtEndOfLargeFile` | 5,074,116 ns | 20.5 ns |
+| `InsertAtMiddleOfLargeFile` | 2,026,684 ns | 6,560 ns |
+| `InsertScattered` (worst case, gap moves every time) | 3,305,602 ns | 1,257,315 ns |
+| `ReadAtNearEnd` | 7,147,918 ns | 518 ns |
+| `Len` | 1,400,556 ns | 2.1 ns |
+
+`InsertScattered` is the case the cache can't help with — it's bounded
+by the `memmove` in `moveGap`, and still improves 2.6× because the
+offset lookup no longer scans. Invariant and randomized model tests are
+in `buffer/gap_test.go`; the cached counts are recomputed from `data`
+and compared after every operation.
 
 #### `pane.Wrap` does `[]rune(buf.String())` on every relayout
 - **Where:** `pane/wrap.go:56`
@@ -151,12 +160,14 @@ on-screen. Dave has room to close both gaps significantly.
 
 ### If picking three to do first
 
-1. `preGapRunes` cache in the gap buffer (Tier-1 items 1 + 2). One
-   change, dozens of speedups fall out.
+1. ~~`preGapRunes` cache in the gap buffer (Tier-1 items 1 + 2).~~ DONE
+   2026-08-22.
 2. `LineAtY` binary search in `pane` (Tier-2 item 1). Trivial change,
    immediate frame-time improvement.
 3. Line-start table in `addr` (Tier-2 item 2). Ranged commands become
    near-free.
 
-Items 1 and "incremental layout" are the ones that separate "fast
-small-file editor" from "editable at any size."
+With item 1 done, incremental layout is now the single thing standing
+between "fast small-file editor" and "editable at any size" — every
+keystroke still re-wraps the whole file, and `pane.Wrap`'s
+`[]rune(buf.String())` still copies it twice on the way.
