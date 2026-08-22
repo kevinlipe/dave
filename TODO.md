@@ -89,6 +89,26 @@ Down from ~15; the address and command paths no longer use it per match.
   Not urgent now that the per-match quadratics are gone: a search costs
   one copy per command rather than one per match.
 
+## Correctness
+
+### Word selection is ASCII-only, word wrapping is not
+
+- **Where:** `input/cursor.go` `isWordRune` vs `pane/wrap.go` `isWordRune`
+- **Smell:** `input` tests `r == '_' || a-z || A-Z || 0-9`; `pane` uses
+  `unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_'`. So an accented
+  letter counts as part of a word when deciding where a line wraps, and
+  does not when deciding what a double-click selects. Double-clicking
+  `héllo` selects `h`, `é` or `llo` depending where the click lands, and
+  ctrl-arrow stops at every accent. For an editor built for prose this is
+  the wrong way round.
+- **Fix:** give `input` the same Unicode-aware definition `pane` already
+  has. One line, but it changes user-visible selection behaviour, so it
+  wants to be a deliberate commit rather than a drive-by.
+- **Pinned:** `input/cursor_test.go` records the current behaviour in
+  `TestWordBoundsMultibyteIsASCIIOnly` and asserts the disagreement in
+  `TestWordRuneDefinitionsDisagreeOnNonASCII`. Both need updating when it
+  is fixed.
+
 ## Known limitations
 
 ### A file with no newlines re-wraps entirely on every keystroke
