@@ -27,6 +27,9 @@ type Buffer struct {
 	// buffer; see runeToBytePos.
 	preGapRunes int // runes in data[:gapStart]
 	totalRunes  int // runes in the whole logical content
+
+	// Line-start table, rebuilt lazily when gen moves; see lines.go.
+	lines lineIndex
 }
 
 // Gen returns the current modification generation. Callers can cache this

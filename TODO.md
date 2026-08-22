@@ -95,14 +95,40 @@ inside its own line box, and asserts the property `drawBody` actually
 depends on: starting at `LineAtY(scrollY)` never skips a line that is
 still on screen.
 
-#### `addr.lineRange` re-scans the whole file for every line address
-- **Where:** `addr/addr.go:95`
-- **Smell:** Reads `f.String()` and byte-scans for newlines. Called by
-  every `2p`, every ranged address, every `,x` (via the `,` shorthand).
-- **Fix:** Maintain a line-start table on the buffer, invalidated by
-  `Gen`. Rebuild lazily on first line query per generation. For a
-  100K-line file this converts every ranged command from O(n) to
-  O(log n).
+#### ~~`addr.lineRange` re-scans the whole file for every line address~~ — DONE 2026-08-22
+
+`buffer/lines.go` holds a line-start table — the codepoint offset of
+every line start — built lazily on the first line query after the
+generation changes. Three string-scanning paths in `addr` now go
+through it: `lineRange`, and the line-number derivations in `evalPlus`
+and `evalMinus`. `addr` no longer calls `f.String()` for line
+addresses at all.
+
+Measured on a 100K-line (4.3MB) file:
+
+| | before | after |
+|---|---|---|
+| line address, table already built | 8,614 ns | 15.4 ns |
+| line address, first after an edit | 573,000 ns | 4,196,000 ns |
+
+The warm case is the point: a ranged command, or a loop body running
+per match, resolves many line addresses against one generation and now
+scans the file once instead of once per address (and copies it zero
+times instead of once per address).
+
+The cold case is a real 7.3× regression — the old scan stopped at the
+line it wanted, the table always scans to the end. It is 4ms once per
+command on a 4.3MB file, i.e. not perceptible, so it is recorded rather
+than fixed.
+
+**Follow-up if it ever matters:** extend the table lazily instead of
+building it whole. Keep a `scannedTo` offset and push the scan forward
+only as far as the query needs — `2p` scans two lines, `$` scans
+everything. That removes the cold regression by doing less work rather
+than by doing the same work faster. An attempt to close the gap the
+other way (a hand-rolled SWAR scan fusing newline search and rune
+counting) got the rebuild from 4.25ms to 2.27ms and was reverted: not
+worth the bit-twiddling for a millisecond on a once-per-command path.
 
 #### `execX` and `substAll` do quadratic rune counting per match
 - **Where:** `cmd/exec_struct.go:78-79`, `cmd/exec_subst.go:75-76`
@@ -178,8 +204,7 @@ still on screen.
    2026-08-22.
 2. ~~`LineAtY` binary search in `pane` (Tier-2 item 1).~~ DONE
    2026-08-22.
-3. Line-start table in `addr` (Tier-2 item 2). Ranged commands become
-   near-free.
+3. ~~Line-start table in `addr` (Tier-2 item 2).~~ DONE 2026-08-22.
 
 With item 1 done, incremental layout is now the single thing standing
 between "fast small-file editor" and "editable at any size" — every

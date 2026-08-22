@@ -3,6 +3,7 @@ package addr
 import (
 	"dave/buffer"
 	"dave/file"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -420,26 +421,49 @@ func TestLastMatchFromEnd(t *testing.T) {
 // ---- lineRange unit test ----------------------------------------------------
 
 func TestLineRangeHelper(t *testing.T) {
-	s := "hello\nworld\nfoo\n"
-	total := len([]rune(s)) // 16
-
 	cases := []struct {
+		content    string
 		n          int
 		start, end int
 	}{
-		{0, 0, 0},
-		{1, 0, 6},
-		{2, 6, 12},
-		{3, 12, 16},
+		{"hello\nworld\nfoo\n", 0, 0, 0},
+		{"hello\nworld\nfoo\n", 1, 0, 6},
+		{"hello\nworld\nfoo\n", 2, 6, 12},
+		{"hello\nworld\nfoo\n", 3, 12, 16},
+		// A trailing newline begins a further empty line at end of file.
+		{"hello\nworld\nfoo\n", 4, 16, 16},
+		// No trailing newline: the last line runs to end of file.
+		{"a\nb", 2, 2, 3},
+		// An empty file still has one (empty) line.
+		{"", 1, 0, 0},
+		// Offsets are codepoints, not bytes.
+		{"héllo\nwörld\n", 2, 6, 12},
 	}
 	for _, c := range cases {
-		r, err := lineRange(s, total, c.n)
+		f := makeFile(c.content)
+		r, err := lineRange(f, c.n)
 		if err != nil {
-			t.Errorf("lineRange(n=%d): %v", c.n, err)
+			t.Errorf("lineRange(%q, n=%d): %v", c.content, c.n, err)
 			continue
 		}
 		if r.Start != c.start || r.End != c.end {
-			t.Errorf("lineRange(n=%d) = [%d,%d), want [%d,%d)", c.n, r.Start, r.End, c.start, c.end)
+			t.Errorf("lineRange(%q, n=%d) = [%d,%d), want [%d,%d)",
+				c.content, c.n, r.Start, r.End, c.start, c.end)
+		}
+	}
+
+	// Lines past the end are an error, as is a negative line number.
+	for _, c := range []struct {
+		content string
+		n       int
+	}{
+		{"hello\nworld\nfoo\n", 5},
+		{"a\nb", 3},
+		{"", 2},
+		{"hello\n", -1},
+	} {
+		if _, err := lineRange(makeFile(c.content), c.n); err == nil {
+			t.Errorf("lineRange(%q, n=%d): expected error, got none", c.content, c.n)
 		}
 	}
 }
@@ -448,4 +472,173 @@ func TestLineRangeHelper(t *testing.T) {
 func init() {
 	// nothing
 	_ = strings.Count
+}
+
+// ---- differential tests against the pre-index implementations ---------------
+
+// The line-start table in buffer replaced three string-scanning code paths in
+// this package. The originals are kept here so the replacements can be
+// checked against them exhaustively rather than only at hand-picked points.
+
+var lineDiffContents = []string{
+	"",
+	"\n",
+	"\n\n\n",
+	"a",
+	"a\n",
+	"a\nb",
+	"a\nb\n",
+	"hello\nworld\nfoo\n",
+	"héllo\nwörld\n☃\n",
+	"no newlines at all",
+	"trailing blank\n\n",
+	"\na\n\nb\n",
+}
+
+// oldLineRange is the implementation lineRange replaced, verbatim.
+func oldLineRange(s string, total, n int) (buffer.Range, error) {
+	if n == 0 {
+		return buffer.Range{}, nil
+	}
+	if n < 0 {
+		return buffer.Range{}, errNegative
+	}
+	lineStart := 0
+	bytePos := 0
+	for line := 1; line < n; line++ {
+		idx := strings.IndexByte(s[bytePos:], '\n')
+		if idx == -1 {
+			return buffer.Range{}, errBeyondEnd
+		}
+		nl := bytePos + idx
+		lineStart += len([]rune(s[bytePos : nl+1]))
+		bytePos = nl + 1
+	}
+	rest := s[bytePos:]
+	idx := strings.IndexByte(rest, '\n')
+	var lineEnd int
+	if idx == -1 {
+		lineEnd = total
+	} else {
+		lineEnd = lineStart + len([]rune(rest[:idx+1]))
+	}
+	if lineStart > total {
+		return buffer.Range{}, errBeyondEnd
+	}
+	return buffer.Range{Start: lineStart, End: lineEnd}, nil
+}
+
+var (
+	errNegative  = fmt.Errorf("negative")
+	errBeyondEnd = fmt.Errorf("beyond end")
+)
+
+func TestLineRangeMatchesOldImplementation(t *testing.T) {
+	for _, s := range lineDiffContents {
+		total := len([]rune(s))
+		f := makeFile(s)
+		for n := -2; n <= total+3; n++ {
+			wantR, wantErr := oldLineRange(s, total, n)
+			gotR, gotErr := lineRange(f, n)
+			if (gotErr != nil) != (wantErr != nil) {
+				t.Fatalf("%q n=%d: err mismatch: got %v, old %v", s, n, gotErr, wantErr)
+			}
+			if gotErr == nil && gotR != wantR {
+				t.Fatalf("%q n=%d: got [%d,%d), old [%d,%d)",
+					s, n, gotR.Start, gotR.End, wantR.Start, wantR.End)
+			}
+		}
+	}
+}
+
+// evalPlus and evalMinus derived a line number from a codepoint offset by
+// byte-scanning. Check the buffer-backed derivations against those formulas
+// at every position.
+func TestLineNumberDerivationsMatchOldImplementation(t *testing.T) {
+	for _, s := range lineDiffContents {
+		f := makeFile(s)
+		buf := f.Buffer()
+		for pos := 0; pos <= len([]rune(s)); pos++ {
+			byteP := byteOff(s, pos)
+
+			// evalMinus: strings.Count(s[:byteP], "\n") + 1
+			wantMinus := strings.Count(s[:byteP], "\n") + 1
+			if got := buf.LineNumber(pos); got != wantMinus {
+				t.Fatalf("%q pos=%d: LineNumber = %d, old minus-form = %d",
+					s, pos, got, wantMinus)
+			}
+
+			// evalPlus: same, but +1 more when pos is mid-line.
+			atLineStart := byteP == 0 || s[byteP-1] == '\n'
+			wantPlus := wantMinus
+			if !atLineStart {
+				wantPlus++
+			}
+			gotPlus := buf.LineNumber(pos)
+			if pos > 0 && buf.RuneAt(pos-1) != '\n' {
+				gotPlus++
+			}
+			if gotPlus != wantPlus {
+				t.Fatalf("%q pos=%d: plus-form = %d, old plus-form = %d",
+					s, pos, gotPlus, wantPlus)
+			}
+		}
+	}
+}
+
+// ---- benchmarks -------------------------------------------------------------
+
+func benchFile() *file.File {
+	var sb strings.Builder
+	for i := 0; i < 100000; i++ {
+		sb.WriteString("the quick brown fox jumps over the lazy dog\n")
+	}
+	return makeFile(sb.String())
+}
+
+// One line address per buffer generation: the new code pays for the table
+// build, the old code paid for a String copy plus a scan. This is the case
+// least favourable to the index.
+//
+// The edit that bumps the generation is made at the gap so that it costs
+// essentially nothing; an edit chosen to force a full-buffer gap move would
+// swamp the number being measured here.
+func BenchmarkLineAddressColdOld(b *testing.B) {
+	f := benchFile()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = oldLineRange(f.String(), f.Len(), i%100000+1)
+	}
+}
+
+func BenchmarkLineAddressColdNew(b *testing.B) {
+	f := benchFile()
+	buf := f.Buffer()
+	buf.Insert(buf.Len(), "x") // park the gap at the end, once
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		buf.Insert(buf.Len(), "x") // bump the generation, forcing a rebuild
+		_, _ = lineRange(f, i%100000+1)
+	}
+}
+
+// Many line addresses against one generation, which is what a ranged command
+// or a loop body actually does.
+func BenchmarkLineAddressWarmOld(b *testing.B) {
+	f := benchFile()
+	s := f.String()
+	total := f.Len()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = oldLineRange(s, total, i%100000+1)
+	}
+}
+
+func BenchmarkLineAddressWarmNew(b *testing.B) {
+	f := benchFile()
+	_, _ = lineRange(f, 1) // build the table, as the first address would
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = lineRange(f, i%100000+1)
+	}
 }

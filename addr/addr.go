@@ -55,7 +55,7 @@ func Eval(a *Addr, f *file.File, files []*file.File) (buffer.Range, error) {
 func eval(a *Addr, f *file.File, files []*file.File) (buffer.Range, error) {
 	switch a.Kind {
 	case KindLine:
-		return lineRange(f.String(), f.Len(), a.Num)
+		return lineRange(f, a.Num)
 	case KindChar:
 		return charRange(f.Len(), a.Num)
 	case KindDot:
@@ -92,39 +92,22 @@ func eval(a *Addr, f *file.File, files []*file.File) (buffer.Range, error) {
 
 // lineRange returns the range for line n (1-indexed). Line 0 is the null
 // string before the first line.
-func lineRange(s string, total, n int) (buffer.Range, error) {
+//
+// The line lookup goes through the buffer's line-start table, which is built
+// once per buffer generation, so a command resolving many line addresses
+// scans the file once rather than once per address.
+func lineRange(f *file.File, n int) (buffer.Range, error) {
 	if n == 0 {
 		return buffer.Range{}, nil
 	}
 	if n < 0 {
 		return buffer.Range{}, fmt.Errorf("addr: negative line number %d", n)
 	}
-	// Count lines by scanning for newlines.
-	lineStart := 0 // rune offset of line start
-	bytePos := 0
-	for line := 1; line < n; line++ {
-		idx := strings.IndexByte(s[bytePos:], '\n')
-		if idx == -1 {
-			return buffer.Range{}, fmt.Errorf("addr: line %d beyond end of file", n)
-		}
-		nl := bytePos + idx
-		// Advance lineStart by the rune count of this line including the \n.
-		lineStart += utf8.RuneCountInString(s[bytePos : nl+1])
-		bytePos = nl + 1
-	}
-	// Find end of line n (next \n or end of file).
-	rest := s[bytePos:]
-	idx := strings.IndexByte(rest, '\n')
-	var lineEnd int
-	if idx == -1 {
-		lineEnd = total
-	} else {
-		lineEnd = lineStart + utf8.RuneCountInString(rest[:idx+1]) // include \n
-	}
-	if lineStart > total {
+	r, ok := f.Buffer().LineRange(n)
+	if !ok {
 		return buffer.Range{}, fmt.Errorf("addr: line %d beyond end of file", n)
 	}
-	return buffer.Range{Start: lineStart, End: lineEnd}, nil
+	return r, nil
 }
 
 // charRange returns a null range at codepoint position n.
@@ -258,22 +241,16 @@ func evalPlus(a *Addr, f *file.File, files []*file.File) (buffer.Range, error) {
 		}
 		return buffer.Range{Start: pos, End: pos}, nil
 	case KindLine:
-		s := f.String()
-		total := f.Len()
-		byteP := byteOff(s, base.End)
+		buf := f.Buffer()
 		// Determine which line "+1" refers to:
-		// - If base.End is at a line start (byte 0 or just after \n), then
+		// - If base.End is at a line start (offset 0 or just after \n), then
 		//   "+1" means the line AT that position (don't advance past another \n).
 		// - If base.End is mid-line, "+1" means the NEXT line (advance past \n).
-		atLineStart := byteP == 0 || (byteP > 0 && s[byteP-1] == '\n')
-		var firstLine int
-		if atLineStart {
-			firstLine = strings.Count(s[:byteP], "\n") + 1
-		} else {
-			firstLine = strings.Count(s[:byteP], "\n") + 2
+		firstLine := buf.LineNumber(base.End)
+		if base.End > 0 && buf.RuneAt(base.End-1) != '\n' {
+			firstLine++
 		}
-		target := firstLine + right.Num - 1
-		return lineRange(s, total, target)
+		return lineRange(f, firstLine+right.Num-1)
 	case KindRegexp:
 		saved := f.Dot()
 		f.SetDot(buffer.Range{Start: base.End, End: base.End})
@@ -304,14 +281,11 @@ func evalMinus(a *Addr, f *file.File, files []*file.File) (buffer.Range, error) 
 		}
 		return buffer.Range{Start: pos, End: pos}, nil
 	case KindLine:
-		s := f.String()
-		total := f.Len()
-		lineNum := runeCountLines(s, byteOff(s, base.Start))
-		target := lineNum - right.Num
+		target := f.Buffer().LineNumber(base.Start) - right.Num
 		if target <= 0 {
 			return buffer.Range{}, nil
 		}
-		return lineRange(s, total, target)
+		return lineRange(f, target)
 	case KindRegexp:
 		saved := f.Dot()
 		f.SetDot(buffer.Range{Start: base.Start, End: base.Start})
@@ -330,11 +304,6 @@ func evalBase(left *Addr, f *file.File, files []*file.File, useStart bool) (buff
 		return f.Dot(), nil
 	}
 	return eval(left, f, files)
-}
-
-// runeCountLines returns the 1-based line number containing bytePos.
-func runeCountLines(s string, bytePos int) int {
-	return strings.Count(s[:bytePos], "\n") + 1
 }
 
 // ---- Byte/rune conversion ---------------------------------------------------
