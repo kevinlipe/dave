@@ -396,6 +396,36 @@ func TestB(t *testing.T) {
 	}
 }
 
+func TestBExpandsTilde(t *testing.T) {
+	t.Setenv("HOME", "/tmp/testhome")
+	var out strings.Builder
+	s := NewSession(&out)
+	f := file.NewNamed("/tmp/testhome/bin/foo.sh")
+	f.EnsureLoaded()
+	s.AddFile(f)
+
+	// b with ~ should resolve to the same buffer as the absolute path.
+	assertNoError(t, s.ExecString("b ~/bin/foo.sh"))
+	if s.Current != f {
+		t.Error("b ~/bin/foo.sh should locate the buffer opened at the absolute path")
+	}
+}
+
+func TestBigExpandsTilde(t *testing.T) {
+	t.Setenv("HOME", "/tmp/testhome")
+	var out strings.Builder
+	s := NewSession(&out)
+
+	assertNoError(t, s.ExecString("B ~/bin/foo.sh"))
+	if s.Current == nil || s.Current.Name() != "/tmp/testhome/bin/foo.sh" {
+		got := ""
+		if s.Current != nil {
+			got = s.Current.Name()
+		}
+		t.Errorf("B ~/bin/foo.sh: current name = %q, want %q", got, "/tmp/testhome/bin/foo.sh")
+	}
+}
+
 func TestBNotFound(t *testing.T) {
 	var out strings.Builder
 	s := NewSession(&out)

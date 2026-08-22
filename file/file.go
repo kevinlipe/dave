@@ -170,6 +170,27 @@ func (f *File) Save() error {
 	return nil
 }
 
+// ExpandPath resolves a leading `~` or `~/` to the user's home directory.
+// Only these two forms are recognized — `~user` is not supported (differs
+// per platform, and Sam doesn't do it either). If the home directory can't
+// be determined, the path is returned unchanged rather than erroring.
+func ExpandPath(path string) string {
+	if path == "" || path[0] != '~' {
+		return path
+	}
+	if path != "~" && path[:2] != "~/" {
+		return path // ~user or similar — leave alone
+	}
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return path
+	}
+	if path == "~" {
+		return home
+	}
+	return filepath.Join(home, path[2:])
+}
+
 // WriteAtomic writes content to path via a temp file and rename, creating
 // parent directories as needed. Either the destination is fully replaced or
 // it is unchanged; a crash mid-write cannot leave a truncated file at path.

@@ -4,8 +4,52 @@ import (
 	"dave/buffer"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
+
+func TestExpandPath(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Setenv("USERPROFILE", `C:\Users\test`)
+	} else {
+		t.Setenv("HOME", "/tmp/testhome")
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatalf("UserHomeDir: %v", err)
+	}
+	cases := []struct{ in, want string }{
+		{"", ""},
+		{"~", home},
+		{"~/foo", filepath.Join(home, "foo")},
+		{"~/bin/cleanscan.sh", filepath.Join(home, "bin/cleanscan.sh")},
+		{"/abs/path", "/abs/path"},
+		{"./rel", "./rel"},
+		{"plain.txt", "plain.txt"},
+		{"~user", "~user"}, // only ~ or ~/ expands
+		{"~otheruser/x", "~otheruser/x"},
+		{"foo~bar", "foo~bar"}, // ~ not at start: untouched
+	}
+	for _, c := range cases {
+		if got := ExpandPath(c.in); got != c.want {
+			t.Errorf("ExpandPath(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+func TestExpandPathNoHome(t *testing.T) {
+	// If UserHomeDir can't determine home, ExpandPath should leave ~ alone.
+	if runtime.GOOS == "windows" {
+		t.Setenv("USERPROFILE", "")
+		t.Setenv("HOMEDRIVE", "")
+		t.Setenv("HOMEPATH", "")
+	} else {
+		t.Setenv("HOME", "")
+	}
+	if got := ExpandPath("~/foo"); got != "~/foo" {
+		t.Errorf("ExpandPath with no home = %q, want %q", got, "~/foo")
+	}
+}
 
 func TestNewFile(t *testing.T) {
 	f := New()

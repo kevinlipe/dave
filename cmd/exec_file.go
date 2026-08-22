@@ -18,7 +18,7 @@ func (s *Session) execN() error {
 }
 
 func (s *Session) execB(arg string) error {
-	names := strings.Fields(arg)
+	names := splitPaths(arg)
 	for _, name := range names {
 		f := s.FindFile(name)
 		if f != nil {
@@ -33,7 +33,7 @@ func (s *Session) execB(arg string) error {
 }
 
 func (s *Session) execBig(arg string) error {
-	names := strings.Fields(arg)
+	names := splitPaths(arg)
 	for _, name := range names {
 		f := s.FindFile(name)
 		if f == nil {
@@ -48,7 +48,7 @@ func (s *Session) execBig(arg string) error {
 }
 
 func (s *Session) execD(arg string) error {
-	names := strings.Fields(arg)
+	names := splitPaths(arg)
 	if len(names) == 0 || (len(names) == 1 && names[0] == "") {
 		if s.Current == nil {
 			return fmt.Errorf("D: no current file")
@@ -67,8 +67,17 @@ func (s *Session) execD(arg string) error {
 	return nil
 }
 
+// splitPaths splits arg on whitespace and expands `~` / `~/` in each field.
+func splitPaths(arg string) []string {
+	fields := strings.Fields(arg)
+	for i, s := range fields {
+		fields[i] = file.ExpandPath(s)
+	}
+	return fields
+}
+
 func (s *Session) execE(f *file.File, name string, ctx *execCtx) error {
-	name = strings.TrimSpace(name)
+	name = file.ExpandPath(strings.TrimSpace(name))
 	if name == "" {
 		name = f.Name()
 	}
@@ -96,7 +105,7 @@ func (s *Session) execE(f *file.File, name string, ctx *execCtx) error {
 }
 
 func (s *Session) execR(f *file.File, dot buffer.Range, name string, ctx *execCtx) error {
-	name = strings.TrimSpace(name)
+	name = file.ExpandPath(strings.TrimSpace(name))
 	if name == "" {
 		return fmt.Errorf("r: no filename")
 	}
@@ -114,7 +123,7 @@ func (s *Session) execR(f *file.File, dot buffer.Range, name string, ctx *execCt
 }
 
 func (s *Session) execW(f *file.File, dot buffer.Range, name string) error {
-	name = strings.TrimSpace(name)
+	name = file.ExpandPath(strings.TrimSpace(name))
 	if name == "" {
 		name = f.Name()
 	}
@@ -144,7 +153,7 @@ func (s *Session) execW(f *file.File, dot buffer.Range, name string) error {
 }
 
 func (s *Session) execF(f *file.File, name string) error {
-	name = strings.TrimSpace(name)
+	name = file.ExpandPath(strings.TrimSpace(name))
 	if name != "" {
 		f.SetName(name)
 	}
