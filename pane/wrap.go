@@ -3,7 +3,6 @@ package pane
 import (
 	"dave/buffer"
 	"dave/render"
-	"unicode"
 )
 
 // Wrap builds a Layout for buf.
@@ -103,7 +102,7 @@ func wrapLine(out []VisualLine, runes []rune, base int, face render.Face,
 		rw := runeWidth(r, curW, face, tabWidth)
 
 		if wordWrap {
-			isWord := isWordRune(r)
+			isWord := buffer.IsWordRune(r)
 			if isWord && !inWord {
 				wordStart = pos
 				inWord = true
@@ -121,7 +120,7 @@ func wrapLine(out []VisualLine, runes []rune, base int, face render.Face,
 				lineWrapped = true
 				curW = newCurW
 				wordStart = lineStart
-				inWord = isWordRune(r)
+				inWord = buffer.IsWordRune(r)
 				rw = runeWidth(r, curW, face, tabWidth)
 			} else {
 				// Hard wrap: no word boundary in this run.
@@ -130,7 +129,7 @@ func wrapLine(out []VisualLine, runes []rune, base int, face render.Face,
 				lineWrapped = true
 				curW = 0
 				wordStart = pos
-				inWord = isWordRune(r)
+				inWord = buffer.IsWordRune(r)
 				rw = runeWidth(r, 0, face, tabWidth)
 			}
 		}
@@ -222,8 +221,4 @@ func runeWidth(r rune, curX int32, face render.Face, tabWidth int) int32 {
 		return rw
 	}
 	return int32(face.GlyphAdvance(r))
-}
-
-func isWordRune(r rune) bool {
-	return unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_'
 }

@@ -108,45 +108,42 @@ func TestWordBoundsEdges(t *testing.T) {
 	}
 }
 
-// KNOWN BUG, pinned here rather than fixed so the change is a decision
-// rather than a side effect.
+// Word selection is Unicode-aware: an accented letter is part of its word,
+// the same way it is when deciding where a line wraps.
 //
-// input.isWordRune is ASCII-only, while pane.isWordRune -- which decides
-// where lines wrap -- is Unicode-aware. So an accented letter is a word rune
-// for wrapping and not for selection, and double-clicking "héllo" selects
-// "h", "é" or "llo" depending on where the click lands. Ctrl-arrow stops at
-// every accent for the same reason. In an editor whose stated purpose is
-// prose, that is wrong.
-//
-// These assertions record what it does today. See TODO.md.
-func TestWordBoundsMultibyteIsASCIIOnly(t *testing.T) {
+// These two definitions used to differ -- pane's was Unicode-aware and
+// input's was ASCII-only -- so double-clicking "héllo" selected "h", "é" or
+// "llo" depending where the click landed. Both now call buffer.IsWordRune.
+func TestWordBoundsMultibyte(t *testing.T) {
 	buf := mkFile("héllo ☃ wörld").Buffer()
 
-	// Wanted: [0,5), the whole word. Actual: the accent splits it.
-	if lo, hi := WordBounds(buf, 1); lo != 1 || hi != 2 {
-		t.Errorf("the é in héllo: got [%d,%d), want [1,2) as it stands today", lo, hi)
+	for _, cp := range []int{0, 1, 2, 3, 4} {
+		if lo, hi := WordBounds(buf, cp); lo != 0 || hi != 5 {
+			t.Errorf("cp %d in héllo: got [%d,%d), want [0,5)", cp, lo, hi)
+		}
 	}
-	if lo, hi := WordBounds(buf, 0); lo != 0 || hi != 1 {
-		t.Errorf("the h in héllo: got [%d,%d), want [0,1) as it stands today", lo, hi)
+	for _, cp := range []int{8, 9, 10, 11, 12} {
+		if lo, hi := WordBounds(buf, cp); lo != 8 || hi != 13 {
+			t.Errorf("cp %d in wörld: got [%d,%d), want [8,13)", cp, lo, hi)
+		}
 	}
-	if lo, hi := WordBounds(buf, 2); lo != 2 || hi != 5 {
-		t.Errorf("the llo in héllo: got [%d,%d), want [2,5) as it stands today", lo, hi)
-	}
-
-	// The snowman and the spaces round it are non-word runes either way, so
-	// this part is unaffected and would stay the same after a fix.
+	// A snowman is a symbol, not a letter, so it and the spaces round it are
+	// still one run of non-word runes.
 	if lo, hi := WordBounds(buf, 6); lo != 5 || hi != 8 {
 		t.Errorf("the snowman run: got [%d,%d), want [5,8)", lo, hi)
 	}
 }
 
-// The two definitions disagree, which is the bug in one line.
-func TestWordRuneDefinitionsDisagreeOnNonASCII(t *testing.T) {
-	for _, r := range []rune{'é', 'ö', 'ñ', 'α', '日'} {
-		if isWordRune(r) {
-			t.Errorf("input.isWordRune(%q) is now true; if this was fixed "+
-				"deliberately, update TestWordBoundsMultibyteIsASCIIOnly too", r)
-		}
+// Ctrl-arrow crosses an accented word in one step rather than stopping at
+// the accent.
+func TestSkipWordBoundaryCrossesAccentedWords(t *testing.T) {
+	buf := mkFile("héllo wörld").Buffer()
+	n := buf.Len()
+	if got := skipWordBoundary(buf, 0, +1, n); got != 5 {
+		t.Errorf("forward over héllo = %d, want 5", got)
+	}
+	if got := skipWordBoundary(buf, 11, -1, n); got != 6 {
+		t.Errorf("backward over wörld = %d, want 6", got)
 	}
 }
 
@@ -389,13 +386,15 @@ func TestCpAtTargetXPicksNearestBoundary(t *testing.T) {
 }
 
 func TestIsWordRune(t *testing.T) {
-	for _, r := range []rune{'a', 'z', 'A', 'Z', '0', '9', '_'} {
-		if !isWordRune(r) {
+	// Letters and digits in any script, plus the underscore.
+	for _, r := range []rune{'a', 'z', 'A', 'Z', '0', '9', '_', 'é', 'ö', 'ñ', 'α', '日', '٧'} {
+		if !buffer.IsWordRune(r) {
 			t.Errorf("%q should be a word rune", r)
 		}
 	}
-	for _, r := range []rune{' ', '\t', '\n', '.', '-', '(', 'é', '☃'} {
-		if isWordRune(r) {
+	// Symbols, punctuation and whitespace are not, whatever their script.
+	for _, r := range []rune{' ', '\t', '\n', '.', '-', '(', '☃', '—', '€'} {
+		if buffer.IsWordRune(r) {
 			t.Errorf("%q should not be a word rune", r)
 		}
 	}

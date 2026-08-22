@@ -32,7 +32,7 @@ func WordBounds(buf *buffer.Buffer, cp int) (lo, hi int) {
 	}
 
 	// Word selection: extend in both directions.
-	isWord := isWordRune(r)
+	isWord := buffer.IsWordRune(r)
 	lo = cp
 	for lo > 0 && isWordChar(buf, lo-1) == isWord {
 		lo--
@@ -53,7 +53,7 @@ func runeAt(buf *buffer.Buffer, cp int) rune {
 }
 
 func isWordChar(buf *buffer.Buffer, cp int) bool {
-	return isWordRune(runeAt(buf, cp))
+	return buffer.IsWordRune(runeAt(buf, cp))
 }
 
 // matchingPair returns the bracket pair for r.
@@ -376,8 +376,4 @@ func visibleLines(p *pane.Pane, winH int32) int {
 		return 1
 	}
 	return int(p.PaneH() / lineH)
-}
-
-func isWordRune(r rune) bool {
-	return r == '_' || (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9')
 }
