@@ -152,38 +152,11 @@ func TestParseErrorUnclosedBrace(t *testing.T) {
 	assertError(t, r.err)
 }
 
-// ---- '#' comment recognition (Dave extension over Sam) ---------------------
-
-func TestCommentRecognition(t *testing.T) {
-	// '#' is a comment only when followed by whitespace, another '#', or
-	// end-of-line. All #-address forms must pass through untouched.
-	cases := []struct {
-		in      string
-		comment bool
-	}{
-		// Comments.
-		{"# a comment", true},
-		{"#\ta comment", true},
-		{"##", true},
-		{"#", true},
-		// Not comments — all pass through to address / command parser.
-		{"#0", false},
-		{"#42", false},
-		{"#a", false}, // Sam: char-addr default + 'a' command
-		{"#/foo/", false},
-		{"#-3", false},
-	}
-	for _, c := range cases {
-		got := isCommentStart(c.in, 0)
-		if got != c.comment {
-			t.Errorf("isCommentStart(%q) = %v, want %v", c.in, got, c.comment)
-		}
-	}
-}
-
+// Regression for the #-comment collision that started this whole
+// investigation: `#0,#4 p` used to be swallowed as a comment before
+// it could parse as a char-offset compound address. Dave now has no
+// comment syntax (matching Sam), so this must parse straight through.
 func TestParseCommands_HashDigitIsAddress(t *testing.T) {
-	// The bug that started all this: `#0,#4 p` was silently discarded as
-	// a comment before it could parse.
 	cmds, err := ParseCommands("#0,#4 p")
 	if err != nil {
 		t.Fatalf("ParseCommands: %v", err)
@@ -196,16 +169,6 @@ func TestParseCommands_HashDigitIsAddress(t *testing.T) {
 	}
 	if cmds[0].Addr == nil {
 		t.Errorf("addr = nil, want #0,#4")
-	}
-}
-
-func TestParseCommands_TrailingComment(t *testing.T) {
-	cmds, err := ParseCommands("d # delete the current selection")
-	if err != nil {
-		t.Fatalf("ParseCommands: %v", err)
-	}
-	if len(cmds) != 1 || cmds[0].Op != 'd' {
-		t.Fatalf("got %d commands, first op = %q", len(cmds), cmds[0].Op)
 	}
 }
 

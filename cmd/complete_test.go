@@ -125,16 +125,6 @@ func TestFeedEdStyleAfterAddress(t *testing.T) {
 	}
 }
 
-func TestFeedComments(t *testing.T) {
-	if !feedLines("# a comment") {
-		t.Error("comment line should be complete")
-	}
-	// Comment after command.
-	if !feedLines("d # delete") {
-		t.Error("command with comment should be complete")
-	}
-}
-
 func TestFeedStructuralWithBlock(t *testing.T) {
 	// x/re/ { ... } spanning lines.
 	lines := []struct {

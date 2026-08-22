@@ -15,8 +15,11 @@ the smell, where it lives, and a sketch of the fix.
 ## Test-suite gaps
 
 *(All items covered on 2026-08-22 in `cmd/gaps_test.go`. Writing the
-`#n` non-ASCII test surfaced a real bug — `#` was being swallowed as a
-comment before it could be parsed as a char-offset address; now fixed.)*
+`#n` non-ASCII test surfaced that `#` was being swallowed as a comment
+before it could be parsed as a char-offset address. Rather than patch
+the recognition rule, comment syntax was removed entirely — Sam has no
+comments, sdave scripts live inside a shell where `#` already works,
+and multi-line `-f` scripts are rare enough to wrap in a heredoc.)*
 
 ## Performance
 

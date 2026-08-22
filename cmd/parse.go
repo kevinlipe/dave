@@ -47,12 +47,6 @@ func ParseCommands(s string) ([]*Command, error) {
 		if pos >= len(s) {
 			break
 		}
-		if isCommentStart(s, pos) {
-			for pos < len(s) && s[pos] != '\n' {
-				pos++
-			}
-			continue
-		}
 		cmd, newPos, err := ParseCommand(s, pos)
 		if err != nil {
 			return nil, err
@@ -339,12 +333,6 @@ func (p *cmdParser) parseGroup() ([]*Command, error) {
 			p.consume()
 			break
 		}
-		if isCommentStart(p.input, p.pos) {
-			for p.pos < len(p.input) && p.input[p.pos] != '\n' {
-				p.pos++
-			}
-			continue
-		}
 		cmd, err := p.parseOne()
 		if err != nil {
 			return nil, err
@@ -404,23 +392,4 @@ func (p *cmdParser) scanDelimited(delim byte) (string, error) {
 // bufferRangeText returns the text of a Range from a buffer (helper).
 func bufferRangeText(buf *buffer.Buffer, r buffer.Range) string {
 	return buf.ReadAt(r.Start, r.End-r.Start)
-}
-
-// isCommentStart reports whether s[i:] begins a Dave line comment.
-//
-// Sam has no comments — '#' is always part of a `#n` char-offset address.
-// Dave adds comments as a creature comfort, but the recognition rule is
-// deliberately narrow so it can never collide with any Sam address form:
-// a comment is '#' followed by whitespace, another '#', or end-of-line.
-// Anything else after '#' (digit, letter, punctuation like '/' or '-')
-// is passed through to the address parser.
-func isCommentStart(s string, i int) bool {
-	if i < 0 || i >= len(s) || s[i] != '#' {
-		return false
-	}
-	if i+1 >= len(s) {
-		return true
-	}
-	c := s[i+1]
-	return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '#'
 }
