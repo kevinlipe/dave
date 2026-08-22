@@ -175,6 +175,96 @@ parse error: unknown command "-"
   addr-> [0,40)
 exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[0,40) out="one two three\nfour five six\nséven eight\n" err=<nil>
 
+=== "+/two/"
+parse error: unknown command "+"
+
+=== "-/two/"
+parse error: unknown command "-"
+
+=== "+?two?"
+parse error: unknown command "+"
+
+=== "-?two?"
+parse error: unknown command "-"
+
+=== ".+/o/"
+  op="p" addr=true dest=false
+  addr-> [15,16)
+exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[15,16) out="o\n" err=<nil>
+
+=== ".-?o?"
+  op="p" addr=true dest=false
+  addr-> [0,1)
+exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[0,1) out="o\n" err=<nil>
+
+=== "1+/o/"
+  op="p" addr=true dest=false
+  addr-> [15,16)
+exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[15,16) out="o\n" err=<nil>
+
+=== "$-?o?"
+  op="p" addr=true dest=false
+  addr-> [15,16)
+exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[15,16) out="o\n" err=<nil>
+
+=== "/two/+/five/"
+  op="p" addr=true dest=false
+  addr-> [19,23)
+exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[19,23) out="five\n" err=<nil>
+
+=== "?five?-?two?"
+  op="p" addr=true dest=false
+  addr-> [4,7)
+exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[4,7) out="two\n" err=<nil>
+
+=== "1+1+1"
+  op="p" addr=true dest=false
+  addr-> [28,40)
+exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[28,40) out="séven eight\n" err=<nil>
+
+=== "$-1-1"
+  op="p" addr=true dest=false
+  addr-> [28,40)
+exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[28,40) out="séven eight\n" err=<nil>
+
+=== ".+1-1"
+  op="p" addr=true dest=false
+  addr-> [0,14)
+exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[0,14) out="one two three\n" err=<nil>
+
+=== "1,2+1"
+  op="p" addr=true dest=false
+  addr-> [28,40)
+exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[28,40) out="séven eight\n" err=<nil>
+
+=== "1;.+1"
+  op="p" addr=true dest=false
+  addr-> [14,28)
+exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[14,28) out="four five six\n" err=<nil>
+
+=== "#0+1"
+  op="p" addr=true dest=false
+  addr-> [0,14)
+exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[0,14) out="one two three\n" err=<nil>
+
+=== "#4-#2"
+  op="p" addr=true dest=false
+  addr-> [2,2)
+exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[2,2) out="\n" err=<nil>
+
+=== "0;/two/"
+  op="p" addr=true dest=false
+  addr-> [0,7)
+exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[0,7) out="one two\n" err=<nil>
+
+=== "\"x\""
+  op="p" addr=true dest=false
+  addr-> error: addr: "x": no matching file
+exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[4,7) out="" err=addr: "x": no matching file
+
+=== "\"x\"1"
+parse error: unknown command "1"
+
 === "a/added/"
   op="a" addr=false dest=false args=["added"]
   addr-> none

@@ -44,6 +44,16 @@ var corpus = []string{
 	".+1", ".-1", "1+1", "$-1", ".+", ".-", "+", "-", "+-", "-+",
 	"/two/+1", "2-/two/",
 	"-1", "1,2,3",
+	// regexp as the right operand of + and -, both search directions, since
+	// evalPlus and evalMinus override the direction the parser recorded
+	"+/two/", "-/two/", "+?two?", "-?two?",
+	".+/o/", ".-?o?", "1+/o/", "$-?o?",
+	"/two/+/five/", "?five?-?two?",
+	// nested and repeated composition
+	"1+1+1", "$-1-1", ".+1-1", "1,2+1", "1;.+1",
+	"#0+1", "#4-#2", "0;/two/",
+	// file patterns
+	`"x"`, `"x"1`,
 
 	// --- text commands ---------------------------------------------------
 	"a/added/", "i/ins/", "c/chg/",
