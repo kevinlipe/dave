@@ -11,27 +11,26 @@ rendering and layout**, which is where every item below lives except two.
 
 ## Rendering and layout
 
-### Every relayout is a full re-wrap, and copies the file twice to do it
+### Rebuilding the buffer's line table dominates every keystroke
 
-The biggest editing-latency problem left, and the one thing standing
-between "fast small-file editor" and "editable at any size".
+Now the largest per-keystroke cost, and by a wide margin: profiling one
+keystroke on a 100k-word file puts **92% of it in
+`buffer.rebuildLines`** and about 5% in the layout work it was called to
+support.
 
-- **Where:** `pane/wrap.go:56` — `runes := []rune(buf.String())`
-- **Smell:** `buf.String()` allocates the whole file as a string and
-  `[]rune(...)` allocates it again as a rune slice, on *every* buffer
-  change. A 10MB file costs 40MB of allocation per keystroke before any
-  wrapping happens. Then the entire file is re-wrapped in order to
-  redraw a screenful.
-- **Fix — incremental layout.** Re-wrap only the affected line range and
-  shift `Y` for the lines below; Plan 9's layout engine does this. A
-  cheaper first cut: track the buffer generation and edit region the
-  layout was correct for, and when the next edit falls inside the same
-  visible viewport, re-wrap only from the previous line start through
-  end-of-visible. The proper version segments the layout into
-  paragraph-sized chunks that can be invalidated independently.
-- **Note:** an allocation-free `buffer.RuneIterator` would remove the
-  copying, but it leaves the O(file) re-wrap in place. Incremental
-  layout fixes both, and simple is better here.
+- **Where:** `buffer/lines.go` — `rebuildLines`, via `lineStarts`
+- **Smell:** the line-start table is rebuilt from scratch whenever `Gen`
+  moves, so it rescans the whole file on every edit. Incremental layout
+  made this visible by removing everything that used to be larger.
+- **Fix:** extend the table lazily rather than building it whole. Keep a
+  `scannedTo` offset and push the scan forward only as far as a query
+  needs — `2p` scans two lines, `$` scans everything — and on an edit
+  discard only the entries at or after it rather than all of them. This
+  does less work rather than the same work faster, which is the right
+  shape.
+- **Not urgent:** 0.94ms per keystroke at 100k words is well inside a
+  16ms frame. This is the next lever if editing latency ever matters
+  again, not a problem today.
 
 ### `drawBody` re-reads the same line several times per frame
 
@@ -78,7 +77,10 @@ between "fast small-file editor" and "editable at any size".
 
 Down from ~15; the address and command paths no longer use it per match.
 
-- `pane/wrap.go:56` and `file/file.go:150`/`:166` are covered above.
+- `pane/wrap.go:56` is now only reached on a full wrap — a resize, a font
+  change, word wrap toggled, or an edit older than the buffer's edit log —
+  rather than on every keystroke. `file/file.go:150`/`:166` are covered
+  above.
 - The rest: `addr/addr.go:159` (`evalRegexp`), `cmd/exec_struct.go:43`
   and `:91` (`execX`, `execY`), `main.go:472` (`lookForward`).
 - **Note:** the regexp ones are the awkward set, because Go's `regexp`
@@ -86,6 +88,21 @@ Down from ~15; the address and command paths no longer use it per match.
   allocation-free iterator the matcher can drive, or accepting the copy.
   Not urgent now that the per-match quadratics are gone: a search costs
   one copy per command rather than one per match.
+
+## Known limitations
+
+### A file with no newlines re-wraps entirely on every keystroke
+
+Incremental layout re-wraps whole logical lines, so a file with no
+newlines in it — minified JSON, say — is a single logical line and gets
+no benefit. This is no worse than the old behaviour, and prose files
+always have paragraph breaks, so it was left alone deliberately.
+
+The fix, if it is ever wanted, is resumable mid-line wrapping:
+checkpoint the wrap state (`curW`, `wordStart`, `inWord`) per visual
+line and restart from the last break the edit cannot have moved.
+Word-wrap lookback makes that materially harder than the per-line case,
+since a change can move a break point backwards.
 
 ## Known divergences from sam
 

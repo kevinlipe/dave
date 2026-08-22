@@ -21,6 +21,11 @@ type Pane struct {
 	layoutGen int   // buffer generation when layout was last computed
 	scrollY   int32 // pixel scroll offset (0 = top)
 	wordWrap  bool  // current word-wrap state (starts from cfg.WordWrap)
+
+	// Counters for tests, so they can tell an incremental relayout from a
+	// full one rather than passing either way.
+	fullWraps            int
+	incrementalRelayouts int
 }
 
 // New creates a Pane displaying f.
@@ -90,17 +95,121 @@ func (p *Pane) Relayout(contentW int32) {
 		// Can't render an unloadable file; leave layout as-is.
 		return
 	}
-	bufGen := p.File.Buffer().Gen()
+	buf := p.File.Buffer()
+	bufGen := buf.Gen()
 	if contentW == p.paneW && bufGen == p.layoutGen {
 		return
 	}
-	p.paneW = contentW
-	p.layoutGen = bufGen
 	margin := p.cfg.Margin
 	if !p.wordWrap {
 		margin = 0 // margin ignored when word wrap is off
 	}
-	p.layout = Wrap(p.File.Buffer(), p.face, contentW, p.wordWrap, margin, p.cfg.TabWidth)
+
+	// If only the text changed, and the buffer can still say where, re-wrap
+	// just the logical lines the edit touched. Anything else — a resize, a
+	// new face, word wrap toggled, or an edit too old for the buffer's log —
+	// falls through to a full wrap.
+	if contentW == p.paneW && len(p.layout.Lines) > 0 {
+		if lo, hi, ok := buf.EditsSince(p.layoutGen); ok {
+			if p.relayoutRange(buf, lo, hi) {
+				p.layoutGen = bufGen
+				return
+			}
+		}
+	}
+
+	p.paneW = contentW
+	p.layoutGen = bufGen
+	p.layout = Wrap(buf, p.face, contentW, p.wordWrap, margin, p.cfg.TabWidth)
+	p.fullWraps++
+}
+
+// relayoutRange re-wraps the logical lines spanning codepoints [lo, hi) and
+// splices the result into the existing layout, shifting the lines below by
+// the change in length. It reports whether it succeeded; on false the caller
+// must do a full wrap.
+//
+// Every step that assumes the old layout still lines up with the buffer is
+// checked, and any mismatch bails out rather than producing a layout that is
+// subtly wrong.
+func (p *Pane) relayoutRange(buf *buffer.Buffer, lo, hi int) bool {
+	old := p.layout.Lines
+	// Wrap's last visual line always ends at the end of the buffer, which is
+	// how the old length is recovered without storing it.
+	oldLen := old[len(old)-1].Hi
+	delta := buf.Len() - oldLen
+	if lo == hi && delta == 0 {
+		return true // a generation moved but nothing actually changed
+	}
+
+	firstLine := buf.LineNumber(lo)
+	lastLine := buf.LineNumber(hi)
+	first, ok1 := buf.LineRange(firstLine)
+	last, ok2 := buf.LineRange(lastLine)
+	if !ok1 || !ok2 {
+		return false
+	}
+
+	// The region starts at a logical line start, which is at or before the
+	// first changed codepoint and so has the same offset in both the old and
+	// the new buffer.
+	startCP := first.Start
+	oldFirst := p.layout.LineAt(startCP)
+	if oldFirst >= len(old) || old[oldFirst].Lo != startCP {
+		return false
+	}
+
+	// It ends where the next logical line begins, which does move.
+	oldLast := len(old) - 1
+	if lastLine < buf.LineCount() {
+		nextStart := last.End - delta
+		idx := p.layout.LineAt(nextStart)
+		if idx <= oldFirst || idx >= len(old) || old[idx].Lo != nextStart {
+			return false
+		}
+		oldLast = idx - 1
+	}
+	if oldLast < oldFirst {
+		return false
+	}
+
+	// Re-wrap the affected logical lines, and only those.
+	var fresh []VisualLine
+	for ln := firstLine; ln <= lastLine; ln++ {
+		r, ok := buf.LineRange(ln)
+		if !ok {
+			return false
+		}
+		end := r.End
+		if end > r.Start && buf.RuneAt(end-1) == '\n' {
+			end-- // the newline belongs to no visual line
+		}
+		fresh = wrapLine(fresh, []rune(buf.ReadAt(r.Start, end-r.Start)), r.Start,
+			p.face, p.wordWrap, p.layout.WrapWidth, p.cfg.TabWidth)
+	}
+
+	// Typing inside a line usually produces the same number of visual lines,
+	// in which case the replacement is written over the old lines in place
+	// and nothing is allocated at all.
+	replaced := oldLast + 1 - oldFirst
+	lines := old
+	if len(fresh) == replaced {
+		copy(old[oldFirst:], fresh)
+	} else {
+		tail := make([]VisualLine, len(old)-oldLast-1)
+		copy(tail, old[oldLast+1:])
+		lines = append(append(old[:oldFirst], fresh...), tail...)
+	}
+	// Everything below the splice keeps its wrapping and just moves.
+	for i := oldFirst + len(fresh); i < len(lines); i++ {
+		lines[i].Lo += delta
+		lines[i].Hi += delta
+	}
+
+	p.layout.Lines = lines
+	p.layout.TotalHeight = int32(len(lines)) * p.layout.LineH
+	p.incrementalRelayouts++
+	return true
 }
 
 // ScrollTo sets the scroll offset (clamped to valid range).

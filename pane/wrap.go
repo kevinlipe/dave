@@ -56,44 +56,50 @@ func Wrap(buf *buffer.Buffer, face render.Face, paneWidthPx int32, wordWrap bool
 	runes := []rune(buf.String())
 	n := len(runes)
 
-	if n == 0 {
-		return Layout{
-			Lines:       []VisualLine{{Lo: 0, Hi: 0, Wrapped: false}},
-			LineH:       lineH,
-			TotalHeight: lineH,
-			MarginLeft:  marginLeft,
-			WrapWidth:   wrapPx,
+	// Wrapping never crosses a newline: every reset of the wrap state happens
+	// at one. So the layout is exactly the concatenation of independently
+	// wrapped logical lines, and wrapLine does the actual work. A trailing
+	// newline yields a final empty line, and so does an empty buffer.
+	var lines []VisualLine
+	segStart := 0
+	for i := 0; i <= n; i++ {
+		if i == n || runes[i] == '\n' {
+			lines = wrapLine(lines, runes[segStart:i], segStart, face, wordWrap, wrapPx, tabWidth)
+			segStart = i + 1
 		}
 	}
 
-	var lines []VisualLine
-	lineIdx := 0
-	pos := 0
+	return Layout{
+		Lines:       lines,
+		LineH:       lineH,
+		TotalHeight: int32(len(lines)) * lineH,
+		MarginLeft:  marginLeft,
+		WrapWidth:   wrapPx,
+	}
+}
+
+// wrapLine appends to out the visual lines for one logical line. runes is the
+// line's text with its terminating newline excluded, and base is the
+// codepoint offset at which it begins in the buffer.
+//
+// A logical line always produces at least one visual line, even when empty.
+func wrapLine(out []VisualLine, runes []rune, base int, face render.Face,
+	wordWrap bool, wrapPx int32, tabWidth int) []VisualLine {
+
+	n := len(runes)
 	lineStart := 0
 	lineWrapped := false
 	curW := int32(0)
 	wordStart := 0
 	inWord := false
 
-	flushLine := func(lo, hi int, wrapped bool) {
-		lines = append(lines, VisualLine{Lo: lo, Hi: hi, Wrapped: wrapped})
-		lineIdx++
+	flush := func(lo, hi int, wrapped bool) {
+		out = append(out, VisualLine{Lo: base + lo, Hi: base + hi, Wrapped: wrapped})
 	}
 
+	pos := 0
 	for pos < n {
 		r := runes[pos]
-
-		if r == '\n' {
-			flushLine(lineStart, pos, lineWrapped)
-			pos++
-			lineStart = pos
-			lineWrapped = false
-			curW = 0
-			wordStart = pos
-			inWord = false
-			continue
-		}
-
 		rw := runeWidth(r, curW, face, tabWidth)
 
 		if wordWrap {
@@ -109,7 +115,7 @@ func Wrap(buf *buffer.Buffer, face render.Face, paneWidthPx int32, wordWrap bool
 		if wordWrap && curW+rw > wrapPx && pos > lineStart {
 			if wordStart > lineStart {
 				// Soft wrap back to last word boundary.
-				flushLine(lineStart, wordStart, lineWrapped)
+				flush(lineStart, wordStart, lineWrapped)
 				newCurW := measureRunes(runes, wordStart, pos, face, tabWidth)
 				lineStart = wordStart
 				lineWrapped = true
@@ -119,7 +125,7 @@ func Wrap(buf *buffer.Buffer, face render.Face, paneWidthPx int32, wordWrap bool
 				rw = runeWidth(r, curW, face, tabWidth)
 			} else {
 				// Hard wrap: no word boundary in this run.
-				flushLine(lineStart, pos, lineWrapped)
+				flush(lineStart, pos, lineWrapped)
 				lineStart = pos
 				lineWrapped = true
 				curW = 0
@@ -133,8 +139,8 @@ func Wrap(buf *buffer.Buffer, face render.Face, paneWidthPx int32, wordWrap bool
 		pos++
 	}
 
-	flushLine(lineStart, n, lineWrapped)
-	return Layout{Lines: lines, LineH: lineH, TotalHeight: int32(lineIdx) * lineH, MarginLeft: marginLeft, WrapWidth: wrapPx}
+	flush(lineStart, n, lineWrapped)
+	return out
 }
 
 // LineAt returns the index of the visual line containing codepoint offset cp.
