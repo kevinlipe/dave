@@ -47,7 +47,9 @@ var corpus = []string{
 	// regexp as the right operand of + and -, both search directions, since
 	// evalPlus and evalMinus override the direction the parser recorded
 	"+/two/", "-/two/", "+?two?", "-?two?",
-	".+/o/", ".-?o?", "1+/o/", "$-?o?",
+	// all four operator/delimiter combinations against a pattern that occurs
+	// on both sides of dot, so each lands somewhere different
+	".+/o/", ".+?o?", ".-/o/", ".-?o?", "1+/o/", "$-?o?",
 	"/two/+/five/", "?five?-?two?",
 	// nested and repeated composition
 	"1+1+1", "$-1-1", ".+1-1", "1,2+1", "1;.+1",

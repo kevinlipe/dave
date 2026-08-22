@@ -48,8 +48,33 @@ type Addr struct {
 	Right *Addr
 }
 
-// backward reports whether a regexp address searches backwards.
-func (a *Addr) backward() bool { return a.Kind == KindBackRe }
+// searchBackward reports which way a regexp address searches, given the
+// sign set by the operator it hangs off: +1 after '+', -1 after '-', and 0
+// when the regexp stands alone.
+//
+// This follows sam (address.c), where '?' does not mean "search backwards"
+// outright -- it negates whatever direction the preceding operator set, and
+// only falls back to backwards when there was no operator:
+//
+//	case '?':
+//		sign = -sign;
+//		if(sign == 0)
+//			sign = -1;
+//		/* fall through */
+//	case '/':
+//
+// So /re/ and +/re/ search forward, ?re? and -/re/ search backward, and the
+// two that surprise people -- +?re? and -?re? -- search backward and forward
+// respectively.
+func searchBackward(sign int, kind Kind) bool {
+	if kind == KindBackRe {
+		sign = -sign
+		if sign == 0 {
+			sign = -1
+		}
+	}
+	return sign < 0
+}
 
 // --- Evaluation --------------------------------------------------------------
 
@@ -73,7 +98,7 @@ func eval(a *Addr, f *file.File, files []*file.File) (buffer.Range, error) {
 		n := f.Len()
 		return buffer.Range{Start: n, End: n}, nil
 	case KindRegexp, KindBackRe:
-		return evalRegexp(a.Pat, a.backward(), f)
+		return evalRegexp(a.Pat, searchBackward(0, a.Kind), f)
 	case KindFilePat:
 		// Returns whole range of matched file; cmd layer switches to that file.
 		ff, err := FindFileByPat(a.Pat, files, f)
@@ -259,11 +284,11 @@ func evalPlus(a *Addr, f *file.File, files []*file.File) (buffer.Range, error) {
 		}
 		return lineRange(f, firstLine+right.Num-1)
 	case KindRegexp, KindBackRe:
-		// + always searches forward, whichever delimiter was written.
+		// + sets the direction forward; ?re? negates it. See searchSign.
 		saved := f.Dot()
 		f.SetDot(buffer.Range{Start: base.End, End: base.End})
 		defer f.SetDot(saved)
-		return evalRegexp(right.Pat, false, f)
+		return evalRegexp(right.Pat, searchBackward(+1, right.Kind), f)
 	}
 	saved := f.Dot()
 	f.SetDot(buffer.Range{Start: base.End, End: base.End})
@@ -295,11 +320,11 @@ func evalMinus(a *Addr, f *file.File, files []*file.File) (buffer.Range, error) 
 		}
 		return lineRange(f, target)
 	case KindRegexp, KindBackRe:
-		// - always searches backward, whichever delimiter was written.
+		// - sets the direction backward; ?re? negates it. See searchSign.
 		saved := f.Dot()
 		f.SetDot(buffer.Range{Start: base.Start, End: base.Start})
 		defer f.SetDot(saved)
-		return evalRegexp(right.Pat, true, f)
+		return evalRegexp(right.Pat, searchBackward(-1, right.Kind), f)
 	}
 	saved := f.Dot()
 	f.SetDot(buffer.Range{Start: base.Start, End: base.Start})

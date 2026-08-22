@@ -6,7 +6,18 @@ the smell, where it lives, and a sketch of the fix.
 
 ## Correctness
 
-*(All items in this section were fixed on 2026-08-22 — see git log.)*
+*(The 2026-08-22 review items were all fixed that day — see git log.)*
+
+#### A leading `+` or `-` is rejected instead of taking an implicit dot
+- **Where:** `addr/addr.go` `parseSimple`
+- **Smell:** `parseSimple` has no case for `+` or `-`, so `+/re/` fails to
+  parse and surfaces as `unknown command "+"`. Sam accepts it: `simpleaddr`
+  handles `+` and `-` as address types, and a missing left operand defaults
+  to dot. Dave requires the dot to be written, `.+/re/`. The package doc
+  claims the parser "inserts all defaults (implicit dot, ...)", which is
+  true everywhere except here.
+- **Fix:** accept `+`/`-` in `parseSimple` and default the left operand to
+  dot, as `evalBase` already does when `Left` is nil.
 
 ## Durability
 

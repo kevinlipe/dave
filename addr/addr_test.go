@@ -642,3 +642,49 @@ func BenchmarkLineAddressWarmNew(b *testing.B) {
 		_, _ = lineRange(f, i%100000+1)
 	}
 }
+
+// ---- search direction of regexp addresses -----------------------------------
+
+// In sam (address.c) '?' does not mean "search backwards" outright. It
+// negates whatever direction the preceding operator set, falling back to
+// backwards only when there is no operator:
+//
+//	case '?':
+//		sign = -sign;
+//		if(sign == 0) sign = -1;
+//		/* fall through */
+//	case '/':
+//		nextmatch(f, ap->are, sign>=0? a.r.p2 : a.r.p1, sign);
+//
+// '+' sets sign to 1 and '-' sets it to -1, so +?re? searches backwards and
+// -?re? searches forwards. Both read as contradictions and both are what sam
+// does.
+//
+// The file below has an X on either side of dot so that every combination
+// lands on a different one, which a pattern occurring once cannot show.
+func TestRegexpSearchDirectionFollowsSam(t *testing.T) {
+	const text = "aXbXcXd" // X at codepoints 1, 3, 5
+	cases := []struct {
+		addr       string
+		start, end int
+		why        string
+	}{
+		{"/X/", 5, 6, "forward from dot.End"},
+		{"?X?", 3, 4, "no operator, so ? means backward"},
+		// Written with an explicit dot: dave does not yet accept a leading
+		// + or - the way sam does.
+		{".+/X/", 5, 6, "+ is forward, / leaves it"},
+		{".+?X?", 3, 4, "+ is forward, ? negates it to backward"},
+		{".-/X/", 3, 4, "- is backward, / leaves it"},
+		{".-?X?", 5, 6, "- is backward, ? negates it to forward"},
+	}
+	for _, c := range cases {
+		f := makeFile(text)
+		setDot(f, 4, 5) // dot = "c", between the X at 3 and the X at 5
+		r := evalStr(t, c.addr, f)
+		if r.Start != c.start || r.End != c.end {
+			t.Errorf("%s = [%d,%d), want [%d,%d) — %s",
+				c.addr, r.Start, r.End, c.start, c.end, c.why)
+		}
+	}
+}

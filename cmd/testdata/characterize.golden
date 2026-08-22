@@ -192,10 +192,20 @@ parse error: unknown command "-"
   addr-> [15,16)
 exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[15,16) out="o\n" err=<nil>
 
-=== ".-?o?"
+=== ".+?o?"
+  op="p" addr=true dest=false
+  addr-> [6,7)
+exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[6,7) out="o\n" err=<nil>
+
+=== ".-/o/"
   op="p" addr=true dest=false
   addr-> [0,1)
 exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[0,1) out="o\n" err=<nil>
+
+=== ".-?o?"
+  op="p" addr=true dest=false
+  addr-> [6,7)
+exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[6,7) out="o\n" err=<nil>
 
 === "1+/o/"
   op="p" addr=true dest=false
@@ -204,8 +214,8 @@ exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[15,16) 
 
 === "$-?o?"
   op="p" addr=true dest=false
-  addr-> [15,16)
-exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[15,16) out="o\n" err=<nil>
+  addr-> [0,1)
+exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[0,1) out="o\n" err=<nil>
 
 === "/two/+/five/"
   op="p" addr=true dest=false
