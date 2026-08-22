@@ -154,6 +154,29 @@ func (l *Layout) LineAt(cp int) int {
 	return lo
 }
 
+// LineAtY returns the index of the visual line whose line box contains the
+// pixel offset y, measured from the top of the scrollable content (not the
+// screen). A y above the first line clamps to line 0; a y past the last line
+// clamps to the last line. Always returns a valid index.
+//
+// Lines are emitted in increasing Y with a uniform line height, so this is a
+// binary search rather than a scan. drawBody calls it every frame.
+func (l *Layout) LineAtY(y int32) int {
+	if len(l.Lines) == 0 {
+		return 0
+	}
+	lo, hi := 0, len(l.Lines)-1
+	for lo < hi {
+		mid := (lo + hi + 1) / 2
+		if l.Lines[mid].Y <= y {
+			lo = mid
+		} else {
+			hi = mid - 1
+		}
+	}
+	return lo
+}
+
 // XForCP returns the pixel x-offset within vl at which codepoint cp appears,
 // measured from the start of the visual line's text (before MarginLeft).
 func XForCP(buf *buffer.Buffer, vl VisualLine, cp int, face render.Face, tabWidth int) int32 {

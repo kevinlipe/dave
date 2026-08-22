@@ -72,14 +72,28 @@ and compared after every operation.
 
 ### Tier 2 — per-frame or per-command O(n)
 
-#### `pane.drawBody` linearly scans all layout lines to find visible ones
-- **Where:** `pane/pane.go:279`
-- **Smell:** For a 100K-line file that's 100K iterations per frame at
-  60 fps.
-- **Fix:** The layout's `Lines` are sorted by `Y`; binary-search for
-  the first `Y >= scrollY`. Layout already has `LineAt` doing the
-  equivalent for codepoint offset; add `LineAtY`. `CPAtXY`
-  (`pane/pane.go:155`) has the same problem in reverse.
+#### ~~`pane.drawBody` linearly scans all layout lines to find visible ones~~ — DONE 2026-08-22
+
+Added `Layout.LineAtY(y)` in `pane/wrap.go`, mirroring the existing
+`LineAt`: `Wrap` emits `Y = index * lineH`, so `Lines` is strictly
+increasing in `Y` and a binary search is valid. It returns the index of
+the line box containing `y`, clamped at both ends.
+
+Three linear scans now use it: `drawBody` starts its loop at
+`Lines[LineAtY(scrollY):]` instead of iterating from line 0 every
+frame, `CPAtXY` replaces a backward scan from the end of the file, and
+`input.moveDotToTopOfView` replaces a forward scan. Behavior is
+unchanged at every edge — including the click-in-the-top-pad case,
+which still resolves to offset 0.
+
+On a 100K-line layout the lookup goes 117,513 ns → 102.8 ns (~1140×);
+at 60 fps that scan alone was ~0.7% of a frame budget per pane, growing
+linearly with file size. `pane/layout_test.go` (the package's first
+tests) checks `LineAtY` against the naive scan it replaced for every
+pixel across a range of layout sizes, asserts the result always lands
+inside its own line box, and asserts the property `drawBody` actually
+depends on: starting at `LineAtY(scrollY)` never skips a line that is
+still on screen.
 
 #### `addr.lineRange` re-scans the whole file for every line address
 - **Where:** `addr/addr.go:95`
@@ -162,8 +176,8 @@ and compared after every operation.
 
 1. ~~`preGapRunes` cache in the gap buffer (Tier-1 items 1 + 2).~~ DONE
    2026-08-22.
-2. `LineAtY` binary search in `pane` (Tier-2 item 1). Trivial change,
-   immediate frame-time improvement.
+2. ~~`LineAtY` binary search in `pane` (Tier-2 item 1).~~ DONE
+   2026-08-22.
 3. Line-start table in `addr` (Tier-2 item 2). Ranged commands become
    near-free.
 

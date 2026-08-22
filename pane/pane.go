@@ -150,20 +150,15 @@ func (p *Pane) CPAtXY(x, y int32) int {
 		return 0
 	}
 	bodyY := y - render.BodyTopPad + p.scrollY
-
-	// Find the visual line at this y.
-	for i := len(p.layout.Lines) - 1; i >= 0; i-- {
-		vl := p.layout.Lines[i]
-		if vl.Y <= bodyY {
-			// Subtract scrollbar width, inner pad, and olivetti margin offset.
-			relX := x - render.ScrollBarW - render.PanePad - p.layout.MarginLeft
-			return cpAtX(p.File.Buffer(), vl, relX, p.face, p.cfg.TabWidth)
-		}
-	}
-	if len(p.layout.Lines) > 0 {
+	// Above the first line (a click in the top pad while scrolled to the
+	// top) means the start of the buffer.
+	if bodyY < 0 || len(p.layout.Lines) == 0 {
 		return 0
 	}
-	return 0
+	vl := p.layout.Lines[p.layout.LineAtY(bodyY)]
+	// Subtract scrollbar width, inner pad, and olivetti margin offset.
+	relX := x - render.ScrollBarW - render.PanePad - p.layout.MarginLeft
+	return cpAtX(p.File.Buffer(), vl, relX, p.face, p.cfg.TabWidth)
 }
 
 // cpAtX finds the codepoint offset within vl closest to pixel x.
@@ -276,7 +271,10 @@ func (p *Pane) drawBody(ren *sdl.Renderer, rect sdl.Rect) error {
 	dot := p.File.Dot()
 	buf := p.File.Buffer()
 
-	for _, vl := range p.layout.Lines {
+	// Start at the line containing the top of the viewport rather than
+	// scanning every line in the file. The skip below still applies: on the
+	// last line, scrollY can sit past the line box entirely.
+	for _, vl := range p.layout.Lines[p.layout.LineAtY(p.scrollY):] {
 		// Skip lines above the scroll viewport.
 		lineBottom := vl.Y + lineH
 		if lineBottom <= p.scrollY {

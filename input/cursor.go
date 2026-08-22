@@ -357,12 +357,17 @@ func moveDotLineEnd(f *file.File, p *pane.Pane, extend bool) {
 func moveDotToTopOfView(f *file.File, p *pane.Pane, winH int32) {
 	layout := p.Layout()
 	scrollY := p.ScrollY()
-	for _, vl := range layout.Lines {
-		if vl.Y >= scrollY {
-			f.SetDot(buffer.Range{Start: vl.Lo, End: vl.Lo})
-			return
-		}
+	if len(layout.Lines) == 0 {
+		return
 	}
+	// The first line at or below the top of the viewport: the line box
+	// containing scrollY, or the next one down when scrollY falls partway
+	// through it.
+	i := layout.LineAtY(scrollY)
+	if layout.Lines[i].Y < scrollY && i+1 < len(layout.Lines) {
+		i++
+	}
+	f.SetDot(buffer.Range{Start: layout.Lines[i].Lo, End: layout.Lines[i].Lo})
 }
 
 func visibleLines(p *pane.Pane, winH int32) int {
