@@ -1,0 +1,165 @@
+=== empty text="" width=100 wrap=true margin=0 tab=4
+  totalHeight=20 marginLeft=0 wrapWidth=100 lines=1
+  [0] lo=0 hi=0 wrapped=false ""
+
+=== empty-nowrap text="" width=100 wrap=false margin=0 tab=4
+  totalHeight=20 marginLeft=0 wrapWidth=100 lines=1
+  [0] lo=0 hi=0 wrapped=false ""
+
+=== single-word text="hello" width=100 wrap=true margin=0 tab=4
+  totalHeight=20 marginLeft=0 wrapWidth=100 lines=1
+  [0] lo=0 hi=5 wrapped=false "hello"
+
+=== exact-fit text="abcdefghij" width=100 wrap=true margin=0 tab=4
+  totalHeight=20 marginLeft=0 wrapWidth=100 lines=1
+  [0] lo=0 hi=10 wrapped=false "abcdefghij"
+
+=== one-over text="abcdefghijk" width=100 wrap=true margin=0 tab=4
+  totalHeight=40 marginLeft=0 wrapWidth=100 lines=2
+  [0] lo=0 hi=10 wrapped=false "abcdefghij"
+  [1] lo=10 hi=11 wrapped=true "k"
+
+=== two-words text="hello world" width=100 wrap=true margin=0 tab=4
+  totalHeight=40 marginLeft=0 wrapWidth=100 lines=2
+  [0] lo=0 hi=6 wrapped=false "hello "
+  [1] lo=6 hi=11 wrapped=true "world"
+
+=== break-at-boundary text="abcde fghij klmno" width=100 wrap=true margin=0 tab=4
+  totalHeight=60 marginLeft=0 wrapWidth=100 lines=3
+  [0] lo=0 hi=6 wrapped=false "abcde "
+  [1] lo=6 hi=12 wrapped=true "fghij "
+  [2] lo=12 hi=17 wrapped=true "klmno"
+
+=== long-word-hard-wrap text="abcdefghijklmnopqrstuvwxyz" width=100 wrap=true margin=0 tab=4
+  totalHeight=60 marginLeft=0 wrapWidth=100 lines=3
+  [0] lo=0 hi=10 wrapped=false "abcdefghij"
+  [1] lo=10 hi=19 wrapped=true "klmnopqrs"
+  [2] lo=19 hi=26 wrapped=true "tuvwxyz"
+
+=== long-word-after-short text="hi abcdefghijklmnopqrstuvwxyz" width=100 wrap=true margin=0 tab=4
+  totalHeight=80 marginLeft=0 wrapWidth=100 lines=4
+  [0] lo=0 hi=3 wrapped=false "hi "
+  [1] lo=3 hi=13 wrapped=true "abcdefghij"
+  [2] lo=13 hi=22 wrapped=true "klmnopqrs"
+  [3] lo=22 hi=29 wrapped=true "tuvwxyz"
+
+=== trailing-newline text="one two\n" width=100 wrap=true margin=0 tab=4
+  totalHeight=40 marginLeft=0 wrapWidth=100 lines=2
+  [0] lo=0 hi=7 wrapped=false "one two"
+  [1] lo=8 hi=8 wrapped=false ""
+
+=== no-trailing-newline text="one two" width=100 wrap=true margin=0 tab=4
+  totalHeight=20 marginLeft=0 wrapWidth=100 lines=1
+  [0] lo=0 hi=7 wrapped=false "one two"
+
+=== blank-lines text="a\n\n\nb\n" width=100 wrap=true margin=0 tab=4
+  totalHeight=100 marginLeft=0 wrapWidth=100 lines=5
+  [0] lo=0 hi=1 wrapped=false "a"
+  [1] lo=2 hi=2 wrapped=false ""
+  [2] lo=3 hi=3 wrapped=false ""
+  [3] lo=4 hi=5 wrapped=false "b"
+  [4] lo=6 hi=6 wrapped=false ""
+
+=== only-newlines text="\n\n\n" width=100 wrap=true margin=0 tab=4
+  totalHeight=80 marginLeft=0 wrapWidth=100 lines=4
+  [0] lo=0 hi=0 wrapped=false ""
+  [1] lo=1 hi=1 wrapped=false ""
+  [2] lo=2 hi=2 wrapped=false ""
+  [3] lo=3 hi=3 wrapped=false ""
+
+=== multi-line-wrapping text="alpha beta gamma\ndelta epsilon\n" width=100 wrap=true margin=0 tab=4
+  totalHeight=120 marginLeft=0 wrapWidth=100 lines=6
+  [0] lo=0 hi=6 wrapped=false "alpha "
+  [1] lo=6 hi=11 wrapped=true "beta "
+  [2] lo=11 hi=16 wrapped=true "gamma"
+  [3] lo=17 hi=23 wrapped=false "delta "
+  [4] lo=23 hi=30 wrapped=true "epsilon"
+  [5] lo=31 hi=31 wrapped=false ""
+
+=== tabs text="a\tb\tc\n" width=200 wrap=true margin=0 tab=4
+  totalHeight=40 marginLeft=0 wrapWidth=200 lines=2
+  [0] lo=0 hi=5 wrapped=false "a\tb\tc"
+  [1] lo=6 hi=6 wrapped=false ""
+
+=== tabs-narrow text="a\tb\tc\n" width=100 wrap=true margin=0 tab=4
+  totalHeight=40 marginLeft=0 wrapWidth=100 lines=2
+  [0] lo=0 hi=5 wrapped=false "a\tb\tc"
+  [1] lo=6 hi=6 wrapped=false ""
+
+=== tab-width-8 text="a\tb\n" width=200 wrap=true margin=0 tab=8
+  totalHeight=40 marginLeft=0 wrapWidth=200 lines=2
+  [0] lo=0 hi=3 wrapped=false "a\tb"
+  [1] lo=4 hi=4 wrapped=false ""
+
+=== leading-tab text="\tindented line here\n" width=200 wrap=true margin=0 tab=4
+  totalHeight=60 marginLeft=0 wrapWidth=200 lines=3
+  [0] lo=0 hi=15 wrapped=false "\tindented line "
+  [1] lo=15 hi=19 wrapped=true "here"
+  [2] lo=20 hi=20 wrapped=false ""
+
+=== multibyte text="héllo wörld ☃ naïve\n" width=100 wrap=true margin=0 tab=4
+  totalHeight=80 marginLeft=0 wrapWidth=100 lines=4
+  [0] lo=0 hi=6 wrapped=false "héllo "
+  [1] lo=6 hi=14 wrapped=true "wörld ☃ "
+  [2] lo=14 hi=19 wrapped=true "naïve"
+  [3] lo=20 hi=20 wrapped=false ""
+
+=== wide-glyphs text="WWW mmm iii\n" width=100 wrap=true margin=0 tab=4
+  totalHeight=60 marginLeft=0 wrapWidth=100 lines=3
+  [0] lo=0 hi=4 wrapped=false "WWW "
+  [1] lo=4 hi=11 wrapped=true "mmm iii"
+  [2] lo=12 hi=12 wrapped=false ""
+
+=== margin-fits text="alpha beta gamma delta\n" width=400 wrap=true margin=20 tab=4
+  totalHeight=60 marginLeft=100 wrapWidth=200 lines=3
+  [0] lo=0 hi=17 wrapped=false "alpha beta gamma "
+  [1] lo=17 hi=22 wrapped=true "delta"
+  [2] lo=23 hi=23 wrapped=false ""
+
+=== margin-exceeds-pane text="alpha beta gamma delta\n" width=100 wrap=true margin=40 tab=4
+  totalHeight=100 marginLeft=0 wrapWidth=100 lines=5
+  [0] lo=0 hi=6 wrapped=false "alpha "
+  [1] lo=6 hi=11 wrapped=true "beta "
+  [2] lo=11 hi=17 wrapped=true "gamma "
+  [3] lo=17 hi=22 wrapped=true "delta"
+  [4] lo=23 hi=23 wrapped=false ""
+
+=== margin-zero text="alpha beta gamma delta\n" width=200 wrap=true margin=0 tab=4
+  totalHeight=60 marginLeft=0 wrapWidth=200 lines=3
+  [0] lo=0 hi=17 wrapped=false "alpha beta gamma "
+  [1] lo=17 hi=22 wrapped=true "delta"
+  [2] lo=23 hi=23 wrapped=false ""
+
+=== nowrap-long-line text="abcdefghijklmnopqrstuvwxyz\nshort\n" width=100 wrap=false margin=0 tab=4
+  totalHeight=60 marginLeft=0 wrapWidth=100 lines=3
+  [0] lo=0 hi=26 wrapped=false "abcdefghijklmnopqrstuvwxyz"
+  [1] lo=27 hi=32 wrapped=false "short"
+  [2] lo=33 hi=33 wrapped=false ""
+
+=== nowrap-margin-ignored text="alpha beta gamma\n" width=200 wrap=false margin=20 tab=4
+  totalHeight=40 marginLeft=0 wrapWidth=200 lines=2
+  [0] lo=0 hi=16 wrapped=false "alpha beta gamma"
+  [1] lo=17 hi=17 wrapped=false ""
+
+=== spaces-only text="     \n" width=100 wrap=true margin=0 tab=4
+  totalHeight=40 marginLeft=0 wrapWidth=100 lines=2
+  [0] lo=0 hi=5 wrapped=false "     "
+  [1] lo=6 hi=6 wrapped=false ""
+
+=== trailing-spaces text="hi        \n" width=100 wrap=true margin=0 tab=4
+  totalHeight=40 marginLeft=0 wrapWidth=100 lines=2
+  [0] lo=0 hi=10 wrapped=false "hi        "
+  [1] lo=11 hi=11 wrapped=false ""
+
+=== punctuation-breaks text="a,b.c;d:e f\n" width=100 wrap=true margin=0 tab=4
+  totalHeight=60 marginLeft=0 wrapWidth=100 lines=3
+  [0] lo=0 hi=10 wrapped=false "a,b.c;d:e "
+  [1] lo=10 hi=11 wrapped=true "f"
+  [2] lo=12 hi=12 wrapped=false ""
+
+=== underscores-are-word text="foo_bar_baz_qux\n" width=100 wrap=true margin=0 tab=4
+  totalHeight=60 marginLeft=0 wrapWidth=100 lines=3
+  [0] lo=0 hi=10 wrapped=false "foo_bar_ba"
+  [1] lo=10 hi=15 wrapped=true "z_qux"
+  [2] lo=16 hi=16 wrapped=false ""
+
