@@ -10,16 +10,8 @@ the smell, where it lives, and a sketch of the fix.
 
 ## Durability
 
-### `WriteAtomic` doesn't fsync
-- **Where:** `file/file.go` `WriteAtomic`
-- **Smell:** After a power loss, the temp file's data may not have
-  reached disk before rename, so the destination could point at
-  zero-length or truncated content.
-- **Fix:** `fh.Sync()` before `fh.Close()`, and fsync the parent
-  directory after the rename. This is cheap on modern SSDs and a
-  no-op cost on typical edits.
-- **Priority:** low — a text editor crash-losing the last save is
-  annoying but not catastrophic.
+*(Fixed on 2026-08-22 — `WriteAtomic` now fsyncs the file before rename
+and best-effort fsyncs the parent directory after.)*
 
 ## Test-suite gaps
 

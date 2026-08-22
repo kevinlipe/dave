@@ -194,6 +194,11 @@ func ExpandPath(path string) string {
 // WriteAtomic writes content to path via a temp file and rename, creating
 // parent directories as needed. Either the destination is fully replaced or
 // it is unchanged; a crash mid-write cannot leave a truncated file at path.
+//
+// The file is fsynced before the rename, and the containing directory is
+// fsynced after, so the update survives a power loss on POSIX filesystems.
+// Directory fsync is best-effort — Windows returns an error on directory
+// handles, which we ignore since the file itself is already durable.
 func WriteAtomic(path, content string) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -209,6 +214,11 @@ func WriteAtomic(path, content string) error {
 		os.Remove(tmp)
 		return fmt.Errorf("file: writing %q: %w", path, err)
 	}
+	if err := fh.Sync(); err != nil {
+		fh.Close()
+		os.Remove(tmp)
+		return fmt.Errorf("file: syncing %q: %w", path, err)
+	}
 	if err := fh.Close(); err != nil {
 		os.Remove(tmp)
 		return err
@@ -216,6 +226,14 @@ func WriteAtomic(path, content string) error {
 	if err := os.Rename(tmp, path); err != nil {
 		os.Remove(tmp)
 		return fmt.Errorf("file: renaming to %q: %w", path, err)
+	}
+	// Fsync the directory so the rename metadata reaches disk. Best-effort:
+	// on Windows, directory handles reject FlushFileBuffers, and on some
+	// filesystems this returns errors we can safely ignore — the file is
+	// already synced, so the data is durable regardless.
+	if d, err := os.Open(dir); err == nil {
+		_ = d.Sync()
+		d.Close()
 	}
 	return nil
 }

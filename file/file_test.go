@@ -37,6 +37,44 @@ func TestExpandPath(t *testing.T) {
 	}
 }
 
+func TestWriteAtomic(t *testing.T) {
+	dir := t.TempDir()
+	// Nested path — MkdirAll should create sub/dir.
+	path := filepath.Join(dir, "sub", "dir", "out.txt")
+	if err := WriteAtomic(path, "hello dave"); err != nil {
+		t.Fatalf("WriteAtomic: %v", err)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	if string(got) != "hello dave" {
+		t.Errorf("contents = %q, want %q", got, "hello dave")
+	}
+	// No leftover temp file after a successful write.
+	if _, err := os.Stat(path + ".dave-tmp"); !os.IsNotExist(err) {
+		t.Errorf("temp file should not exist after success; stat err = %v", err)
+	}
+}
+
+func TestWriteAtomicReplacesExisting(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "out.txt")
+	if err := os.WriteFile(path, []byte("original"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteAtomic(path, "replaced"); err != nil {
+		t.Fatalf("WriteAtomic: %v", err)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "replaced" {
+		t.Errorf("contents = %q, want %q", got, "replaced")
+	}
+}
+
 func TestExpandPathNoHome(t *testing.T) {
 	// If UserHomeDir can't determine home, ExpandPath should leave ~ alone.
 	if runtime.GOOS == "windows" {
