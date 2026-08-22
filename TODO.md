@@ -8,16 +8,13 @@ the smell, where it lives, and a sketch of the fix.
 
 *(The 2026-08-22 review items were all fixed that day — see git log.)*
 
-#### A leading `+` or `-` is rejected instead of taking an implicit dot
-- **Where:** `addr/addr.go` `parseSimple`
-- **Smell:** `parseSimple` has no case for `+` or `-`, so `+/re/` fails to
-  parse and surfaces as `unknown command "+"`. Sam accepts it: `simpleaddr`
-  handles `+` and `-` as address types, and a missing left operand defaults
-  to dot. Dave requires the dot to be written, `.+/re/`. The package doc
-  claims the parser "inserts all defaults (implicit dot, ...)", which is
-  true everywhere except here.
-- **Fix:** accept `+`/`-` in `parseSimple` and default the left operand to
-  dot, as `evalBase` already does when `Left` is nil.
+#### ~~A leading `+` or `-` is rejected instead of taking an implicit dot~~ — DONE 2026-08-22
+
+`parseCompound` now lets the operator loop start with no left operand.
+A nil `Left` is already how the evaluator spells "dot" — `evalBase`
+returns `f.Dot()` for it — so no node has to be synthesised and no
+special case appears in the loop; it just had to be allowed to begin.
+`+/re/` and friends parse, and each means exactly what `.+/re/` means.
 
 ## Durability
 

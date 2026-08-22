@@ -671,12 +671,16 @@ func TestRegexpSearchDirectionFollowsSam(t *testing.T) {
 	}{
 		{"/X/", 5, 6, "forward from dot.End"},
 		{"?X?", 3, 4, "no operator, so ? means backward"},
-		// Written with an explicit dot: dave does not yet accept a leading
-		// + or - the way sam does.
-		{".+/X/", 5, 6, "+ is forward, / leaves it"},
-		{".+?X?", 3, 4, "+ is forward, ? negates it to backward"},
-		{".-/X/", 3, 4, "- is backward, / leaves it"},
-		{".-?X?", 5, 6, "- is backward, ? negates it to forward"},
+		{"+/X/", 5, 6, "+ is forward, / leaves it"},
+		{"+?X?", 3, 4, "+ is forward, ? negates it to backward"},
+		{"-/X/", 3, 4, "- is backward, / leaves it"},
+		{"-?X?", 5, 6, "- is backward, ? negates it to forward"},
+		// The same six written with the dot spelled out. A leading + or -
+		// means dot, so each pair must agree.
+		{".+/X/", 5, 6, "explicit dot, + then /"},
+		{".+?X?", 3, 4, "explicit dot, + then ?"},
+		{".-/X/", 3, 4, "explicit dot, - then /"},
+		{".-?X?", 5, 6, "explicit dot, - then ?"},
 	}
 	for _, c := range cases {
 		f := makeFile(text)
@@ -685,6 +689,65 @@ func TestRegexpSearchDirectionFollowsSam(t *testing.T) {
 		if r.Start != c.start || r.End != c.end {
 			t.Errorf("%s = [%d,%d), want [%d,%d) — %s",
 				c.addr, r.Start, r.End, c.start, c.end, c.why)
+		}
+	}
+}
+
+// A leading + or - has an implicit dot on its left, as in sam. Each form
+// must mean exactly what the dot-prefixed spelling means.
+func TestLeadingPlusMinusImpliesDot(t *testing.T) {
+	const text = "one\ntwo\nthree\nfour\nfive\n"
+	for _, pair := range [][2]string{
+		{"+", ".+"},
+		{"-", ".-"},
+		{"+1", ".+1"},
+		{"-1", ".-1"},
+		{"+2", ".+2"},
+		{"-2", ".-2"},
+		{"+-", ".+-"},
+		{"-+", ".-+"},
+		{"+#1", ".+#1"},
+		{"-#1", ".-#1"},
+		{"+/four/", ".+/four/"},
+		{"-/one/", ".-/one/"},
+		{"+?two?", ".+?two?"},
+		{"-?four?", ".-?four?"},
+	} {
+		bare, dotted := pair[0], pair[1]
+
+		fb := makeFile(text)
+		setDot(fb, 8, 14) // dot = line 3, "three\n"
+		gotBare := evalStr(t, bare, fb)
+
+		fd := makeFile(text)
+		setDot(fd, 8, 14)
+		gotDotted := evalStr(t, dotted, fd)
+
+		if gotBare != gotDotted {
+			t.Errorf("%q = [%d,%d) but %q = [%d,%d); a leading operator must mean dot",
+				bare, gotBare.Start, gotBare.End,
+				dotted, gotDotted.Start, gotDotted.End)
+		}
+	}
+}
+
+// A leading operator must not swallow anything that follows it as a command.
+func TestLeadingPlusMinusLeavesCommandIntact(t *testing.T) {
+	for _, c := range []struct{ addr, rest string }{
+		{"+", "p"}, {"-", "p"}, {"+1", "d"}, {"-/x/", "="}, {"+?x?", "p"},
+	} {
+		in := c.addr + c.rest
+		a, n, err := Parse(in)
+		if err != nil {
+			t.Errorf("Parse(%q): %v", in, err)
+			continue
+		}
+		if a == nil {
+			t.Errorf("Parse(%q): no address parsed", in)
+			continue
+		}
+		if got := in[n:]; got != c.rest {
+			t.Errorf("Parse(%q) consumed %d bytes leaving %q, want %q", in, n, got, c.rest)
 		}
 	}
 }

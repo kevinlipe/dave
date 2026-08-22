@@ -146,16 +146,24 @@ exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[14,28) 
 exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[0,0) out="\n" err=<nil>
 
 === "+"
-parse error: unknown command "+"
+  op="p" addr=true dest=false
+  addr-> [14,28)
+exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[14,28) out="four five six\n" err=<nil>
 
 === "-"
-parse error: unknown command "-"
+  op="p" addr=true dest=false
+  addr-> [0,0)
+exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[0,0) out="\n" err=<nil>
 
 === "+-"
-parse error: unknown command "+"
+  op="p" addr=true dest=false
+  addr-> [0,14)
+exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[0,14) out="one two three\n" err=<nil>
 
 === "-+"
-parse error: unknown command "-"
+  op="p" addr=true dest=false
+  addr-> [0,14)
+exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[0,14) out="one two three\n" err=<nil>
 
 === "/two/+1"
   op="p" addr=true dest=false
@@ -168,7 +176,9 @@ exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[14,28) 
 exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[4,7) out="two\n" err=<nil>
 
 === "-1"
-parse error: unknown command "-"
+  op="p" addr=true dest=false
+  addr-> [0,0)
+exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[0,0) out="\n" err=<nil>
 
 === "1,2,3"
   op="p" addr=true dest=false
@@ -176,16 +186,24 @@ parse error: unknown command "-"
 exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[0,40) out="one two three\nfour five six\nséven eight\n" err=<nil>
 
 === "+/two/"
-parse error: unknown command "+"
+  op="p" addr=true dest=false
+  addr-> [4,7)
+exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[4,7) out="two\n" err=<nil>
 
 === "-/two/"
-parse error: unknown command "-"
+  op="p" addr=true dest=false
+  addr-> [4,7)
+exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[4,7) out="two\n" err=<nil>
 
 === "+?two?"
-parse error: unknown command "+"
+  op="p" addr=true dest=false
+  addr-> [4,7)
+exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[4,7) out="two\n" err=<nil>
 
 === "-?two?"
-parse error: unknown command "-"
+  op="p" addr=true dest=false
+  addr-> [4,7)
+exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[4,7) out="two\n" err=<nil>
 
 === ".+/o/"
   op="p" addr=true dest=false

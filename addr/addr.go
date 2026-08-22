@@ -412,7 +412,12 @@ func (p *parser) parseCompound() (*Addr, error) {
 			Right: right,
 		}, nil
 	}
-	if left == nil {
+	// A leading + or - takes an implicit dot as its left operand, as sam
+	// does: simpleaddr accepts them as address types in their own right, and
+	// a missing left operand means dot. A nil Left is already how the
+	// evaluator spells that, so the loop below builds the right node without
+	// any special case -- it just has to be allowed to start.
+	if left == nil && p.peek() != '+' && p.peek() != '-' {
 		return nil, nil
 	}
 
