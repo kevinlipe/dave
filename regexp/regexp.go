@@ -139,10 +139,13 @@ func (r *Regexp) ReplaceExpand(src string, template string, idx []int) string {
 
 // samToGo translates a Sam/Dave regex pattern to a Go regexp pattern.
 // Translations:
+//   - Prepends '(?m)' so '^' and '$' match at line boundaries (Sam semantics;
+//     Go's default anchors only match start/end of text).
 //   - '@' → '[\s\S]' (any char including newline)
 //   - '\n' (literal backslash-n) → actual newline in the pattern
 func samToGo(pat string) string {
 	var b strings.Builder
+	b.WriteString("(?m)")
 	i := 0
 	for i < len(pat) {
 		if pat[i] == '@' {
