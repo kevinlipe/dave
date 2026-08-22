@@ -17,32 +17,39 @@ import (
 	"unicode/utf8"
 )
 
-// Kind identifies the type of an address node.
-type Kind int
+// Kind identifies the type of an address node. Following sam, the value is
+// the character that introduces the address in the source text, so the
+// parser records what it read rather than translating it into a parallel
+// vocabulary. KindLine is the exception: a line number has no introducing
+// character, so it borrows sam's 'l'.
+type Kind byte
 
 const (
-	KindLine      Kind = iota // n
-	KindChar                  // #n
-	KindDot                   // .
-	KindMark                  // '
-	KindEnd                   // $
-	KindRegexp                // /re/ or ?re?
-	KindFilePat               // "re"
-	KindComma                 // a1,a2
-	KindSemicolon             // a1;a2
-	KindPlus                  // a1+a2
-	KindMinus                 // a1-a2
+	KindLine      Kind = 'l'  // n
+	KindChar      Kind = '#'  // #n
+	KindDot       Kind = '.'  // .
+	KindMark      Kind = '\'' // '
+	KindEnd       Kind = '$'  // $
+	KindRegexp    Kind = '/'  // /re/
+	KindBackRe    Kind = '?'  // ?re?
+	KindFilePat   Kind = '"'  // "re"
+	KindComma     Kind = ','  // a1,a2
+	KindSemicolon Kind = ';'  // a1;a2
+	KindPlus      Kind = '+'  // a1+a2
+	KindMinus     Kind = '-'  // a1-a2
 )
 
 // Addr is a node in an address parse tree.
 type Addr struct {
-	Kind     Kind
-	Num      int    // KindLine, KindChar
-	Pat      string // KindRegexp, KindFilePat
-	Backward bool   // true for ?re? (backward search)
-	Left     *Addr
-	Right    *Addr
+	Kind  Kind
+	Num   int    // KindLine, KindChar
+	Pat   string // KindRegexp, KindBackRe, KindFilePat
+	Left  *Addr
+	Right *Addr
 }
+
+// backward reports whether a regexp address searches backwards.
+func (a *Addr) backward() bool { return a.Kind == KindBackRe }
 
 // --- Evaluation --------------------------------------------------------------
 
@@ -65,8 +72,8 @@ func eval(a *Addr, f *file.File, files []*file.File) (buffer.Range, error) {
 	case KindEnd:
 		n := f.Len()
 		return buffer.Range{Start: n, End: n}, nil
-	case KindRegexp:
-		return evalRegexp(a.Pat, a.Backward, f)
+	case KindRegexp, KindBackRe:
+		return evalRegexp(a.Pat, a.backward(), f)
 	case KindFilePat:
 		// Returns whole range of matched file; cmd layer switches to that file.
 		ff, err := FindFileByPat(a.Pat, files, f)
@@ -87,7 +94,7 @@ func eval(a *Addr, f *file.File, files []*file.File) (buffer.Range, error) {
 	case KindMinus:
 		return evalMinus(a, f, files)
 	}
-	return buffer.Range{}, fmt.Errorf("addr: unknown kind %d", a.Kind)
+	return buffer.Range{}, fmt.Errorf("addr: unknown address kind %q", rune(a.Kind))
 }
 
 // lineRange returns the range for line n (1-indexed). Line 0 is the null
@@ -251,7 +258,8 @@ func evalPlus(a *Addr, f *file.File, files []*file.File) (buffer.Range, error) {
 			firstLine++
 		}
 		return lineRange(f, firstLine+right.Num-1)
-	case KindRegexp:
+	case KindRegexp, KindBackRe:
+		// + always searches forward, whichever delimiter was written.
 		saved := f.Dot()
 		f.SetDot(buffer.Range{Start: base.End, End: base.End})
 		defer f.SetDot(saved)
@@ -286,7 +294,8 @@ func evalMinus(a *Addr, f *file.File, files []*file.File) (buffer.Range, error) 
 			return buffer.Range{}, nil
 		}
 		return lineRange(f, target)
-	case KindRegexp:
+	case KindRegexp, KindBackRe:
+		// - always searches backward, whichever delimiter was written.
 		saved := f.Dot()
 		f.SetDot(buffer.Range{Start: base.Start, End: base.Start})
 		defer f.SetDot(saved)
@@ -350,14 +359,6 @@ func (p *parser) peek() byte {
 	return p.input[p.pos]
 }
 
-func (p *parser) peekAt(offset int) byte {
-	i := p.pos + offset
-	if i >= len(p.input) {
-		return 0
-	}
-	return p.input[i]
-}
-
 func (p *parser) consume() byte {
 	ch := p.input[p.pos]
 	p.pos++
@@ -366,11 +367,6 @@ func (p *parser) consume() byte {
 
 // parseCompound parses a full compound address.
 func (p *parser) parseCompound() (*Addr, error) {
-	// Bare comma at start: , means 0,$
-	if p.peek() == ',' && !p.isCompoundContinuation() {
-		// Check if this is a leading bare comma (not part of a1,a2)
-	}
-
 	left, err := p.parseSimple()
 	if err != nil {
 		return nil, err
@@ -437,8 +433,6 @@ func (p *parser) parseCompound() (*Addr, error) {
 	}
 }
 
-func (p *parser) isCompoundContinuation() bool { return false }
-
 // parseSimple parses a single simple address token.
 func (p *parser) parseSimple() (*Addr, error) {
 	if p.pos >= len(p.input) {
@@ -474,14 +468,14 @@ func (p *parser) parseSimple() (*Addr, error) {
 		if err != nil {
 			return nil, err
 		}
-		return &Addr{Kind: KindRegexp, Pat: pat, Backward: false}, nil
+		return &Addr{Kind: KindRegexp, Pat: pat}, nil
 	case ch == '?':
 		p.consume()
 		pat, err := p.scanDelimited('?')
 		if err != nil {
 			return nil, err
 		}
-		return &Addr{Kind: KindRegexp, Pat: pat, Backward: true}, nil
+		return &Addr{Kind: KindBackRe, Pat: pat}, nil
 	case ch == '"':
 		p.consume()
 		pat, err := p.scanDelimited('"')

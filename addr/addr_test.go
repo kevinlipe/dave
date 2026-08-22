@@ -294,7 +294,7 @@ func TestParseRegexp(t *testing.T) {
 
 func TestParseRegexpBackward(t *testing.T) {
 	a, _, err := Parse("?hello?")
-	if err != nil || a == nil || a.Kind != KindRegexp || !a.Backward {
+	if err != nil || a == nil || a.Kind != KindBackRe || a.Pat != "hello" {
 		t.Errorf("Parse(?hello?): %v %+v", err, a)
 	}
 }
