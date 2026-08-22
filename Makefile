@@ -4,6 +4,8 @@
 #   all     - build dave / dave.exe (dynamically linked) and sdave
 #   sdave   - build sdave only
 #   static  - build self-contained exe with SDL2 statically linked (Windows only)
+#   test    - run the full Go test suite
+#   check   - build + test (use before pushing / from CI)
 #   install - install dave and sdave via go install
 #   clean   - remove build artifacts
 #
@@ -35,7 +37,7 @@ SDL2_STATIC_LDFLAGS = \
 	-lversion -luuid -lsetupapi \
 	-static-libgcc
 
-.PHONY: all sdave static clean install
+.PHONY: all sdave static test check clean install
 
 all:
 	go build -v -o $(BINARY) .
@@ -46,6 +48,11 @@ sdave:
 
 static:
 	CGO_LDFLAGS="$(SDL2_STATIC_LDFLAGS)" go build -v -o $(BINARY) .
+
+test:
+	go test ./...
+
+check: all test
 
 install:
 	go install dave

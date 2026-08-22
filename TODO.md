@@ -15,19 +15,9 @@ and best-effort fsyncs the parent directory after.)*
 
 ## Test-suite gaps
 
-None of these are bugs on their own, but every bug in the correctness
-list lived in an untested region. Adding coverage here would catch the
-next round before it ships:
-
-- `r`, `k`, `'` (mark and mark-address)
-- `<`, `>`, `|` shell commands
-- Undo restoring an entire `x` loop as a single unit
-- Structural commands (`x`/`y`/`g`/`v`) inside `{ ... }`
-- Parser errors: `{` never closed, missing `/` mid-command
-- Empty-pattern reuse `//` in the command path (regexp package tests it, cmd doesn't)
-- Backward-search `?re?` used as an address on a command
-- `s/re/repl\nmore/` with a newline in the replacement
-- Non-ASCII content through `=`, and `#n` addresses
+*(All items covered on 2026-08-22 in `cmd/gaps_test.go`. Writing the
+`#n` non-ASCII test surfaced a real bug — `#` was being swallowed as a
+comment before it could be parsed as a char-offset address; now fixed.)*
 
 ## Performance
 

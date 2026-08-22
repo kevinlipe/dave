@@ -33,7 +33,12 @@ func (st *InputState) Feed(line string) bool {
 		ch := line[i]
 		switch ch {
 		case '#':
-			// Rest of line is a comment.
+			// Rest of line is a comment — unless '#' is immediately followed
+			// by a digit, in which case it's a char-offset address (`#n`).
+			if i+1 < len(line) && line[i+1] >= '0' && line[i+1] <= '9' {
+				i++
+				continue
+			}
 			i = len(line)
 		case '{':
 			st.braceDepth++
