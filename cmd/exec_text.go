@@ -37,15 +37,18 @@ func (s *Session) execEqual(f *file.File, dot buffer.Range, flag string) error {
 		}
 		return nil
 	}
-	str := f.String()
-	line1 := strings.Count(str[:runeToByteOff(str, dot.Start)], "\n") + 1
+	// The line-start table answers both of these without copying the file or
+	// scanning it, which matters because = is often the body of an x loop and
+	// so runs once per match.
+	buf := f.Buffer()
+	line1 := buf.LineNumber(dot.Start)
 	// For the end, use dot.End-1 so that a selection ending at a line boundary
 	// reports the last included line, not the next one.
 	endPos := dot.End
 	if endPos > dot.Start {
 		endPos--
 	}
-	line2 := strings.Count(str[:runeToByteOff(str, endPos)], "\n") + 1
+	line2 := buf.LineNumber(endPos)
 	if dot.IsNull() {
 		s.printf("%d\n", line1)
 	} else {

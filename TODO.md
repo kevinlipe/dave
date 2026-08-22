@@ -130,14 +130,47 @@ other way (a hand-rolled SWAR scan fusing newline search and rune
 counting) got the rebuild from 4.25ms to 2.27ms and was reverted: not
 worth the bit-twiddling for a millisecond on a once-per-command path.
 
-#### `execX` and `substAll` do quadratic rune counting per match
-- **Where:** `cmd/exec_struct.go:78-79`, `cmd/exec_subst.go:75-76`
-- **Smell:** Call `utf8.RuneCountInString(dotText[:m[0]])` on every
-  match. Each call walks from position 0. For M matches in N-length
-  text that's O(M·N).
-- **Fix:** Single pass — matches are already sorted by position; walk
-  `dotText` once, incrementally converting byte offsets to rune offsets
-  as you go.
+#### ~~`execX` and `substAll` do quadratic rune counting per match~~ — DONE 2026-08-22
+
+`cmd.runeCounter` converts a byte offset into a string to a codepoint
+offset by counting forward from its previous answer instead of from the
+start. Structural commands hand it match offsets in increasing order,
+so a whole command is now one pass over the text rather than one pass
+per match. Converted: `execX`, `execY`, `substAll`, `substNth`. Going
+backwards is still correct, just not incremental.
+
+`execEquals` was the bigger offender and is fixed here too: it called
+`f.String()` and byte-scanned for newlines twice per invocation, and
+`=` is commonly an `x` body, so that ran once per match. It now reads
+both line numbers from the buffer's line table.
+
+Measured (`go test ./cmd/ -bench BenchmarkX`, 400 lines):
+
+| command | before | after |
+|---|---|---|
+| `,x/[a-z]+/ =` | 162.3 ms | 2.84 ms |
+| — allocations | 67.2 MB | 794 KB |
+| `,x/[a-z]+/ s/[a-z]/X/` | 153.1 ms | 105.0 ms |
+| `,x/[a-z]+/ g/o/ d` | 154.0 ms | 103.1 ms |
+
+The regexp-bodied loops only improve 1.5× because their remaining cost
+moved somewhere else — see the next item, which is now 97% of them.
+
+#### `buffer.ReadAt` is O(distance) per call, and structural bodies call it per match
+- **Where:** `buffer/buffer.go` `runeToBytePos`, via `ReadAt`
+- **Smell:** `execGuard` and `execSubst` each read their dot with
+  `f.Buffer().ReadAt(dot.Start, dot.Len())`. `runeToBytePos` walks from
+  the nearest of three fixed anchors — buffer start, the gap, the end —
+  and during a read-only loop the gap never moves, so as dot advances
+  through the file the walk gets longer. That is O(M·N) again, just
+  relocated from `cmd` into `buffer`. Profiling `,x/[a-z]+/ s/[a-z]/X/`
+  puts 97% of the command in `runeToBytePos`, split between
+  `byteOffsetFromEnd` (59% cum) and `nthRuneByteOffset` (38% cum).
+- **Fix:** memoize the previous lookup as a fourth anchor. Sequential
+  access — which is what a structural loop does — then costs the
+  distance between consecutive dots rather than the distance to a fixed
+  point. Stamp the memo with `Gen` so an edit invalidates it, and only
+  use it when it lies in the same gap segment as the target.
 
 ### Tier 3 — measurable but smaller
 

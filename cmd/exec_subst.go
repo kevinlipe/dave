@@ -48,8 +48,9 @@ func (s *Session) substNth(f *file.File, dot buffer.Range, re *dregs.Regexp, rep
 		return fmt.Errorf("s: no match")
 	}
 	expanded := re.ReplaceExpand(text, repl, idx)
-	mLo := utf8.RuneCountInString(text[:idx[0]])
-	mHi := utf8.RuneCountInString(text[:idx[1]])
+	rc := runeCounter{s: text}
+	mLo := rc.at(idx[0])
+	mHi := rc.at(idx[1])
 	pos := dot.Start + mLo
 	del := mHi - mLo
 	if err := ctx.addChange(f, pos, del, expanded); err != nil {
@@ -67,14 +68,15 @@ func (s *Session) substAll(f *file.File, dot buffer.Range, re *dregs.Regexp, rep
 	}
 	var lastDot buffer.Range
 	matched := false
+	rc := runeCounter{s: text}
 	for _, m := range all {
 		idx := re.FindSubmatchIndex(text, m[0], len(text))
 		if idx == nil || idx[0] != m[0] {
 			continue
 		}
 		expanded := re.ReplaceExpand(text, repl, idx)
-		mLo := utf8.RuneCountInString(text[:m[0]])
-		mHi := utf8.RuneCountInString(text[:m[1]])
+		mLo := rc.at(m[0])
+		mHi := rc.at(m[1])
 		pos := dot.Start + mLo
 		del := mHi - mLo
 		if err := ctx.addChange(f, pos, del, expanded); err != nil {

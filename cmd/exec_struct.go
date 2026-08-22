@@ -4,7 +4,6 @@ import (
 	"dave/buffer"
 	"dave/file"
 	dregs "dave/regexp"
-	"unicode/utf8"
 )
 
 // execGuard implements g (wantMatch=true) and v (wantMatch=false):
@@ -55,9 +54,10 @@ func (s *Session) execX(f *file.File, dot buffer.Range, pat string, body []*Comm
 	type matchRng struct{ r buffer.Range }
 	var matches []matchRng
 	prevEnd := -1
+	rc := runeCounter{s: dotText}
 	for _, m := range allMatches {
-		lo := dot.Start + utf8.RuneCountInString(dotText[:m[0]])
-		hi := dot.Start + utf8.RuneCountInString(dotText[:m[1]])
+		lo := dot.Start + rc.at(m[0])
+		hi := dot.Start + rc.at(m[1])
 		isNull := lo == hi
 		// Skip null match if it abuts the end of the previous match.
 		if isNull && lo == prevEnd {
@@ -97,16 +97,17 @@ func (s *Session) execY(f *file.File, dot buffer.Range, pat string, body []*Comm
 
 	var betweens []buffer.Range
 	prev := 0
+	rc := runeCounter{s: dotText}
 	for _, m := range allMatches {
 		if m[0] > prev {
-			lo := dot.Start + utf8.RuneCountInString(dotText[:prev])
-			hi := dot.Start + utf8.RuneCountInString(dotText[:m[0]])
+			lo := dot.Start + rc.at(prev)
+			hi := dot.Start + rc.at(m[0])
 			betweens = append(betweens, buffer.Range{Start: lo, End: hi})
 		}
 		prev = m[1]
 	}
 	if prev < len(dotText) {
-		lo := dot.Start + utf8.RuneCountInString(dotText[:prev])
+		lo := dot.Start + rc.at(prev)
 		betweens = append(betweens, buffer.Range{Start: lo, End: dot.End})
 	}
 
