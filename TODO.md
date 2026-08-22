@@ -10,8 +10,7 @@ the smell, where it lives, and a sketch of the fix.
 
 ## Durability
 
-*(Fixed on 2026-08-22 — `WriteAtomic` now fsyncs the file before rename
-and best-effort fsyncs the parent directory after.)*
+*(Fixed on 2026-08-22 — `WriteAtomic` now fsyncs the file before rename and best-effort fsyncs the parent directory after.)*
 
 ## Test-suite gaps
 

@@ -47,9 +47,7 @@ func ParseCommands(s string) ([]*Command, error) {
 		if pos >= len(s) {
 			break
 		}
-		// Skip comments (# to end of line). A '#' immediately followed by
-		// a digit is a char-offset address (`#n`), not a comment.
-		if s[pos] == '#' && !isDigitAt(s, pos+1) {
+		if isCommentStart(s, pos) {
 			for pos < len(s) && s[pos] != '\n' {
 				pos++
 			}
@@ -341,8 +339,7 @@ func (p *cmdParser) parseGroup() ([]*Command, error) {
 			p.consume()
 			break
 		}
-		// Skip comments. '#' followed by a digit is a char address, not a comment.
-		if p.peek() == '#' && !isDigitAt(p.input, p.pos+1) {
+		if isCommentStart(p.input, p.pos) {
 			for p.pos < len(p.input) && p.input[p.pos] != '\n' {
 				p.pos++
 			}
@@ -409,7 +406,21 @@ func bufferRangeText(buf *buffer.Buffer, r buffer.Range) string {
 	return buf.ReadAt(r.Start, r.End-r.Start)
 }
 
-// isDigitAt reports whether s[i] is an ASCII digit.
-func isDigitAt(s string, i int) bool {
-	return i >= 0 && i < len(s) && s[i] >= '0' && s[i] <= '9'
+// isCommentStart reports whether s[i:] begins a Dave line comment.
+//
+// Sam has no comments — '#' is always part of a `#n` char-offset address.
+// Dave adds comments as a creature comfort, but the recognition rule is
+// deliberately narrow so it can never collide with any Sam address form:
+// a comment is '#' followed by whitespace, another '#', or end-of-line.
+// Anything else after '#' (digit, letter, punctuation like '/' or '-')
+// is passed through to the address parser.
+func isCommentStart(s string, i int) bool {
+	if i < 0 || i >= len(s) || s[i] != '#' {
+		return false
+	}
+	if i+1 >= len(s) {
+		return true
+	}
+	c := s[i+1]
+	return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '#'
 }

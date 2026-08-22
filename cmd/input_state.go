@@ -33,13 +33,13 @@ func (st *InputState) Feed(line string) bool {
 		ch := line[i]
 		switch ch {
 		case '#':
-			// Rest of line is a comment — unless '#' is immediately followed
-			// by a digit, in which case it's a char-offset address (`#n`).
-			if i+1 < len(line) && line[i+1] >= '0' && line[i+1] <= '9' {
+			// See parse.go isCommentStart — '#' is a comment only when
+			// followed by whitespace, another '#', or end of line.
+			if isCommentStart(line, i) {
+				i = len(line)
+			} else {
 				i++
-				continue
 			}
-			i = len(line)
 		case '{':
 			st.braceDepth++
 			i++
