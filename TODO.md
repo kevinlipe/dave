@@ -156,21 +156,30 @@ Measured (`go test ./cmd/ -bench BenchmarkX`, 400 lines):
 The regexp-bodied loops only improve 1.5× because their remaining cost
 moved somewhere else — see the next item, which is now 97% of them.
 
-#### `buffer.ReadAt` is O(distance) per call, and structural bodies call it per match
-- **Where:** `buffer/buffer.go` `runeToBytePos`, via `ReadAt`
-- **Smell:** `execGuard` and `execSubst` each read their dot with
-  `f.Buffer().ReadAt(dot.Start, dot.Len())`. `runeToBytePos` walks from
-  the nearest of three fixed anchors — buffer start, the gap, the end —
-  and during a read-only loop the gap never moves, so as dot advances
-  through the file the walk gets longer. That is O(M·N) again, just
-  relocated from `cmd` into `buffer`. Profiling `,x/[a-z]+/ s/[a-z]/X/`
-  puts 97% of the command in `runeToBytePos`, split between
-  `byteOffsetFromEnd` (59% cum) and `nthRuneByteOffset` (38% cum).
-- **Fix:** memoize the previous lookup as a fourth anchor. Sequential
-  access — which is what a structural loop does — then costs the
-  distance between consecutive dots rather than the distance to a fixed
-  point. Stamp the memo with `Gen` so an edit invalidates it, and only
-  use it when it lies in the same gap segment as the target.
+#### ~~`buffer.ReadAt` is O(distance) per call~~ — DONE 2026-08-22
+
+`runeToBytePos` now memoizes its previous answer and uses it as a
+fourth anchor alongside buffer start, gap, and end, picking whichever
+is nearest. Walking the file in order — what a structural command does
+reading each match in turn — costs the distance between consecutive
+dots instead of the distance to a fixed point. The memo is in logical
+coordinates, which do not shift when the gap moves, so only a content
+change invalidates it; a `Gen` stamp handles that.
+
+The segment bookkeeping lives in one place: `segByteOffset` ignores any
+anchor outside the segment it is given, which is how an anchor from the
+other side of the gap, or left by a clamped lookup, is discarded.
+
+| | before | after |
+|---|---|---|
+| `,x/[a-z]+/ s/[a-z]/X/` | 105.0 ms | 4.22 ms |
+| `,x/[a-z]+/ g/o/ d` | 103.1 ms | 3.34 ms |
+| sequential `ReadAt` on 1MB | — | 310 ns |
+| scattered `ReadAt` on 1MB (memo cannot help) | — | 582 µs |
+
+Across both this and the previous item, the structural commands went
+153.1 ms → 4.22 ms (36×), 154.0 ms → 3.34 ms (46×), and 162.3 ms →
+2.83 ms (57×).
 
 ### Tier 3 — measurable but smaller
 

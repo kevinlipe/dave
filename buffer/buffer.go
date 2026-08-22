@@ -30,6 +30,15 @@ type Buffer struct {
 
 	// Line-start table, rebuilt lazily when gen moves; see lines.go.
 	lines lineIndex
+
+	// Memo of the previous runeToBytePos answer, used as an extra anchor so
+	// that sequential access is cheap. The pair is in logical coordinates,
+	// which do not shift when the gap moves, so only a content change can
+	// invalidate it -- hence the gen stamp. The zero value is the true
+	// statement "rune 0 is at byte 0", so it is safe before anything is set.
+	memoRune int
+	memoByte int
+	memoGen  int
 }
 
 // Gen returns the current modification generation. Callers can cache this
@@ -67,30 +76,69 @@ func (b *Buffer) gapSize() int { return b.gapEnd - b.gapStart }
 // logical (gap-collapsed) content. It panics if runePos is negative;
 // offsets past the end clamp to the end of the content.
 //
-// The cached rune counts pin down three known offsets — the start of the
-// buffer, the gap, and the end — so the walk is always from the nearest of
-// the two bounding the segment runePos falls in. Editing at or near the gap,
-// which is where editing normally happens, therefore costs O(1).
+// The cached rune counts pin down three fixed points — the start of the
+// buffer, the gap, and the end — and the memo adds a fourth that follows
+// whatever the caller last asked for. The walk starts from whichever of
+// those is nearest. Editing at the gap costs O(1), and so does walking
+// through the file in order, which is what a structural command does when
+// it reads each match in turn.
 func (b *Buffer) runeToBytePos(runePos int) int {
 	if runePos < 0 {
 		panic("buffer: negative rune position")
 	}
+
+	// The memo is only usable within the segment it landed in, since the two
+	// segments are not contiguous in data.
+	anchorRune, anchorByte := -1, -1
+	if b.memoGen == b.gen {
+		anchorRune, anchorByte = b.memoRune, b.memoByte
+	}
+
+	var off int
 	if runePos <= b.preGapRunes {
-		pre := b.data[:b.gapStart]
-		if runePos*2 <= b.preGapRunes {
-			return nthRuneByteOffset(pre, runePos)
+		// In the pre-gap segment a logical byte offset is also the physical
+		// one. An anchor from the post-gap segment is out of range here, and
+		// segByteOffset drops it.
+		off = segByteOffset(b.data[:b.gapStart], runePos, b.preGapRunes, anchorRune, anchorByte)
+	} else {
+		// Rebase the anchor into post-gap-local coordinates. A pre-gap anchor
+		// goes negative, which segByteOffset reads as "no anchor".
+		off = b.gapStart + segByteOffset(b.data[b.gapEnd:], runePos-b.preGapRunes,
+			b.totalRunes-b.preGapRunes, anchorRune-b.preGapRunes, anchorByte-b.gapStart)
+	}
+
+	// A clamped lookup memoizes a pair that does not describe runePos, but
+	// segByteOffset drops it on the way back in as out of range, and the
+	// generation cannot change without this being overwritten.
+	b.memoRune, b.memoByte, b.memoGen = runePos, off, b.gen
+	return off
+}
+
+// segByteOffset returns the byte offset within segment p at which the
+// target-th rune of that segment begins, given that p holds segRunes runes.
+// anchorRune/anchorByte name a third known point inside p; an anchor outside
+// p is ignored, which is how an anchor belonging to the other gap segment,
+// or left over from a clamped lookup, is discarded. A target past the end of
+// p clamps to len(p).
+func segByteOffset(p []byte, target, segRunes, anchorRune, anchorByte int) int {
+	// Start from whichever known point is nearest to the target.
+	fromRune, fromByte, dist := 0, 0, target
+	if d := segRunes - target; d < dist {
+		fromRune, fromByte, dist = segRunes, len(p), d
+	}
+	if anchorRune >= 0 && anchorRune <= segRunes && anchorByte >= 0 && anchorByte <= len(p) {
+		d := target - anchorRune
+		if d < 0 {
+			d = -d
 		}
-		return byteOffsetFromEnd(pre, b.preGapRunes-runePos)
+		if d < dist {
+			fromRune, fromByte = anchorRune, anchorByte
+		}
 	}
-	post := b.data[b.gapEnd:]
-	postPos := runePos - b.preGapRunes
-	postRunes := b.totalRunes - b.preGapRunes
-	if postPos*2 <= postRunes {
-		return b.gapStart + nthRuneByteOffset(post, postPos)
+	if target >= fromRune {
+		return fromByte + nthRuneByteOffset(p[fromByte:], target-fromRune)
 	}
-	// Also covers runePos > totalRunes: the count is negative, the walk
-	// does not run, and the result clamps to the end of the content.
-	return b.gapStart + byteOffsetFromEnd(post, postRunes-postPos)
+	return byteOffsetFromEnd(p[:fromByte], fromRune-target)
 }
 
 // nthRuneByteOffset returns the byte offset of the n-th rune in p.
