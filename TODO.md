@@ -1,293 +1,94 @@
 # TODO
 
-Known issues found during the 2026-08-22 review that aren't yet fixed.
-Not urgent, but recorded so they don't get lost. Each item includes
-the smell, where it lives, and a sketch of the fix.
+Open work. Items resolved in the 2026-08-22 review and the performance
+pass that followed have been removed — see git log for what was done and
+why.
 
-## Correctness
+The text engine is where the work has been so far and is in good shape:
+correct against sam's semantics, covered by a characterisation corpus,
+and no longer quadratic anywhere that matters. **The remaining work is
+rendering and layout**, which is where every item below lives except two.
 
-*(The 2026-08-22 review items were all fixed that day — see git log.)*
+## Rendering and layout
 
-#### ~~A leading `+` or `-` is rejected instead of taking an implicit dot~~ — DONE 2026-08-22
+### Every relayout is a full re-wrap, and copies the file twice to do it
 
-`parseCompound` now lets the operator loop start with no left operand.
-A nil `Left` is already how the evaluator spells "dot" — `evalBase`
-returns `f.Dot()` for it — so no node has to be synthesised and no
-special case appears in the loop; it just had to be allowed to begin.
-`+/re/` and friends parse, and each means exactly what `.+/re/` means.
+The biggest editing-latency problem left, and the one thing standing
+between "fast small-file editor" and "editable at any size".
 
-## Durability
-
-*(Fixed on 2026-08-22 — `WriteAtomic` now fsyncs the file before rename and best-effort fsyncs the parent directory after.)*
-
-## Test-suite gaps
-
-*(All items covered on 2026-08-22 in `cmd/gaps_test.go`. Writing the `#n` non-ASCII test surfaced that `#` was being swallowed as a comment before it could be parsed as a char-offset address. Rather than patch the recognition rule, comment syntax was removed entirely — Sam has no comments, sdave scripts live inside a shell where `#` already works, and multi-line `-f` scripts are rare enough to wrap in a heredoc.)*
-
-## Performance
-
-Ranked by realistic impact per keystroke or per frame on a 100KB+ file.
-Plan 9's sam is fast because its buffer is designed so common operations
-don't traverse the whole file, and rendering only touches what's
-on-screen. Dave has room to close both gaps significantly.
-
-### Tier 1 — the ones that turn small files into big ones
-
-#### ~~`buffer.runeToBytePos` scans from position 0 every call~~ — DONE 2026-08-22
-#### ~~`buffer.Len()` scans the whole buffer~~ — DONE 2026-08-22
-
-Both fixed by one change: `Buffer` now carries `preGapRunes` (runes in
-`data[:gapStart]`) and `totalRunes`, maintained incrementally in
-`moveGap`, `insert`, and `delete`. `Len()` is a field read.
-`runeToBytePos` now knows three fixed points — buffer start, the gap,
-and the end — and walks from whichever bounds the target most closely,
-using `byteOffsetFromEnd` (a `DecodeLastRune` walk) for the backward
-direction. Editing at the gap, which is where editing normally happens,
-is O(1). `ReadAt` was rewritten on top of it to slice the two segments
-directly instead of re-counting runes, and `RuneAt` no longer allocates.
-
-Measured on a 1MB buffer (`go test ./buffer/ -bench .`, before → after):
-
-| benchmark | before | after |
-|---|---|---|
-| `InsertAtEndOfLargeFile` | 5,074,116 ns | 20.5 ns |
-| `InsertAtMiddleOfLargeFile` | 2,026,684 ns | 6,560 ns |
-| `InsertScattered` (worst case, gap moves every time) | 3,305,602 ns | 1,257,315 ns |
-| `ReadAtNearEnd` | 7,147,918 ns | 518 ns |
-| `Len` | 1,400,556 ns | 2.1 ns |
-
-`InsertScattered` is the case the cache can't help with — it's bounded
-by the `memmove` in `moveGap`, and still improves 2.6× because the
-offset lookup no longer scans. Invariant and randomized model tests are
-in `buffer/gap_test.go`; the cached counts are recomputed from `data`
-and compared after every operation.
-
-#### `pane.Wrap` does `[]rune(buf.String())` on every relayout
-- **Where:** `pane/wrap.go:56`
-- **Smell:** `buf.String()` allocates the entire file as a Go string;
-  `[]rune(...)` allocates again as a rune slice. On every buffer change
-  (every keystroke) the entire file is copied twice. For a 10MB file
-  that's 40MB of allocation per keystroke plus the actual wrap work.
-- **Fix (either wins big):**
-  1. Expose `buffer.RuneIterator` that iterates through both segments
-     of the gap without allocating — then `Wrap` and search paths can
-     walk directly.
-  2. Do incremental layout: only re-wrap the affected line range and
-     shift Y coordinates for lines below. Plan 9's layout engine does
-     this.
-     
-     THIS IS THE RECOMMENDED OPTION; DO INCREMENTAL LAYOUT. SIMPLE IS ALWAYS BETTER IN THIS CODEBASE.
-
-### Tier 2 — per-frame or per-command O(n)
-
-#### ~~`pane.drawBody` linearly scans all layout lines to find visible ones~~ — DONE 2026-08-22
-
-Added `Layout.LineAtY(y)` in `pane/wrap.go`, mirroring the existing
-`LineAt`: `Wrap` emits `Y = index * lineH`, so `Lines` is strictly
-increasing in `Y` and a binary search is valid. It returns the index of
-the line box containing `y`, clamped at both ends.
-
-Three linear scans now use it: `drawBody` starts its loop at
-`Lines[LineAtY(scrollY):]` instead of iterating from line 0 every
-frame, `CPAtXY` replaces a backward scan from the end of the file, and
-`input.moveDotToTopOfView` replaces a forward scan. Behavior is
-unchanged at every edge — including the click-in-the-top-pad case,
-which still resolves to offset 0.
-
-On a 100K-line layout the lookup goes 117,513 ns → 102.8 ns (~1140×);
-at 60 fps that scan alone was ~0.7% of a frame budget per pane, growing
-linearly with file size. `pane/layout_test.go` (the package's first
-tests) checks `LineAtY` against the naive scan it replaced for every
-pixel across a range of layout sizes, asserts the result always lands
-inside its own line box, and asserts the property `drawBody` actually
-depends on: starting at `LineAtY(scrollY)` never skips a line that is
-still on screen.
-
-#### ~~`addr.lineRange` re-scans the whole file for every line address~~ — DONE 2026-08-22
-
-`buffer/lines.go` holds a line-start table — the codepoint offset of
-every line start — built lazily on the first line query after the
-generation changes. Three string-scanning paths in `addr` now go
-through it: `lineRange`, and the line-number derivations in `evalPlus`
-and `evalMinus`. `addr` no longer calls `f.String()` for line
-addresses at all.
-
-Measured on a 100K-line (4.3MB) file:
-
-| | before | after |
-|---|---|---|
-| line address, table already built | 8,614 ns | 15.4 ns |
-| line address, first after an edit | 573,000 ns | 4,196,000 ns |
-
-The warm case is the point: a ranged command, or a loop body running
-per match, resolves many line addresses against one generation and now
-scans the file once instead of once per address (and copies it zero
-times instead of once per address).
-
-The cold case is a real 7.3× regression — the old scan stopped at the
-line it wanted, the table always scans to the end. It is 4ms once per
-command on a 4.3MB file, i.e. not perceptible, so it is recorded rather
-than fixed.
-
-**Follow-up if it ever matters:** extend the table lazily instead of
-building it whole. Keep a `scannedTo` offset and push the scan forward
-only as far as the query needs — `2p` scans two lines, `$` scans
-everything. That removes the cold regression by doing less work rather
-than by doing the same work faster. An attempt to close the gap the
-other way (a hand-rolled SWAR scan fusing newline search and rune
-counting) got the rebuild from 4.25ms to 2.27ms and was reverted: not
-worth the bit-twiddling for a millisecond on a once-per-command path.
-
-#### ~~`execX` and `substAll` do quadratic rune counting per match~~ — DONE 2026-08-22
-
-`cmd.runeCounter` converts a byte offset into a string to a codepoint
-offset by counting forward from its previous answer instead of from the
-start. Structural commands hand it match offsets in increasing order,
-so a whole command is now one pass over the text rather than one pass
-per match. Converted: `execX`, `execY`, `substAll`, `substNth`. Going
-backwards is still correct, just not incremental.
-
-`execEquals` was the bigger offender and is fixed here too: it called
-`f.String()` and byte-scanned for newlines twice per invocation, and
-`=` is commonly an `x` body, so that ran once per match. It now reads
-both line numbers from the buffer's line table.
-
-Measured (`go test ./cmd/ -bench BenchmarkX`, 400 lines):
-
-| command | before | after |
-|---|---|---|
-| `,x/[a-z]+/ =` | 162.3 ms | 2.84 ms |
-| — allocations | 67.2 MB | 794 KB |
-| `,x/[a-z]+/ s/[a-z]/X/` | 153.1 ms | 105.0 ms |
-| `,x/[a-z]+/ g/o/ d` | 154.0 ms | 103.1 ms |
-
-The regexp-bodied loops only improve 1.5× because their remaining cost
-moved somewhere else — see the next item, which is now 97% of them.
-
-#### ~~`buffer.ReadAt` is O(distance) per call~~ — DONE 2026-08-22
-
-`runeToBytePos` now memoizes its previous answer and uses it as a
-fourth anchor alongside buffer start, gap, and end, picking whichever
-is nearest. Walking the file in order — what a structural command does
-reading each match in turn — costs the distance between consecutive
-dots instead of the distance to a fixed point. The memo is in logical
-coordinates, which do not shift when the gap moves, so only a content
-change invalidates it; a `Gen` stamp handles that.
-
-The segment bookkeeping lives in one place: `segByteOffset` ignores any
-anchor outside the segment it is given, which is how an anchor from the
-other side of the gap, or left by a clamped lookup, is discarded.
-
-| | before | after |
-|---|---|---|
-| `,x/[a-z]+/ s/[a-z]/X/` | 105.0 ms | 4.22 ms |
-| `,x/[a-z]+/ g/o/ d` | 103.1 ms | 3.34 ms |
-| sequential `ReadAt` on 1MB | — | 310 ns |
-| scattered `ReadAt` on 1MB (memo cannot help) | — | 582 µs |
-
-Across both this and the previous item, the structural commands went
-153.1 ms → 4.22 ms (36×), 154.0 ms → 3.34 ms (46×), and 162.3 ms →
-2.83 ms (57×).
-
-### Tier 3 — measurable but smaller
-
-#### `pane.drawBody` peeks at the last rune via `buf.ReadAt(drawHi-1, 1)` then `[]rune(s)`
-- **Where:** `pane/pane.go:342`
-- **Smell:** Per visible line, per frame. Two allocations to look at
-  one rune.
-- **Fix:** Use `buf.RuneAt(pos)` (already exists). Also
-  `pane.drawLineText` reads the line, then `drawLineSelection` re-reads
-  slices via `XForCP` → `measureRange` → `buf.ReadAt` → `[]rune`. Cache
-  the visible-line rune slice per draw and pass it down.
-
-#### `file.Save` reads whole buffer, then `strings.ReplaceAll` for CRLF, then writes
-- **Where:** `file/file.go:176`
-- **Smell:** Three allocations, each the size of the file. Fine for
-  small files, painful past a few MB.
-- **Fix:** Stream through an `io.Writer` that CRLF-encodes on the fly.
-
-#### Glyph textures rendered one `Copy` call at a time
-- **Where:** `render/ttfface.go:121`
-- **Smell:** Each `SetColorMod`/`SetAlphaMod`/`Copy` is a small state
-  change and draw call.
-- **Fix:** Batch runs of same-color text with a single `RenderGeometry`
-  call. Only worth the complexity if profiling actually shows draw-call
-  overhead — try the cheaper items first.
-
-#### Kern map lookup per character
-- **Where:** `render/ttfface.go` `MeasureText` / `DrawText`
-- **Smell:** `map[[2]rune]int32` lookup per rune pair. Fine for
-  slow-changing text; per frame it's noticeable on long lines.
-- **Fix:** ASCII-pair fast path — a `[128][128]int32` array for the
-  common case; fall through to the map for non-ASCII.
-
-### Structural / cross-cutting
-
-#### Every relayout is a full re-wrap even for a one-character insert
-- **Smell:** For a large file with word-wrap on, this is the single
-  biggest editing-latency contributor.
-- **Fix (heuristic):** Track "layout was correct as of this buffer
-  generation and edit region." If the next edit is inside the same
-  visible viewport, only re-wrap from the previous line-start of the
-  edit through end-of-visible.
-- **Fix (proper):** Real incremental layout — segment the layout into
+- **Where:** `pane/wrap.go:56` — `runes := []rune(buf.String())`
+- **Smell:** `buf.String()` allocates the whole file as a string and
+  `[]rune(...)` allocates it again as a rune slice, on *every* buffer
+  change. A 10MB file costs 40MB of allocation per keystroke before any
+  wrapping happens. Then the entire file is re-wrapped in order to
+  redraw a screenful.
+- **Fix — incremental layout.** Re-wrap only the affected line range and
+  shift `Y` for the lines below; Plan 9's layout engine does this. A
+  cheaper first cut: track the buffer generation and edit region the
+  layout was correct for, and when the next edit falls inside the same
+  visible viewport, re-wrap only from the previous line start through
+  end-of-visible. The proper version segments the layout into
   paragraph-sized chunks that can be invalidated independently.
+- **Note:** an allocation-free `buffer.RuneIterator` would remove the
+  copying, but it leaves the O(file) re-wrap in place. Incremental
+  layout fixes both, and simple is better here.
 
-#### `buffer.String()` is called in ~15 places outside `buffer/`
-- **Smell:** Each call copies the entire file.
-- **Fix:** Audit callers and replace with iterators / `ReadAt` slices.
-  This is the enabling change for many of the items above (Wrap,
-  lineRange, execX, execG guard-check, addr regexp evaluation, …).
+### `drawBody` re-reads the same line several times per frame
 
-#### ~~Regex compilation is not cached across a command~~ — DONE 2026-08-22
+- **Where:** `pane/pane.go:340` — `s := buf.ReadAt(drawHi-1, 1)` then
+  `[]rune(s)`, two allocations to look at one rune
+- **Smell:** per visible line, per frame. `buf.RuneAt(pos)` already
+  exists and does this without allocating. Worse, `drawLineText` reads
+  the line and then `drawLineSelection` re-reads slices of it through
+  `XForCP` → `measureRange` → `buf.ReadAt` → `[]rune`.
+- **Fix:** use `RuneAt` for the peek; read each visible line's runes
+  once per draw and pass the slice down to the measure and selection
+  paths.
 
-`regexp.Compile` now consults a map keyed by the original Sam pattern
-before compiling. A cache hit still updates `last`, so `//` reuse keeps
-meaning "the most recently used pattern" — that interaction is the only
-way the cache can change behavior, and it is what the new tests are
-aimed at.
+### Glyphs are drawn one `Copy` call at a time
 
-Not an LRU, as originally sketched: the working set is a handful of
-patterns hit over and over, so the eviction bookkeeping would cost more
-than it saves. The map is capped and dropped whole when it fills, which
-cannot happen partway through a command.
+- **Where:** `render/ttfface.go:119` — `SetColorMod` / `Copy` per glyph
+- **Smell:** every glyph is its own texture bind, state change and draw
+  call.
+- **Fix:** batch runs of same-coloured text into a single
+  `RenderGeometry` call. Only worth the complexity if profiling shows
+  draw-call overhead actually dominates — do the two items above first
+  and re-measure.
 
-| | before | after |
-|---|---|---|
-| `Compile` of an already-seen pattern | 1,442 ns | 20 ns |
-| `,x/[a-z]+/ s/[a-z]/X/` over 400 lines | 158.9 ms | 153.1 ms |
-| — allocations for the same | 57,705 | 14,480 |
+### Kern lookup is a map hit per character pair
 
-**The headline is the allocation count, not the time.** Compilation was
-only 1.8% of that command; the 72× on `Compile` itself buys ~3% overall.
-Dropping 4× the allocations matters more for an interactive editor,
-since it is GC pressure during a long structural command.
+- **Where:** `render/ttfface.go:82` — `kerns map[[2]rune]int32`
+- **Smell:** a map lookup per rune pair in both `MeasureText` and
+  `DrawText`. Fine for static text; noticeable per frame on long lines.
+- **Fix:** ASCII fast path — a `[128][128]int32` array for the common
+  case, falling through to the map for everything else.
 
-**What the profile actually says** (`go test ./cmd/ -bench BenchmarkX
--cpuprofile`): over 70% of a structural command goes to codepoint↔byte
-conversion, not to matching or compiling —
+## Elsewhere
 
-- `utf8.RuneCountInString` 26% — the `execX`/`substAll` quadratic
-  counting, Tier-2 item 3 below
-- `cmd.runeToByteOff` 24% cum
-- `buffer.byteOffsetFromEnd` + `nthRuneByteOffset` ~24% cum — `ReadAt`
-  per body iteration, at offsets that walk away from the gap
+### `file.Save` allocates the file three times over
 
-Those three are the same underlying problem: the body of a structural
-command re-derives byte offsets from codepoint offsets against the
-whole file, once per match. Fixing Tier-2 item 3 and giving `execX`'s
-body a way to read without a full-file offset conversion is worth far
-more than anything left in this section.
+- **Where:** `file/file.go:166`, and `EncodeContent` at `file.go:59`
+- **Smell:** reads the whole buffer to a string, `strings.ReplaceAll`
+  for CRLF, then writes — three allocations the size of the file. Fine
+  small, painful past a few MB. `WriteTo` (`file.go:150`) has the same
+  shape.
+- **Fix:** stream through an `io.Writer` that CRLF-encodes on the fly.
 
-### If picking three to do first
+### `buffer.String()` still copies the whole file at 7 call sites
 
-1. ~~`preGapRunes` cache in the gap buffer (Tier-1 items 1 + 2).~~ DONE
-   2026-08-22.
-2. ~~`LineAtY` binary search in `pane` (Tier-2 item 1).~~ DONE
-   2026-08-22.
-3. ~~Line-start table in `addr` (Tier-2 item 2).~~ DONE 2026-08-22.
+Down from ~15; the address and command paths no longer use it per match.
 
-With item 1 done, incremental layout is now the single thing standing
-between "fast small-file editor" and "editable at any size" — every
-keystroke still re-wraps the whole file, and `pane.Wrap`'s
-`[]rune(buf.String())` still copies it twice on the way.
+- `pane/wrap.go:56` and `file/file.go:150`/`:166` are covered above.
+- The rest: `addr/addr.go:159` (`evalRegexp`), `cmd/exec_struct.go:43`
+  and `:91` (`execX`, `execY`), `main.go:472` (`lookForward`).
+- **Note:** the regexp ones are the awkward set, because Go's `regexp`
+  wants a string — removing the copy there means either an
+  allocation-free iterator the matcher can drive, or accepting the copy.
+  Not urgent now that the per-match quadratics are gone: a search costs
+  one copy per command rather than one per match.
+
+## Known divergences from sam
+
+None outstanding. The two found during the address refactor — regexp
+search direction after `+`/`-`, and a leading `+`/`-` not taking an
+implicit dot — are fixed.
