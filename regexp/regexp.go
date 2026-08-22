@@ -18,6 +18,23 @@ import (
 // last is the package-level most-recently-compiled pattern.
 var last *Regexp
 
+// cache holds compiled patterns keyed by the original Sam pattern string.
+//
+// Structural commands recompile constantly: an x loop compiles its own
+// pattern once but re-runs its body per match, so a body containing s/// or
+// g// pays for a fresh compile on every iteration. The pattern text comes
+// from the command itself, so the set of distinct patterns in play is
+// bounded by the size of the script and is typically a handful.
+//
+// That access pattern -- a tiny working set, hit over and over -- is why
+// this is a plain bounded map rather than an LRU: at these sizes the
+// eviction bookkeeping would cost more than it saves. When the map fills it
+// is dropped whole, which costs one recompile per pattern still in use and
+// cannot happen partway through a command, whose patterns are fixed.
+const maxCached = 256
+
+var cache = map[string]*Regexp{}
+
 // Regexp wraps a compiled Go regexp with the original Sam pattern.
 type Regexp struct {
 	re      *regexp.Regexp
@@ -34,12 +51,20 @@ func Compile(pattern string) (*Regexp, error) {
 		}
 		return last, nil
 	}
+	if r, ok := cache[pattern]; ok {
+		last = r // a cache hit is still a use, so // reuse must see it
+		return r, nil
+	}
 	goPattern := samToGo(pattern)
 	re, err := regexp.Compile(goPattern)
 	if err != nil {
 		return nil, fmt.Errorf("regexp: %w", err)
 	}
 	r := &Regexp{re: re, pattern: pattern}
+	if len(cache) >= maxCached {
+		clear(cache)
+	}
+	cache[pattern] = r
 	last = r
 	return r, nil
 }

@@ -189,14 +189,45 @@ worth the bit-twiddling for a millisecond on a once-per-command path.
   This is the enabling change for many of the items above (Wrap,
   lineRange, execX, execG guard-check, addr regexp evaluation, …).
 
-#### Regex compilation is not cached across a command
-- **Where:** `regexp/regexp.go` `Compile`
-- **Smell:** Called every time `execG`, `execX`, `execSubst`, etc. run,
-  even inside an outer `x` loop where the same pattern is used per
-  iteration. The `//` reuse hack is a package-level "last one" only.
-- **Fix:** LRU cache keyed by the original Sam pattern string. Cheap
-  and helps every structural command that has a body containing another
-  regexp command.
+#### ~~Regex compilation is not cached across a command~~ — DONE 2026-08-22
+
+`regexp.Compile` now consults a map keyed by the original Sam pattern
+before compiling. A cache hit still updates `last`, so `//` reuse keeps
+meaning "the most recently used pattern" — that interaction is the only
+way the cache can change behavior, and it is what the new tests are
+aimed at.
+
+Not an LRU, as originally sketched: the working set is a handful of
+patterns hit over and over, so the eviction bookkeeping would cost more
+than it saves. The map is capped and dropped whole when it fills, which
+cannot happen partway through a command.
+
+| | before | after |
+|---|---|---|
+| `Compile` of an already-seen pattern | 1,442 ns | 20 ns |
+| `,x/[a-z]+/ s/[a-z]/X/` over 400 lines | 158.9 ms | 153.1 ms |
+| — allocations for the same | 57,705 | 14,480 |
+
+**The headline is the allocation count, not the time.** Compilation was
+only 1.8% of that command; the 72× on `Compile` itself buys ~3% overall.
+Dropping 4× the allocations matters more for an interactive editor,
+since it is GC pressure during a long structural command.
+
+**What the profile actually says** (`go test ./cmd/ -bench BenchmarkX
+-cpuprofile`): over 70% of a structural command goes to codepoint↔byte
+conversion, not to matching or compiling —
+
+- `utf8.RuneCountInString` 26% — the `execX`/`substAll` quadratic
+  counting, Tier-2 item 3 below
+- `cmd.runeToByteOff` 24% cum
+- `buffer.byteOffsetFromEnd` + `nthRuneByteOffset` ~24% cum — `ReadAt`
+  per body iteration, at offsets that walk away from the gap
+
+Those three are the same underlying problem: the body of a structural
+command re-derives byte offsets from codepoint offsets against the
+whole file, once per match. Fixing Tier-2 item 3 and giving `execX`'s
+body a way to read without a full-file offset conversion is worth far
+more than anything left in this section.
 
 ### If picking three to do first
 
