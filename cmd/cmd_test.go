@@ -3,6 +3,7 @@ package cmd
 import (
 	"dave/buffer"
 	"dave/file"
+	"os"
 	"strings"
 	"testing"
 )
@@ -182,6 +183,17 @@ func TestSubstNth(t *testing.T) {
 	r := runCmd(t, "aaa", dot(0, 3), "s2/a/b/")
 	assertNoError(t, r.err)
 	assertContents(t, r.contents, "aba")
+}
+
+func TestSubstAllEmptyReplacementAtZero(t *testing.T) {
+	// s/foo//g where the only match is at position 0 replaced with "" —
+	// the dot-update guard was previously "numbers non-zero" which
+	// swallowed this legitimate case.
+	r := runCmd(t, "fooxyz", dot(0, 6), "s/foo//g")
+	assertNoError(t, r.err)
+	assertContents(t, r.contents, "xyz")
+	// Dot should collapse onto the replacement point: (0, 0).
+	assertDot(t, r.dot, 0, 0)
 }
 
 // ---- G / V ------------------------------------------------------------------
@@ -540,6 +552,35 @@ func TestF(t *testing.T) {
 	if f.Name() != "new.txt" {
 		t.Errorf("f new.txt: name = %q, want %q", f.Name(), "new.txt")
 	}
+}
+
+func TestELeavesFileUnmodified(t *testing.T) {
+	// e replaces the buffer with disk content — the file matches disk
+	// afterwards, so modified should be false even though the change
+	// routed through the transcript.
+	dir := t.TempDir()
+	src := dir + "/src.txt"
+	if err := os.WriteFile(src, []byte("from disk\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var out strings.Builder
+	s := NewSession(&out)
+	f := file.New()
+	f.Buffer().Insert(0, "in memory")
+	f.SetModified(true) // simulate prior edits
+	s.AddFile(f)
+
+	assertNoError(t, s.ExecString("e "+src))
+	assertContents(t, f.String(), "from disk\n")
+	if f.Modified() {
+		t.Error("after e, file should be unmodified")
+	}
+}
+
+func TestParseBodyMissingBodyIsError(t *testing.T) {
+	// A structural command with no body was silently a no-op; now it errors.
+	r := runCmd(t, "hello", dot(0, 5), "x/foo/")
+	assertError(t, r.err)
 }
 
 // ---- Quit -------------------------------------------------------------------

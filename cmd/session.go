@@ -145,7 +145,11 @@ type execCtx struct {
 
 type filePending struct {
 	transcript *buffer.Transcript
-	savedDot   buffer.Range  // dot before this command
+	savedDot   buffer.Range // dot before this command
+	// resetModified is set by commands whose semantics leave the buffer
+	// matching disk (currently just `e`). At commit time, this overrides
+	// the default SetModified(true) so the file is treated as clean.
+	resetModified bool
 }
 
 func newExecCtx(s *Session) *execCtx {
@@ -176,23 +180,32 @@ func (ctx *execCtx) addChange(f *file.File, pos, del int, text string) error {
 
 // commit applies all pending transcripts, saves inverse for undo, and
 // updates dots. Returns the first error encountered.
+//
+// If Apply fails partway through a multi-file transaction, the entry so
+// far is still pushed to the undo log so `u` can back out the changes
+// that did land. The error is then returned to the caller.
 func (ctx *execCtx) commit() error {
 	entry := undoEntry{}
 	for _, f := range ctx.order {
 		p := ctx.perFile[f]
-		if p.transcript.IsEmpty() {
-			continue
+		if !p.transcript.IsEmpty() {
+			inv, err := p.transcript.Apply(f.Buffer())
+			if err != nil {
+				if len(entry.changes) > 0 {
+					ctx.session.Undo.push(entry)
+				}
+				return err
+			}
+			entry.changes = append(entry.changes, fileUndo{
+				f:        f,
+				inverse:  inv,
+				savedDot: p.savedDot,
+			})
+			f.SetModified(true)
 		}
-		inv, err := p.transcript.Apply(f.Buffer())
-		if err != nil {
-			return err
+		if p.resetModified {
+			f.SetModified(false)
 		}
-		f.SetModified(true)
-		entry.changes = append(entry.changes, fileUndo{
-			f:        f,
-			inverse:  inv,
-			savedDot: p.savedDot,
-		})
 	}
 	if len(entry.changes) > 0 {
 		ctx.session.Undo.push(entry)

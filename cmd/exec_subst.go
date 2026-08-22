@@ -66,6 +66,7 @@ func (s *Session) substAll(f *file.File, dot buffer.Range, re *dregs.Regexp, rep
 		return fmt.Errorf("s: no match")
 	}
 	var lastDot buffer.Range
+	matched := false
 	for _, m := range all {
 		idx := re.FindSubmatchIndex(text, m[0], len(text))
 		if idx == nil || idx[0] != m[0] {
@@ -81,8 +82,9 @@ func (s *Session) substAll(f *file.File, dot buffer.Range, re *dregs.Regexp, rep
 		}
 		n := utf8.RuneCountInString(expanded)
 		lastDot = buffer.Range{Start: pos, End: pos + n}
+		matched = true
 	}
-	if lastDot.Start > 0 || lastDot.End > 0 {
+	if matched {
 		f.SetDot(lastDot)
 	}
 	return nil

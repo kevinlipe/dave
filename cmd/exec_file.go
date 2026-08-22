@@ -98,6 +98,9 @@ func (s *Session) execE(f *file.File, name string, ctx *execCtx) error {
 			return err
 		}
 	}
+	// After commit, the buffer matches disk — clear the modified bit
+	// even though we routed the change through the transcript.
+	ctx.pending(f).resetModified = true
 	f.SetName(name)
 	f.SetDot(buffer.Range{})
 	s.printf("%s: #%d\n", name, utf8.RuneCountInString(newContent))

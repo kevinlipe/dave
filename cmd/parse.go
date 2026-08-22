@@ -313,6 +313,9 @@ func (p *cmdParser) readLine() string {
 }
 
 // parseBody parses the body command after an x/y/g/v/X/Y pattern.
+// Returns an error if no body command is present — structural commands
+// require one (the parser already accepts `x/re/{}` for an explicit empty
+// group; a truly-missing body is a user error, not a silent no-op).
 func (p *cmdParser) parseBody() ([]*Command, error) {
 	p.skipNL()
 	cmd, err := p.parseOne()
@@ -320,7 +323,7 @@ func (p *cmdParser) parseBody() ([]*Command, error) {
 		return nil, err
 	}
 	if cmd == nil {
-		return nil, nil
+		return nil, fmt.Errorf("missing body command")
 	}
 	return []*Command{cmd}, nil
 }
