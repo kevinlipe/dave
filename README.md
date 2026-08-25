@@ -15,6 +15,8 @@ make all         # build dave and sdave
 make sdave       # build sdave only
 make static      # build a statically-compiled exe including SDL2
 make install     # install dave and sdave via go install
+make test        # run the test suite
+make check       # build + test
 ```
 
 Requires Go and SDL2. The binary embeds Go Mono as a fallback font; no fonts need to be installed.
@@ -28,7 +30,7 @@ Dave supports two font rendering modes. Set `font_mode` in the config file:
 
 ## Window management
 
-Sam manages its own windows, dividing the display into a column of resizable frames. Dave does not. Each Dave window shows one or two panes at a time. Right-clicking opens the buffer menu; selecting a file opens it in the current pane.
+Sam manages its own windows, dividing the display into a column of resizable frames. Dave does not. Each Dave window shows one or two panes at a time. Right-clicking opens the buffer menu: **new**, **pane** (or **kill pane**), **close** and **write**, then a `~~dave~~` divider — sam's `~~sam~~`, and equally unclickable — and below it the open files. Selecting a file opens it in the current pane.
 
 To view two files side by side, right-click and choose **pane** from the buffer menu. This splits the window vertically; the new pane opens showing the current file. To remove a pane, right-click and choose **kill pane**.
 
