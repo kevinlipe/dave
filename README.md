@@ -24,7 +24,7 @@ Requires Go and SDL2. The binary embeds Go Mono as a fallback font; no fonts nee
 Dave supports two font rendering modes. Set `font_mode` in the config file:
 
 - **TTF** (default) — any TrueType or OpenType font installed on the system, rendered via Go's `x/image` stack. Set `font` to the family name (e.g. `Consolas`, `JetBrains Mono`). Falls back to an embedded Go Mono if the named font isn't found.
-- **Plan 9 bitmap fonts** — the original bitmap fonts from Plan 9/inferno, rendered pixel-perfect with no antialiasing. Set `font_mode = plan9` and point `plan9_font` at a Plan 9 font file. Pairs especially well with low-DPI displays, but works nicely everywhere. Set `plan9_embiggen = true` to render at 150% scale.
+- **Plan 9 bitmap fonts** — the original bitmap fonts from Plan 9/inferno, rendered without antialiasing at their native size. Set `font_mode = plan9` and point `plan9_font` at a Plan 9 font file. Pairs especially well with low-DPI displays, but works nicely everywhere. `plan9_scale` draws them larger — `plan9_scale = 1.15`, say, when a 9-point font is a little small at native resolution. A bitmap glyph has no larger size to draw from, so scaling filters it and softens the edges; leave it at `1.0` for the crisp original.
 
 ## Window management
 
@@ -36,7 +36,7 @@ To close a file (remove it from the session), right-click and choose **close**, 
 
 ## Configuration
 
-`~/.config/dave/config` on Linux, `%APPDATA%\dave\config` on Windows. If it doesn't exist launch, `dave` creates it.
+`~/.config/dave/config` on Linux, `%APPDATA%\dave\config` on Windows. If it doesn't exist at launch, `dave` creates it with every setting commented out at its default. An unrecognised key is an error, and a config that fails to load is abandoned for the defaults — so a typo costs the whole file.
 
 ## Invocation
 
@@ -78,10 +78,11 @@ sdave [-n] [-e script] [-f scriptfile] [file ...]
 Without `-e` or `-f`, the first positional argument is the script. Without `-n`, the entire buffer is printed after the script runs.
 
 ```
-sdave 's/UNIX/& system/g'          # replace in stdin, print result
-sdave -n ',10p' file               # print first 10 lines
-sdave -n ',x/TODO/ p' *.go        # print every line containing TODO
-sdave 'y/[a-zA-Z]+/ c/\n/'        # one word per line
+sdave 's/UNIX/& system/g'              # replace in stdin, print result
+sdave -n ',10p' file                   # print first 10 lines
+sdave -n ',x/^.*TODO.*$/ p' *.go       # print every line containing TODO
+sdave -n ',x/TODO/ p' *.go             # print just the matches
+sdave 'y/[a-zA-Z]+/ c/\n/'             # one word per line
 ```
 
 ## License
