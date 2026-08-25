@@ -22,9 +22,6 @@ func TestDefault(t *testing.T) {
 	if cfg.TabWidth != 4 {
 		t.Errorf("TabWidth: got %d, want 4", cfg.TabWidth)
 	}
-	if cfg.LineNumbers {
-		t.Error("LineNumbers: got true, want false")
-	}
 	// Spot-check default colors.
 	want := Color{0xFF, 0xFF, 0xEA}
 	if cfg.Colors.Background != want {
@@ -63,7 +60,6 @@ word_wrap = false
 margin = 100
 split = horizontal
 tab_width = 8
-line_numbers = true
 use_pwsh = false
 color_background    = #AABBCC
 color_text          = #112233
@@ -99,9 +95,6 @@ color_cmdwin_scroll = #6666AA
 	}
 	if cfg.TabWidth != 8 {
 		t.Errorf("TabWidth: got %d, want 8", cfg.TabWidth)
-	}
-	if !cfg.LineNumbers {
-		t.Error("LineNumbers: got false, want true")
 	}
 	if cfg.UsePwsh {
 		t.Error("UsePwsh: got true, want false")

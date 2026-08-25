@@ -28,34 +28,33 @@ type Color struct {
 
 // Colors holds the full Dave color scheme.
 type Colors struct {
-	Background       Color // pane/buffer background              #FFFFEA
-	Text             Color // normal text                         #000000
-	SelectionBG      Color // cmdwin selection background         #9FEEEE
-	SelectionFG      Color // cmdwin selection text               #000000
-	BodySelectionBG  Color // body/pane selection background      #EEEE9E
-	BodySelectionFG  Color // body/pane selection text            #000000
-	Border           Color // pane border and divider             #888888
-	HeaderBG     Color // pane header background         #EEEEDD
-	HeaderFG     Color // pane header text               #000000
-	Scrollbar    Color // file pane scrollbar            #99994C
-	CmdwinBG     Color // command window background      #EAFFFF
-	CmdwinFG     Color // command window text            #000000
-	CmdwinBorder Color // command window border          #8888CC
-	CmdwinScroll Color // command window scrollbar       #8888CC
+	Background      Color // pane/buffer background              #FFFFEA
+	Text            Color // normal text                         #000000
+	SelectionBG     Color // cmdwin selection background         #9FEEEE
+	SelectionFG     Color // cmdwin selection text               #000000
+	BodySelectionBG Color // body/pane selection background      #EEEE9E
+	BodySelectionFG Color // body/pane selection text            #000000
+	Border          Color // pane border and divider             #888888
+	HeaderBG        Color // pane header background         #EEEEDD
+	HeaderFG        Color // pane header text               #000000
+	Scrollbar       Color // file pane scrollbar            #99994C
+	CmdwinBG        Color // command window background      #EAFFFF
+	CmdwinFG        Color // command window text            #000000
+	CmdwinBorder    Color // command window border          #8888CC
+	CmdwinScroll    Color // command window scrollbar       #8888CC
 }
 
 // Config holds all Dave configuration settings.
 type Config struct {
-	Font        string  // TTF font name; empty = embedded Go Mono
-	FontSize    float64 // font size in points (default 14)
-	FontMode    string  // "ttf" or "plan9" (default "ttf")
-	Plan9Font   string  // full path to Plan 9 font file; only used when FontMode = "plan9"
-	Plan9Scale    float64 // render Plan 9 fonts at this scale factor (default 1.0)
-	WordWrap    bool    // soft word wrap on/off (default true)
-	Margin      int     // olivetti margin width in chars (default 80)
-	Split       string  // "vertical" or "horizontal" (default "vertical")
-	TabWidth    int     // tab stop width in spaces (default 4)
-	LineNumbers  bool    // show line numbers (default false)
+	Font         string  // TTF font name; empty = embedded Go Mono
+	FontSize     float64 // font size in points (default 14)
+	FontMode     string  // "ttf" or "plan9" (default "ttf")
+	Plan9Font    string  // full path to Plan 9 font file; only used when FontMode = "plan9"
+	Plan9Scale   float64 // render Plan 9 fonts at this scale factor (default 1.0)
+	WordWrap     bool    // soft word wrap on/off (default true)
+	Margin       int     // olivetti margin width in chars (default 80)
+	Split        string  // "vertical" or "horizontal" (default "vertical")
+	TabWidth     int     // tab stop width in spaces (default 4)
 	UsePwsh      bool    // Windows only: use pwsh instead of powershell.exe (default true)
 	CommandLines int     // initial command window height in lines (default 10)
 	Colors       Colors
@@ -64,31 +63,30 @@ type Config struct {
 // Default returns a Config populated with all spec defaults.
 func Default() *Config {
 	return &Config{
-		FontSize:    14,
-		FontMode:    "ttf",
-		Plan9Scale:  1.0,
-		WordWrap:    true,
-		Margin:      80,
-		Split:       "vertical",
-		TabWidth:    4,
-		LineNumbers:  false,
+		FontSize:     14,
+		FontMode:     "ttf",
+		Plan9Scale:   1.0,
+		WordWrap:     true,
+		Margin:       80,
+		Split:        "vertical",
+		TabWidth:     4,
 		UsePwsh:      true,
 		CommandLines: 10,
 		Colors: Colors{
-			Background:   Color{0xFF, 0xFF, 0xEA},
-			Text:         Color{0x00, 0x00, 0x00},
+			Background:      Color{0xFF, 0xFF, 0xEA},
+			Text:            Color{0x00, 0x00, 0x00},
 			SelectionBG:     Color{0x9F, 0xEE, 0xEE},
 			SelectionFG:     Color{0x00, 0x00, 0x00},
 			BodySelectionBG: Color{0xEE, 0xEE, 0x9E},
 			BodySelectionFG: Color{0x00, 0x00, 0x00},
-			Border:       Color{0x88, 0x88, 0x88},
-			HeaderBG:     Color{0xEE, 0xEE, 0xDD},
-			HeaderFG:     Color{0x00, 0x00, 0x00},
-			Scrollbar:    Color{0x99, 0x99, 0x4C},
-			CmdwinBG:     Color{0xEA, 0xFF, 0xFF},
-			CmdwinFG:     Color{0x00, 0x00, 0x00},
-			CmdwinBorder: Color{0x88, 0x88, 0xCC},
-			CmdwinScroll: Color{0x88, 0x88, 0xCC},
+			Border:          Color{0x88, 0x88, 0x88},
+			HeaderBG:        Color{0xEE, 0xEE, 0xDD},
+			HeaderFG:        Color{0x00, 0x00, 0x00},
+			Scrollbar:       Color{0x99, 0x99, 0x4C},
+			CmdwinBG:        Color{0xEA, 0xFF, 0xFF},
+			CmdwinFG:        Color{0x00, 0x00, 0x00},
+			CmdwinBorder:    Color{0x88, 0x88, 0xCC},
+			CmdwinScroll:    Color{0x88, 0x88, 0xCC},
 		},
 	}
 }
@@ -141,7 +139,6 @@ const defaultConfigText = `# Dave configuration file
 # margin        = 80
 # split         = vertical
 # tab_width     = 4
-# line_numbers  = false
 
 # use_pwsh      = true
 # command_lines  = 10
@@ -259,12 +256,6 @@ func applyKey(cfg *Config, k, v string) error {
 			return fmt.Errorf("invalid tab_width %q: want positive integer", v)
 		}
 		cfg.TabWidth = n
-	case "line_numbers":
-		b, err := parseBool(v)
-		if err != nil {
-			return fmt.Errorf("invalid line_numbers %q: %w", v, err)
-		}
-		cfg.LineNumbers = b
 	case "use_pwsh":
 		b, err := parseBool(v)
 		if err != nil {
