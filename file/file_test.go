@@ -139,13 +139,59 @@ func TestMark(t *testing.T) {
 
 func TestModifiedBit(t *testing.T) {
 	f := New()
-	f.SetModified(true)
+	f.MarkChanged()
 	if !f.Modified() {
 		t.Error("expected modified = true")
 	}
-	f.SetModified(false)
+	f.MarkClean()
 	if f.Modified() {
 		t.Error("expected modified = false")
+	}
+}
+
+// Dirtiness is a position in the history, so it survives a round trip through
+// versions the file has already held. A stored bit cannot do this: after a
+// write, undoing to a version older than the write must still read as dirty,
+// because the disk holds the written text and the buffer no longer does.
+func TestModifiedIsAPositionNotABit(t *testing.T) {
+	f := New()
+	f.MarkChanged() // edit 1
+	v1 := f.Version()
+	f.MarkChanged() // edit 2
+	f.MarkClean()   // written to disk here
+
+	f.SetVersion(v1) // undo edit 2
+	if !f.Modified() {
+		t.Error("undo to the version before the write reads clean")
+	}
+	f.SetVersion(0) // undo edit 1
+	if !f.Modified() {
+		t.Error("undo past the write reads clean; the disk holds edit 2")
+	}
+
+	// Forward again to where the write happened.
+	f.SetVersion(v1)
+	f.MarkChanged()
+	if !f.Modified() {
+		t.Error("a fresh edit after undoing reads clean")
+	}
+}
+
+// The D latch tracks dirtiness through undo, not just through edits.
+func TestCloseOKFollowsVersion(t *testing.T) {
+	f := New()
+	f.MarkChanged()
+	if f.CloseOK() {
+		t.Error("a modified file starts closeable")
+	}
+	f.SetCloseOK()
+	f.MarkChanged()
+	if f.CloseOK() {
+		t.Error("editing again did not earn a fresh refusal")
+	}
+	f.SetVersion(0)
+	if !f.CloseOK() {
+		t.Error("a file undone back to clean still needs confirmation")
 	}
 }
 
@@ -159,7 +205,7 @@ func TestMenuLineUnmodifiedNotCurrent(t *testing.T) {
 
 func TestMenuLineModifiedCurrent(t *testing.T) {
 	f := NewNamed("foo.txt")
-	f.SetModified(true)
+	f.MarkChanged()
 	ml := f.MenuLine(true, false)
 	if ml != "'. foo.txt" {
 		t.Errorf("MenuLine = %q, want %q", ml, "'. foo.txt")

@@ -9,7 +9,7 @@ import (
 )
 
 func (s *Session) execMove(f *file.File, dot buffer.Range, dest *addr.Addr, ctx *execCtx) error {
-	destRange, err := addr.Eval(dest, f, s.Files)
+	destRange, _, err := addr.Eval(dest, f, s.Files)
 	if err != nil {
 		return err
 	}
@@ -45,7 +45,7 @@ func (s *Session) execMove(f *file.File, dot buffer.Range, dest *addr.Addr, ctx 
 }
 
 func (s *Session) execCopy(f *file.File, dot buffer.Range, dest *addr.Addr, ctx *execCtx) error {
-	destRange, err := addr.Eval(dest, f, s.Files)
+	destRange, _, err := addr.Eval(dest, f, s.Files)
 	if err != nil {
 		return err
 	}

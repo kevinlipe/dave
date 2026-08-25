@@ -66,7 +66,14 @@ These are expensive to violate and hard to see from any one file.
 4. **Commands evaluate in two passes.** Addresses resolve against the original
    buffer state, then the accumulated transcript applies atomically
    (`cmd/session.go`). The buffer is not updated between commands.
-5. **Undo is per-command inverse transcripts**, applied in reverse.
+5. **Undo is per-command inverse transcripts**, applied in reverse, on one
+   timeline shared by every file — two stacks, sam's `delta` and `epsilon`
+   (`cmd/undo.go`). One command is one step, however many mutations or files
+   it spanned; `u` steps back, `u-n` forward, and a new edit clears the redo
+   stack. Undo restores dot, the mark, the name and the modify bit with the
+   text. Two deliberate departures, both in TODO.md: sam's undo is per file
+   and anchored on the current one, and sam runs a typing run through a
+   newline where dave breaks it.
 6. **The command window is not undoable**, deliberately, and matches sam: Enter
    *runs* the command, and undoing its text would not unrun it. `u` does that.
 
@@ -106,8 +113,8 @@ you touch; don't sweep the repo in an unrelated change.
   describe the editor as it is; don't treat any of them as authoritative.
   `TODO.md` is current, and is where open work, known limitations and rejected
   options live — read it before proposing a change to rendering or layout.
-- **A clone gets no design docs.** `README.md`, `TODO.md`, `doc/command-ref.md`
-  and this file are the whole written record.
+- **A clone gets no design docs.** `README.md`, `TODO.md`, `doc/command-ref.md`,
+  `doc/sam-differences.md` and this file are the whole written record.
 - **`file.WriteContent` is not called `WriteTo` on purpose.** `go vet`'s
   stdmethods check reads `WriteTo(io.Writer) error` as a broken `io.WriterTo`.
 - **Kerning is inconsistent on purpose, for now.** `TTFFace.MeasureText` kerns;

@@ -30,7 +30,7 @@ Dave supports two font rendering modes. Set `font_mode` in the config file:
 
 ## Window management
 
-Sam manages its own windows, dividing the display into a column of resizable frames. Dave does not. Each Dave window shows one or two panes at a time. Right-clicking opens the buffer menu: **new**, **pane** (or **kill pane**), **close** and **write**, then a `~~dave~~` divider — sam's `~~sam~~`, and equally unclickable — and below it the open files. Selecting a file opens it in the current pane.
+Sam manages its own windows, dividing the display into a column of resizable frames. Dave does not. Each Dave window shows one or two panes at a time. Right-clicking opens the buffer menu: **new**, **pane** (or **kill pane**), **close** and **write**, then a `~~dave~~` divider and below it the open files. Selecting a file opens it in the current pane.
 
 To view two files side by side, right-click and choose **pane** from the buffer menu. This splits the window vertically; the new pane opens showing the current file. To remove a pane, right-click and choose **kill pane**.
 
@@ -67,7 +67,7 @@ Addresses: `0` start, `$` end, `.` dot, `n` line, `#n` char offset, `/re/` next 
 | `q` | quit (twice to force) |
 | `< cmd` `> cmd` `\| cmd` | shell in / out / pipe |
 
-See the [Sam paper](https://doc.cat-v.org/plan_9/4th_edition/papers/sam/) for the full reference; Dave's command language is intended to be identical.
+See the [Sam paper](https://doc.cat-v.org/plan_9/4th_edition/papers/sam/) for the full reference; Dave's command language is intended to be identical. `doc/command-ref.md` is the complete reference as Dave implements it, and `doc/sam-differences.md` records the handful of places Dave deliberately differs.
 
 ## sdave
 

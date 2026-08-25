@@ -9,85 +9,85 @@ import (
 	"unicode/utf8"
 )
 
-func (s *Session) execSubst(f *file.File, dot buffer.Range, pat, repl, flag string, ctx *execCtx) error {
+// execSubst runs the s command. This follows sam's loop (sam/xec.c s_cmd):
+// walk the matches, skip the first n-1, substitute, and stop there unless the
+// g flag is set — so `s3/x/y/g` replaces the third match and every one after
+// it, not all of them.
+func (s *Session) execSubst(f *file.File, dot buffer.Range, pat, repl string, nth int, global bool, ctx *execCtx) error {
 	re, err := dregs.Compile(pat)
 	if err != nil {
 		return err
 	}
-	// Get the text within dot.
 	text := f.Buffer().ReadAt(dot.Start, dot.Len())
-	// Unescape \n etc. in replacement text, then normalize & → ${0}.
-	repl = unescapeText(repl)
-	repl = strings.ReplaceAll(repl, "&", "${0}")
+	repl = samReplacement(repl)
 
-	if flag == "g" {
-		return s.substAll(f, dot, re, repl, text, ctx)
-	}
-	// Default: first match (or nth if flag is a digit).
-	nth := 1
-	if len(flag) == 1 && flag[0] >= '2' && flag[0] <= '9' {
-		nth = int(flag[0] - '0')
-	}
-	return s.substNth(f, dot, re, repl, text, nth, ctx)
-}
-
-func (s *Session) substNth(f *file.File, dot buffer.Range, re *dregs.Regexp, repl, text string, nth int, ctx *execCtx) error {
-	var idx []int
-	if nth <= 1 {
-		idx = re.FindSubmatchIndex(text, 0, len(text))
-	} else {
-		// Find nth occurrence.
-		all := re.FindForwardAll(text, 0, len(text))
-		if nth-1 >= len(all) {
-			return nil // No nth match.
-		}
-		m := all[nth-1]
-		idx = re.FindSubmatchIndex(text, m[0], len(text))
-	}
-	if idx == nil {
-		return fmt.Errorf("s: no match")
-	}
-	expanded := re.ReplaceExpand(text, repl, idx)
-	rc := runeCounter{s: text}
-	mLo := rc.at(idx[0])
-	mHi := rc.at(idx[1])
-	pos := dot.Start + mLo
-	del := mHi - mLo
-	if err := ctx.addChange(f, pos, del, expanded); err != nil {
-		return err
-	}
-	n := utf8.RuneCountInString(expanded)
-	f.SetDot(buffer.Range{Start: pos, End: pos + n})
-	return nil
-}
-
-func (s *Session) substAll(f *file.File, dot buffer.Range, re *dregs.Regexp, repl, text string, ctx *execCtx) error {
-	all := re.FindForwardAll(text, 0, len(text))
-	if all == nil {
-		return fmt.Errorf("s: no match")
-	}
 	var lastDot buffer.Range
 	matched := false
 	rc := runeCounter{s: text}
-	for _, m := range all {
+	for _, m := range re.FindForwardAll(text, 0, len(text)) {
+		if nth > 1 {
+			nth--
+			continue
+		}
 		idx := re.FindSubmatchIndex(text, m[0], len(text))
 		if idx == nil || idx[0] != m[0] {
 			continue
 		}
 		expanded := re.ReplaceExpand(text, repl, idx)
-		mLo := rc.at(m[0])
-		mHi := rc.at(m[1])
+		mLo, mHi := rc.at(m[0]), rc.at(m[1])
 		pos := dot.Start + mLo
-		del := mHi - mLo
-		if err := ctx.addChange(f, pos, del, expanded); err != nil {
+		if err := ctx.addChange(f, pos, mHi-mLo, expanded); err != nil {
 			return err
 		}
-		n := utf8.RuneCountInString(expanded)
-		lastDot = buffer.Range{Start: pos, End: pos + n}
+		lastDot = buffer.Range{Start: pos, End: pos + utf8.RuneCountInString(expanded)}
 		matched = true
+		if !global {
+			break
+		}
 	}
-	if matched {
-		f.SetDot(lastDot)
+	if !matched {
+		// Sam reports this only at the top level: inside an x or g loop most
+		// iterations are expected not to match, and erroring would abort the
+		// loop on the first one that does not (`if(!didsub && nest==0)`).
+		if ctx.nest == 0 {
+			return fmt.Errorf("s: no match")
+		}
+		return nil
 	}
+	f.SetDot(lastDot)
 	return nil
+}
+
+// samReplacement turns an s command's replacement into a template for Go's
+// Expand. Sam's rhs takes \1-\9 for the subexpressions and & for the whole
+// match (sam/xec.c:252); every other \X is the literal X, and '$' means
+// nothing, so it has to be escaped on the way into a template that reads it.
+func samReplacement(repl string) string {
+	var b strings.Builder
+	for i := 0; i < len(repl); i++ {
+		c := repl[i]
+		switch {
+		case c == '$':
+			b.WriteString("$$")
+		case c == '&':
+			b.WriteString("${0}")
+		case c == '\\' && i+1 < len(repl):
+			switch n := repl[i+1]; {
+			case n >= '1' && n <= '9':
+				b.WriteString("${")
+				b.WriteByte(n)
+				b.WriteString("}")
+			case n == 'n':
+				b.WriteByte('\n')
+			case n == '$':
+				b.WriteString("$$")
+			default:
+				b.WriteByte(n)
+			}
+			i++
+		default:
+			b.WriteByte(c)
+		}
+	}
+	return b.String()
 }

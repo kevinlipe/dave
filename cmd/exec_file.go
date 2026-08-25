@@ -18,12 +18,16 @@ func (s *Session) execN() error {
 	return nil
 }
 
-func (s *Session) execB(arg string) error {
+// execB makes a file current, reporting its menu line the way sam's b_cmd does
+// (sam/xec.c:78, filename(f) at nest == 0). Inside a loop it stays quiet, so an
+// X over forty files does not print forty lines.
+func (s *Session) execB(arg string, ctx *execCtx) error {
 	names := splitPaths(arg)
 	for _, name := range names {
 		f := s.FindFile(name)
 		if f != nil {
 			s.Current = f
+			s.reportCurrent(f, ctx)
 			return nil
 		}
 	}
@@ -33,7 +37,16 @@ func (s *Session) execB(arg string) error {
 	return nil
 }
 
-func (s *Session) execBig(arg string) error {
+// reportCurrent prints the file's menu line, as sam does when b or B changes
+// the current file at top level.
+func (s *Session) reportCurrent(f *file.File, ctx *execCtx) {
+	if ctx == nil || ctx.nest > 0 {
+		return
+	}
+	s.printf("%s\n", f.MenuLine(f == s.Current, false))
+}
+
+func (s *Session) execBig(arg string, ctx *execCtx) error {
 	names := splitPaths(arg)
 	for _, name := range names {
 		f := s.FindFile(name)
@@ -43,7 +56,7 @@ func (s *Session) execBig(arg string) error {
 		}
 		s.Current = f
 		s.OpenRequest = f
-		s.printf("%s\n", f.MenuLine(true, false))
+		s.reportCurrent(f, ctx)
 	}
 	return nil
 }
@@ -85,9 +98,12 @@ func (s *Session) execE(f *file.File, name string, ctx *execCtx) error {
 	if name == "" {
 		return fmt.Errorf("e: no filename")
 	}
-	// Load new content.
+	// A file that is not there is an error, not empty content. Sam opens it and
+	// raises Eopen if it cannot (`error_r(Eopen, genc)`), leaving the buffer
+	// alone; swallowing the case meant a typo in the name emptied the buffer
+	// without a word. New files are made with B, which does not read.
 	data, err := os.ReadFile(name)
-	if err != nil && !os.IsNotExist(err) {
+	if err != nil {
 		return fmt.Errorf("e: %w", err)
 	}
 	newContent := f.DecodeContent(string(data))
@@ -101,7 +117,13 @@ func (s *Session) execE(f *file.File, name string, ctx *execCtx) error {
 	}
 	// After commit, the buffer matches disk — clear the modified bit
 	// even though we routed the change through the transcript.
-	ctx.pending(f).resetModified = true
+	pend := ctx.pending(f)
+	pend.resetModified = true
+	// Log the rename before it happens, so undo restores the old name along
+	// with the old contents. The sam paper is explicit that `e file` then `u`
+	// restores "the name, dot, and modified bit"; sam gets there by having
+	// e_cmd call getname(f, s, TRUE), which writes a Filename record.
+	pend.renamed = true
 	f.SetName(name)
 	f.SetDot(buffer.Range{})
 	s.printf("%s: #%d\n", name, utf8.RuneCountInString(newContent))
@@ -126,7 +148,15 @@ func (s *Session) execR(f *file.File, dot buffer.Range, name string, ctx *execCt
 	return nil
 }
 
-func (s *Session) execW(f *file.File, dot buffer.Range, name string) error {
+func (s *Session) execW(f *file.File, dot buffer.Range, name string, ctx *execCtx) error {
+	// Changes are applied at the end of the command, so a w in the same command
+	// that changed the file would write the text as it was before. Sam refuses
+	// on the same test — fseq == seq, meaning this command has already logged
+	// something for this file — and raises Ewseq, "can't write while changing"
+	// (sam/xec.c:288). A rename counts, as it does in sam.
+	if _, ok := ctx.perFile[f]; ok {
+		return fmt.Errorf("w: can't write while changing: %s", f.Name())
+	}
 	name = file.ExpandPath(strings.TrimSpace(name))
 	if name == "" {
 		name = f.Name()
@@ -144,7 +174,7 @@ func (s *Session) execW(f *file.File, dot buffer.Range, name string) error {
 		return fmt.Errorf("w: %w", err)
 	}
 	if name == f.Name() {
-		f.SetModified(false)
+		f.MarkClean()
 	}
 	s.printf("%s: ", name)
 	if isNew {
@@ -157,9 +187,13 @@ func (s *Session) execW(f *file.File, dot buffer.Range, name string) error {
 	return nil
 }
 
-func (s *Session) execF(f *file.File, name string) error {
+// execF renames the file. It is undoable: sam's f_cmd routes through
+// getname(f, s, TRUE), which logs a Filename record, so `f newname` is a step
+// `u` takes back. A bare `f` only reports the name and logs nothing.
+func (s *Session) execF(f *file.File, name string, ctx *execCtx) error {
 	name = file.ExpandPath(strings.TrimSpace(name))
 	if name != "" {
+		ctx.pending(f).renamed = true
 		f.SetName(name)
 	}
 	s.printf("%s\n", f.MenuLine(f == s.Current, false))

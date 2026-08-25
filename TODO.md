@@ -269,23 +269,49 @@ since a change can move a break point backwards.
 
 ## Known divergences from sam
 
-The two found during the address refactor — regexp search direction
-after `+`/`-`, and a leading `+`/`-` not taking an implicit dot — are
-fixed. One outstanding:
+The canonical reference is 9front (`~/src/9front/sys/src/cmd/sam`), as the
+tree with the most users today. plan9port is consulted where it helps
+explain intent, but where the two differ 9front wins.
 
-### `u` has no redo
+Accepted differences — the two deliberate departures, the two sam
+behaviours dave declines to copy, and what dave's regexps do beyond
+sam's — are documented for users in `doc/sam-differences.md`. What
+follows is open.
 
-Sam's count on `u` is signed, and a negative count redoes:
-`getnum(2)` accepts a leading `-` (`sam/cmd.c:166`) and `u_cmd` walks
-`undo(FALSE)` that many times (`sam/xec.c:267`). Dave parses the sign
-and reports `u: redo is not implemented` rather than doing something
-plausible-looking with it.
+Audited against the C so far: undo and redo and everything they touch
+(the modify bit, `D`, `q`, `b`, addressing, `w`'s guard), regexps,
+addresses, the structural commands, and now the shell redirections, the
+`e`/`r` I/O paths and `{}` groups. Every finding below was reproduced in
+`-d`.
 
-Implementing it is not a parser change. Sam's undo is a per-file
-sequence number over a log the file keeps in both directions
-(`sam/file.c`); dave's is a stack of inverse transcripts that are
-discarded once applied (`cmd/session.go`). Redo means keeping the
-popped entries and their forward transcripts on a second stack, and
-deciding when a new command clears it — the usual rule, and the one
-worth copying, is that any change made after an undo discards the redo
-stack.
+### Shell redirections
+
+**An empty command does not rerun the last one.** Sam keeps the text in
+`plan9cmd` and reuses it when the argument is empty, raising `Enocmd`
+only when there has never been one (sam/shell.c). Dave runs `sh -c ""`,
+so `<` on its own replaces the addressed range with nothing.
+
+**`!` is not implemented.** Sam runs the command with no I/O connected
+and prints `!` when it finishes. Dave has no such command; `!echo hi`
+reports an unknown command.
+
+**The child's environment is not set.** Sam's `updateenv` exports the
+file name as `$%` and dot as `$%dot` before exec, so a shell command can
+address the file it was run from. Dave sets neither.
+
+### Minor
+
+**`e`/`r` accept a name with no blank before it.** `efoo` reads `foo`
+here; sam raises `Eblank`.
+
+**The `#n` count is printed differently.** Sam prints `#123` from
+`closeio`, then for `e` the menu line; dave prints `name: #123`.
+
+**`=` does not prefix the working directory.** 9front's `printposn`
+prints `[cwd]name:` before the position when the file name is not
+absolute; dave prints `name:`. (plan9port prints no name at all and, for
+line addresses, both lines and characters — the two trees differ here,
+and dave follows 9front.)
+
+**Loading a file prints nothing.** Sam's `load()` calls `filename(f)`,
+so starting `sam -d foo` reports ` -. foo`. Dave is silent until asked.

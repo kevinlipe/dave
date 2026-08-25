@@ -32,9 +32,10 @@ const (
 	KindEnd       Kind = '$'  // $
 	KindRegexp    Kind = '/'  // /re/
 	KindBackRe    Kind = '?'  // ?re?
-	KindFilePat   Kind = '"'  // "re"
+	KindFilePat   Kind = 'F'  // "re"
 	KindComma     Kind = ','  // a1,a2
 	KindSemicolon Kind = ';'  // a1;a2
+	KindInFile    Kind = '"'  // "pat"a2: a2 evaluated in the file "pat" selects
 	KindPlus      Kind = '+'  // a1+a2
 	KindMinus     Kind = '-'  // a1-a2
 )
@@ -80,11 +81,24 @@ func searchBackward(sign int, kind Kind) bool {
 
 // Eval evaluates addr against f using the provided file list.
 // The file must be loaded (EnsureLoaded called) before calling Eval.
-func Eval(a *Addr, f *file.File, files []*file.File) (buffer.Range, error) {
-	return eval(a, f, files)
+// evalCtx carries the file an address is being evaluated against. A `"pat"`
+// address rebinds it, and everything after that in the same address — and the
+// command itself — runs in the file it selected.
+type evalCtx struct {
+	f     *file.File
+	files []*file.File
 }
 
-func eval(a *Addr, f *file.File, files []*file.File) (buffer.Range, error) {
+// Eval evaluates a against f and returns the range together with the file it
+// landed in, which differs from f when the address contains a `"pat"`.
+func Eval(a *Addr, f *file.File, files []*file.File) (buffer.Range, *file.File, error) {
+	ec := &evalCtx{f: f, files: files}
+	r, err := eval(a, ec)
+	return r, ec.f, err
+}
+
+func eval(a *Addr, ec *evalCtx) (buffer.Range, error) {
+	f := ec.f
 	switch a.Kind {
 	case KindLine:
 		return lineRange(f, a.Num)
@@ -100,24 +114,28 @@ func eval(a *Addr, f *file.File, files []*file.File) (buffer.Range, error) {
 	case KindRegexp, KindBackRe:
 		return evalRegexp(a.Pat, searchBackward(0, a.Kind), f)
 	case KindFilePat:
-		// Returns whole range of matched file; cmd layer switches to that file.
-		ff, err := FindFileByPat(a.Pat, files, f)
+		// Selects a file and evaluates to its dot, as sam does
+		// (`a = matchfile(ap->are)->dot; f = a.f`, sam/address.c). The rebind
+		// is what makes `"pat"p` print that file rather than this one.
+		ff, err := FindFileByPat(a.Pat, ec.files, f)
 		if err != nil {
 			return buffer.Range{}, err
 		}
 		if err := ff.EnsureLoaded(); err != nil {
 			return buffer.Range{}, err
 		}
-		n := ff.Len()
-		return buffer.Range{Start: 0, End: n}, nil
+		ec.f = ff
+		return ff.Dot(), nil
+	case KindInFile:
+		return evalInFile(a, ec)
 	case KindComma:
-		return evalComma(a, f, files)
+		return evalComma(a, ec)
 	case KindSemicolon:
-		return evalSemicolon(a, f, files)
+		return evalSemicolon(a, ec)
 	case KindPlus:
-		return evalPlus(a, f, files)
+		return evalPlus(a, ec)
 	case KindMinus:
-		return evalMinus(a, f, files)
+		return evalMinus(a, ec)
 	}
 	return buffer.Range{}, fmt.Errorf("addr: unknown address kind %q", rune(a.Kind))
 }
@@ -204,45 +222,78 @@ func FindFileByPat(pat string, files []*file.File, current *file.File) (*file.Fi
 }
 
 // evalComma evaluates a1,a2.
-func evalComma(a *Addr, f *file.File, files []*file.File) (buffer.Range, error) {
+func evalComma(a *Addr, ec *evalCtx) (buffer.Range, error) {
+	// Both sides are evaluated against the incoming file: sam recurses with the
+	// same `a` for each, so a `"pat"` on the left does not carry over to the
+	// right the way it does after a ';'.
+	start := ec.f
 	var r1 buffer.Range
 	var err error
 	if a.Left != nil {
-		r1, err = eval(a.Left, f, files)
+		r1, err = eval(a.Left, ec)
 		if err != nil {
 			return buffer.Range{}, err
 		}
 	}
+	left := ec.f
+	ec.f = start
 	var r2 buffer.Range
 	if a.Right != nil {
-		r2, err = eval(a.Right, f, files)
+		r2, err = eval(a.Right, ec)
 		if err != nil {
 			return buffer.Range{}, err
 		}
 	} else {
-		n := f.Len()
+		n := ec.f.Len()
 		r2 = buffer.Range{Start: n, End: n}
+	}
+	if ec.f != left {
+		return buffer.Range{}, fmt.Errorf("addr: addresses in different files")
+	}
+	return joinRange(r1, r2)
+}
+
+// evalInFile evaluates `"pat"a2`: the left side selects a file, and a2 is
+// evaluated there, against that file's dot. Sam gets this by continuing its
+// address chain with the newly bound file (sam/address.c).
+func evalInFile(a *Addr, ec *evalCtx) (buffer.Range, error) {
+	// The left side is always a file pattern, which evaluates to the selected
+	// file's own dot, so the right side is already relative to the right place
+	// once ec.f has been rebound.
+	if _, err := eval(a.Left, ec); err != nil {
+		return buffer.Range{}, err
+	}
+	return eval(a.Right, ec)
+}
+
+// joinRange combines the two sides of a ',' or ';'. Sam refuses a range that
+// runs backwards — Eorder, "addresses out of order" (sam/address.c) — rather
+// than handing an inverted range to whatever command follows.
+func joinRange(r1, r2 buffer.Range) (buffer.Range, error) {
+	if r2.End < r1.Start {
+		return buffer.Range{}, fmt.Errorf("addr: addresses out of order")
 	}
 	return buffer.Range{Start: r1.Start, End: r2.End}, nil
 }
 
 // evalSemicolon evaluates a1;a2 (a2 evaluated with dot := a1).
-func evalSemicolon(a *Addr, f *file.File, files []*file.File) (buffer.Range, error) {
+func evalSemicolon(a *Addr, ec *evalCtx) (buffer.Range, error) {
 	var r1 buffer.Range
 	var err error
 	if a.Left != nil {
-		r1, err = eval(a.Left, f, files)
+		r1, err = eval(a.Left, ec)
 		if err != nil {
 			return buffer.Range{}, err
 		}
 	}
+	f := ec.f
 	saved := f.Dot()
 	f.SetDot(r1)
 	defer f.SetDot(saved)
 
 	var r2 buffer.Range
 	if a.Right != nil {
-		r2, err = eval(a.Right, f, files)
+		r2, err = eval(a.Right, ec)
 		if err != nil {
 			return buffer.Range{}, err
 		}
@@ -250,15 +301,16 @@ func evalSemicolon(a *Addr, f *file.File, files []*file.File) (buffer.Range, err
 		n := f.Len()
 		r2 = buffer.Range{Start: n, End: n}
 	}
-	return buffer.Range{Start: r1.Start, End: r2.End}, nil
+	return joinRange(r1, r2)
 }
 
 // evalPlus evaluates a1+a2.
-func evalPlus(a *Addr, f *file.File, files []*file.File) (buffer.Range, error) {
-	base, err := evalBase(a.Left, f, files, false)
+func evalPlus(a *Addr, ec *evalCtx) (buffer.Range, error) {
+	base, err := evalBase(a.Left, ec, false)
 	if err != nil {
 		return buffer.Range{}, err
 	}
+	f := ec.f
 	right := a.Right
 	if right == nil {
 		right = &Addr{Kind: KindLine, Num: 1}
@@ -293,15 +345,16 @@ func evalPlus(a *Addr, f *file.File, files []*file.File) (buffer.Range, error) {
 	saved := f.Dot()
 	f.SetDot(buffer.Range{Start: base.End, End: base.End})
 	defer f.SetDot(saved)
-	return eval(right, f, files)
+	return eval(right, ec)
 }
 
 // evalMinus evaluates a1-a2.
-func evalMinus(a *Addr, f *file.File, files []*file.File) (buffer.Range, error) {
-	base, err := evalBase(a.Left, f, files, true)
+func evalMinus(a *Addr, ec *evalCtx) (buffer.Range, error) {
+	base, err := evalBase(a.Left, ec, true)
 	if err != nil {
 		return buffer.Range{}, err
 	}
+	f := ec.f
 	right := a.Right
 	if right == nil {
 		right = &Addr{Kind: KindLine, Num: 1}
@@ -329,15 +382,15 @@ func evalMinus(a *Addr, f *file.File, files []*file.File) (buffer.Range, error) 
 	saved := f.Dot()
 	f.SetDot(buffer.Range{Start: base.Start, End: base.Start})
 	defer f.SetDot(saved)
-	return eval(right, f, files)
+	return eval(right, ec)
 }
 
 // evalBase evaluates the left side of + or -, defaulting to dot.
-func evalBase(left *Addr, f *file.File, files []*file.File, useStart bool) (buffer.Range, error) {
+func evalBase(left *Addr, ec *evalCtx, useStart bool) (buffer.Range, error) {
 	if left == nil {
-		return f.Dot(), nil
+		return ec.f.Dot(), nil
 	}
-	return eval(left, f, files)
+	return eval(left, ec)
 }
 
 // ---- Byte/rune conversion ---------------------------------------------------
@@ -391,79 +444,82 @@ func (p *parser) consume() byte {
 }
 
 // parseCompound parses a full compound address.
+// parseCompound parses a full address. This is sam's compoundaddr: ',' and ';'
+// are the lowest-precedence operators, and their right side is another compound
+// address, so `2,+1` is `2,(+1)` and not `(2,$)+1`. Right recursion is not just
+// shape — for a ';' chain it decides what the third address is relative to.
 func (p *parser) parseCompound() (*Addr, error) {
+	left, err := p.parseChain()
+	if err != nil {
+		return nil, err
+	}
+	k := p.peek()
+	if k != ',' && k != ';' {
+		return left, nil
+	}
+	p.consume()
+	if left == nil {
+		left = &Addr{Kind: KindLine, Num: 0} // ,a2 means 0,a2
+	}
+	right, err := p.parseCompound()
+	if err != nil {
+		return nil, err
+	}
+	if right == nil {
+		right = &Addr{Kind: KindEnd} // a1, means a1,$
+	} else if (right.Kind == KindComma || right.Kind == KindSemicolon) && right.Left == nil {
+		return nil, fmt.Errorf("addr: bad address")
+	}
+	return &Addr{Kind: Kind(k), Left: left, Right: right}, nil
+}
+
+// parseChain parses one address and any '+'/'-' chain hanging off it. This is
+// sam's simpleaddr, where '+' and '-' are address types in their own right, so
+// a chain may begin with one and take an implicit dot as its left operand. A
+// nil Left is how the evaluator already spells that.
+func (p *parser) parseChain() (*Addr, error) {
 	left, err := p.parseSimple()
 	if err != nil {
 		return nil, err
 	}
-
-	// Leading bare comma: ,a2 means 0,a2
-	if left == nil && p.peek() == ',' {
-		p.consume()
+	if left == nil && p.peek() != '+' && p.peek() != '-' {
+		return nil, nil
+	}
+	for {
+		if k := p.peek(); k == '+' || k == '-' {
+			p.consume()
+			right, err := p.parseSimple()
+			if err != nil {
+				return nil, err
+			}
+			left = &Addr{Kind: Kind(k), Left: left, Right: right}
+			continue
+		}
+		save := p.pos
 		right, err := p.parseSimple()
 		if err != nil {
 			return nil, err
 		}
 		if right == nil {
-			right = &Addr{Kind: KindEnd}
-		}
-		return &Addr{Kind: KindComma,
-			Left:  &Addr{Kind: KindLine, Num: 0},
-			Right: right,
-		}, nil
-	}
-	// A leading + or - takes an implicit dot as its left operand, as sam
-	// does: simpleaddr accepts them as address types in their own right, and
-	// a missing left operand means dot. A nil Left is already how the
-	// evaluator spells that, so the loop below builds the right node without
-	// any special case -- it just has to be allowed to start.
-	if left == nil && p.peek() != '+' && p.peek() != '-' {
-		return nil, nil
-	}
-
-	for {
-		switch p.peek() {
-		case ',':
-			p.consume()
-			right, err := p.parseSimple()
-			if err != nil {
-				return nil, err
-			}
-			if right == nil {
-				right = &Addr{Kind: KindEnd}
-			}
-			left = &Addr{Kind: KindComma, Left: left, Right: right}
-		case ';':
-			p.consume()
-			right, err := p.parseSimple()
-			if err != nil {
-				return nil, err
-			}
-			if right == nil {
-				right = &Addr{Kind: KindEnd}
-			}
-			left = &Addr{Kind: KindSemicolon, Left: left, Right: right}
-		case '+':
-			p.consume()
-			right, err := p.parseSimple()
-			if err != nil {
-				return nil, err
-			}
-			left = &Addr{Kind: KindPlus, Left: left, Right: right}
-		case '-':
-			p.consume()
-			right, err := p.parseSimple()
-			if err != nil {
-				return nil, err
-			}
-			left = &Addr{Kind: KindMinus, Left: left, Right: right}
-		default:
+			p.pos = save
 			return left, nil
 		}
+		switch right.Kind {
+		case KindDot, KindEnd, KindMark, KindFilePat:
+			// sam raises Eaddress rather than inserting a '+' before an
+			// address that is not relative to anything.
+			return nil, fmt.Errorf("addr: bad address")
+		}
+		if left != nil && left.Kind == KindFilePat {
+			// A file address chains by switching files, not by offsetting:
+			// `"pat"5` is line 5 of the file "pat" selects.
+			left = &Addr{Kind: KindInFile, Left: left, Right: right}
+			continue
+		}
+		left = &Addr{Kind: KindPlus, Left: left, Right: right}
 	}
 }
 
-// parseSimple parses a single simple address token.
 func (p *parser) parseSimple() (*Addr, error) {
 	if p.pos >= len(p.input) {
 		return nil, nil

@@ -52,17 +52,17 @@ func (s *Session) execCmd(cmd *Command, f *file.File, ctx *execCtx) error {
 		}
 		return s.tryQuit(false)
 	case 'b':
-		return s.execB(cmd.Args[0])
+		return s.execB(cmd.Args[0], ctx)
 	case 'B':
-		return s.execBig(cmd.Args[0])
+		return s.execBig(cmd.Args[0], ctx)
 	case 'D':
 		return s.execD(cmd.Args[0])
 	case 'n':
 		return s.execN()
 	case 'X':
-		return s.execXFile(cmd.Pat, cmd.Body, ctx)
+		return s.execXFile(cmd.Pat, cmd.AllFiles, cmd.Body, ctx)
 	case 'Y':
-		return s.execYFile(cmd.Pat, cmd.Body, ctx)
+		return s.execYFile(cmd.Pat, cmd.AllFiles, cmd.Body, ctx)
 	}
 
 	// Commands below require a current file.
@@ -78,9 +78,13 @@ func (s *Session) execCmd(cmd *Command, f *file.File, ctx *execCtx) error {
 		dot = buffer.Range{Start: 0, End: f.Len()}
 	} else {
 		var err error
-		dot, err = s.evalAddr(cmd.Addr, f)
+		var af *file.File
+		dot, af, err = s.evalAddr(cmd.Addr, f)
 		if err != nil {
 			return err
+		}
+		if af != f {
+			f, s.Current = af, af
 		}
 	}
 
@@ -92,7 +96,10 @@ func (s *Session) execCmd(cmd *Command, f *file.File, ctx *execCtx) error {
 	case '=':
 		return s.execEqual(f, dot, cmd.Flag)
 	case 'k':
-		f.SetMark()
+		// The evaluated address, not dot: sam's k_cmd is f->mark = addr.r,
+		// so `2k` marks line 2. They agree for a bare k, whose address
+		// defaults to dot.
+		f.SetMarkRange(dot)
 		return nil
 	case 'a':
 		return s.execAppend(f, dot, cmd.Args[0], ctx)
@@ -101,7 +108,7 @@ func (s *Session) execCmd(cmd *Command, f *file.File, ctx *execCtx) error {
 	case 'c':
 		return s.execChange(f, dot, cmd.Args[0], ctx)
 	case 's':
-		return s.execSubst(f, dot, cmd.Pat, cmd.Pat2, cmd.Flag, ctx)
+		return s.execSubst(f, dot, cmd.Pat, cmd.Pat2, cmd.N, cmd.Flag == "g", ctx)
 	case 'g':
 		return s.execGuard(f, dot, cmd.Pat, cmd.Body, ctx, true)
 	case 'v':
@@ -117,9 +124,9 @@ func (s *Session) execCmd(cmd *Command, f *file.File, ctx *execCtx) error {
 	case 'r':
 		return s.execR(f, dot, cmd.Args[0], ctx)
 	case 'w':
-		return s.execW(f, dot, cmd.Args[0])
+		return s.execW(f, dot, cmd.Args[0], ctx)
 	case 'f':
-		return s.execF(f, cmd.Args[0])
+		return s.execF(f, cmd.Args[0], ctx)
 	case 'm':
 		return s.execMove(f, dot, cmd.Dest, ctx)
 	case 't':
@@ -136,9 +143,12 @@ func (s *Session) execCmd(cmd *Command, f *file.File, ctx *execCtx) error {
 }
 
 // evalAddr evaluates an address against f, defaulting to dot if addr is nil.
-func (s *Session) evalAddr(a *addr.Addr, f *file.File) (buffer.Range, error) {
+// It returns the file the address landed in, which differs from f when the
+// address contains a `"pat"`; the command then runs there, as it does in sam
+// (`f = addr.f; current(f)`, sam/xec.c cmdexec).
+func (s *Session) evalAddr(a *addr.Addr, f *file.File) (buffer.Range, *file.File, error) {
 	if a == nil {
-		return f.Dot(), nil
+		return f.Dot(), f, nil
 	}
 	return addr.Eval(a, f, s.Files)
 }

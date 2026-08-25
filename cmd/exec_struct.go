@@ -125,15 +125,20 @@ func (s *Session) execY(f *file.File, dot buffer.Range, pat string, body []*Comm
 	return nil
 }
 
-func (s *Session) execXFile(pat string, body []*Command, ctx *execCtx) error {
-	re, err := dregs.Compile(pat)
-	if err != nil {
-		return err
+// execXFile runs the body in every file whose menu line matches. With no
+// pattern at all — `X p` — it runs in every file, as sam does.
+func (s *Session) execXFile(pat string, all bool, body []*Command, ctx *execCtx) error {
+	var re *dregs.Regexp
+	if !all {
+		var err error
+		if re, err = dregs.Compile(pat); err != nil {
+			return err
+		}
 	}
 	ctx.nest++
 	for _, f := range s.Files {
 		ml := f.MenuLine(f == s.Current, false)
-		if re.MatchString(ml) {
+		if all || re.MatchString(ml) {
 			s.Current = f
 			for _, cmd := range body {
 				if err := s.execCmd(cmd, f, ctx); err != nil {
@@ -147,15 +152,20 @@ func (s *Session) execXFile(pat string, body []*Command, ctx *execCtx) error {
 	return nil
 }
 
-func (s *Session) execYFile(pat string, body []*Command, ctx *execCtx) error {
-	re, err := dregs.Compile(pat)
-	if err != nil {
-		return err
+// execYFile is execXFile with the match inverted — except with no pattern,
+// where sam runs the body in every file for Y as well.
+func (s *Session) execYFile(pat string, all bool, body []*Command, ctx *execCtx) error {
+	var re *dregs.Regexp
+	if !all {
+		var err error
+		if re, err = dregs.Compile(pat); err != nil {
+			return err
+		}
 	}
 	ctx.nest++
 	for _, f := range s.Files {
 		ml := f.MenuLine(f == s.Current, false)
-		if !re.MatchString(ml) {
+		if all || !re.MatchString(ml) {
 			s.Current = f
 			for _, cmd := range body {
 				if err := s.execCmd(cmd, f, ctx); err != nil {
@@ -172,10 +182,15 @@ func (s *Session) execYFile(pat string, body []*Command, ctx *execCtx) error {
 // execGroup runs body commands sequentially, each starting with dot=groupDot.
 // The buffer isn't updated between commands (two-pass), but dot is updated
 // by each command for the next one to see.
+// execGroup runs each command in a { } group against the group's address. Dot
+// is restored before *every* command, not just the first: sam assigns it inside
+// the loop (`a.f->dot = a; cmdexec(a.f, cp)`, sam/xec.c:57), which is what makes
+// a group mean "run all of these against this address" rather than "run these in
+// sequence, each starting where the last one left off".
 func (s *Session) execGroup(f *file.File, dot buffer.Range, body []*Command, ctx *execCtx) error {
-	f.SetDot(dot)
 	ctx.nest++
 	for _, cmd := range body {
+		f.SetDot(dot)
 		if err := s.execCmd(cmd, f, ctx); err != nil {
 			ctx.nest--
 			return err

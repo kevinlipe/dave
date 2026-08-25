@@ -17,13 +17,17 @@ type Command struct {
 	Op byte
 
 	// Arguments depending on Op:
-	Args []string   // text args (a/i/c/s replacement, shell command)
-	Pat  string     // regexp pattern (x/y/g/v/s/X/Y)
-	Pat2 string     // second regexp (s command: replacement)
-	Flag string     // modifier flag (s command: 'g' or digit)
-	N    int        // numeric arg (u command)
-	Body []*Command // x/y/g/v/X/Y body; { } group
-	Dest *addr.Addr // m/t command destination
+	Args []string // text args (a/i/c/s replacement, shell command)
+	Pat  string   // regexp pattern (x/y/g/v/s/X/Y)
+	Pat2 string   // second regexp (s command: replacement)
+	Flag string   // modifier flag (s command: 'g' or digit)
+	N    int      // numeric arg (u command)
+	// AllFiles is set when X or Y is given no pattern, which sam reads as
+	// "every file" for both of them (sam/xec.c filelooper: cp->re==0 runs the
+	// body regardless of XY).
+	AllFiles bool
+	Body     []*Command // x/y/g/v/X/Y body; { } group
+	Dest     *addr.Addr // m/t command destination
 }
 
 // ParseCommand parses one command (with optional address prefix) from s
@@ -84,10 +88,11 @@ const maxCount = 1 << 30
 // parseCount reads a command's numeric argument the way sam's getnum does
 // (sam/cmd.c:166): an optional '-' followed by digits, with no blanks skipped
 // on either side. A missing number is 1, so a bare '-' is -1; an explicit 0
-// stays 0, which sam treats as a no-op.
-func (p *cmdParser) parseCount() int {
+// stays 0, which sam treats as a no-op. Only `u` takes a sign — sam passes
+// signok=2 there and 1 everywhere else.
+func (p *cmdParser) parseCount(signed bool) int {
 	sign := 1
-	if p.peek() == '-' {
+	if signed && p.peek() == '-' {
 		sign = -1
 		p.consume()
 	}
@@ -151,6 +156,9 @@ func (p *cmdParser) parseOne() (*Command, error) {
 	if spec == nil {
 		return nil, fmt.Errorf("unknown command %q", string(op))
 	}
+	if addrNode != nil && strings.IndexByte(noAddrCmds, op) >= 0 {
+		return nil, fmt.Errorf("%c: no address allowed", op)
+	}
 	cmd := &Command{Addr: addrNode, Op: op}
 	if err := p.parseArgs(spec, cmd); err != nil {
 		return nil, err
@@ -158,19 +166,33 @@ func (p *cmdParser) parseOne() (*Command, error) {
 	return cmd, nil
 }
 
+// noAddrCmds are the commands that take no address, so an address on one is an
+// error rather than something silently ignored. Sam calls this defaddr aNo and
+// raises Enoaddr (`if(ct->defaddr==aNo && cmd.addr) error(Enoaddr)`,
+// sam/cmd.c:427). It is a property of the command rather than of how its
+// arguments parse, so it lives here and not in cmdtab, whose rows deliberately
+// group commands that share an argument shape but not an address rule — d and q
+// parse alike and address differently.
+//
+// Sam's list is `b B D e f n q u X Y !` plus `cd`; dave has neither `!` nor
+// `cd`. Everything absent here takes an address: `r` and the shell redirections
+// default to dot, `w` to the whole file.
+const noAddrCmds = "bBDefnquXY"
+
 // cmdSpec says how to read the arguments of each command in ops. Between
 // them these fields describe every command's syntax except the two shapes
 // that are genuinely one-off, which supply a parse function instead.
 type cmdSpec struct {
-	ops   string // the command letters this row describes
-	text  bool   // a text argument follows: /text/ or an ed-style block
-	pat   bool   // a delimited regexp follows
-	spPat string // if a space stands in for the delimiter, use this pattern
-	body  bool   // a body command follows
-	group bool   // a { } group follows
-	count bool   // an optional signed count follows
-	rest  bool   // the rest of the line is the argument
-	dest  bool   // a destination address follows
+	ops    string // the command letters this row describes
+	text   bool   // a text argument follows: /text/ or an ed-style block
+	pat    bool   // a delimited regexp follows
+	spPat  string // if a space stands in for the delimiter, use this pattern
+	body   bool   // a body command follows
+	group  bool   // a { } group follows
+	count  bool   // an optional signed count follows
+	allPat bool   // a blank stands in for the pattern, meaning every file
+	rest   bool   // the rest of the line is the argument
+	dest   bool   // a destination address follows
 
 	parse func(p *cmdParser, c *Command) error
 }
@@ -184,13 +206,27 @@ var cmdtab = []cmdSpec{
 	{ops: "=", parse: parseEqualsFlag},
 	{ops: "s", parse: parseSubst},
 	// x and friends accept a space in place of the delimiter, standing for
-	// "every line". X and Y do not.
-	{ops: "xygv", pat: true, spPat: `.*\n`, body: true},
-	{ops: "XY", pat: true, body: true},
+	// "every line". X and Y do not. The second branch picks up a final line
+	// with no trailing newline, which sam reaches because it loops with
+	// lineaddr rather than with a pattern (linelooper, sam/xec.c).
+	{ops: "x", pat: true, spPat: `.*\n|.+`, body: true},
+	{ops: "ygv", pat: true, body: true},
+	{ops: "XY", pat: true, allPat: true, body: true},
 	{ops: "{", group: true},
 	{ops: "u", count: true},
 	{ops: "mt", dest: true},
 	{ops: "bBDerfw<>|", rest: true},
+}
+
+// okDelim rejects delimiters sam refuses (sam/cmd.c okdelim). A letter, digit
+// or backslash after the command is far more likely to be a mistyped pattern
+// than a deliberate delimiter, and taking it as one silently scans the rest of
+// the line looking for its twin.
+func okDelim(c byte) error {
+	if c == '\\' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' {
+		return fmt.Errorf("bad delimiter %q", string(c))
+	}
+	return nil
 }
 
 func lookupCmd(op byte) *cmdSpec {
@@ -214,12 +250,27 @@ func (p *cmdParser) parseArgs(spec *cmdSpec, cmd *Command) error {
 		}
 		cmd.Args = []string{text}
 	}
-	if spec.pat && p.pos < len(p.input) {
-		if spec.spPat != "" && p.input[p.pos] == ' ' {
+	if spec.pat {
+		// A blank straight after the command stands in for the pattern, but
+		// only where sam allows it: `x` (and `X`), not `y`, `g` or `v`
+		// (sam/cmd.c, the ct->cmdc!='x' && ct->cmdc!='X' test). End of input
+		// counts as a blank, since sam reads commands from a line that always
+		// ends in a newline.
+		blank := spec.spPat != "" || spec.allPat
+		if c := p.peek(); blank && (c == 0 || c == ' ' || c == '\t' || c == '\n') {
+			cmd.AllFiles = spec.allPat
 			cmd.Pat = spec.spPat
 			p.skipWS()
 		} else {
-			delim := p.consume()
+			p.skipWS()
+			delim := p.peek()
+			if delim == 0 || delim == '\n' || delim == '\r' {
+				return fmt.Errorf("%c: pattern expected", cmd.Op)
+			}
+			if err := okDelim(delim); err != nil {
+				return fmt.Errorf("%c: %w", cmd.Op, err)
+			}
+			p.consume()
 			pat, err := p.scanDelimited(delim)
 			if err != nil {
 				return fmt.Errorf("%c: %w", cmd.Op, err)
@@ -242,7 +293,7 @@ func (p *cmdParser) parseArgs(spec *cmdSpec, cmd *Command) error {
 		cmd.Body = cmds
 	}
 	if spec.count {
-		cmd.N = p.parseCount()
+		cmd.N = p.parseCount(true)
 	}
 	if spec.rest {
 		p.skipWS()
@@ -278,13 +329,19 @@ func parseSubst(p *cmdParser, c *Command) error {
 	if p.pos >= len(p.input) {
 		return fmt.Errorf("s: missing pattern")
 	}
-	if ch := p.peek(); ch >= '2' && ch <= '9' {
-		c.Flag = string(p.consume())
+	// The count is a full number, as sam's getnum reads it; a single digit
+	// left `s10/a/b/` substituting the first match and handing `0/a/b/` to
+	// the address parser.
+	c.N = p.parseCount(false)
+	p.skipWS()
+	if p.pos >= len(p.input) || p.peek() == '\n' || p.peek() == '\r' {
+		return fmt.Errorf("s: pattern expected")
 	}
-	if p.pos >= len(p.input) {
-		return fmt.Errorf("s: missing delimiter")
+	delim := p.peek()
+	if err := okDelim(delim); err != nil {
+		return fmt.Errorf("s: %w", err)
 	}
-	delim := p.consume()
+	p.consume()
 	pat, err := p.scanDelimited(delim)
 	if err != nil {
 		return fmt.Errorf("s: %w", err)

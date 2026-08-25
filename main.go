@@ -414,7 +414,19 @@ func applyMenuResult(res menu.Result, sess *cmd.Session, panes []*pane.Pane, han
 			_ = ap.File.Save()
 		}
 	case "undo":
-		sess.DoUndo()
+		// 9front's u_cmd ends with moveto(f, f->dot.r): after stepping the
+		// history, the view follows dot to wherever the restored state put it.
+		// Undo acts on sess.Current, which input keeps synced to the focused
+		// pane, matching sam's curfile.
+		_ = sess.DoUndo()
+		if f := sess.Current; f != nil {
+			for _, p := range panes {
+				if p.File == f {
+					p.EnsureVisible(f.Dot().Start)
+					break
+				}
+			}
+		}
 	case "look":
 		ap := handler.ActivePane()
 		if ap != nil && ap.File != nil {

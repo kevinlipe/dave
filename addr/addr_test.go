@@ -29,7 +29,7 @@ func evalStr(t *testing.T, addrStr string, f *file.File) buffer.Range {
 	if a == nil {
 		t.Fatalf("Parse(%q): no address parsed", addrStr)
 	}
-	r, err := Eval(a, f, nil)
+	r, _, err := Eval(a, f, nil)
 	if err != nil {
 		t.Fatalf("Eval(%q): %v", addrStr, err)
 	}
@@ -45,7 +45,7 @@ func evalErr(t *testing.T, addrStr string, f *file.File) error {
 	if a == nil {
 		t.Fatalf("Parse(%q): no address parsed", addrStr)
 	}
-	_, err = Eval(a, f, nil)
+	_, _, err = Eval(a, f, nil)
 	return err
 }
 
@@ -749,5 +749,184 @@ func TestLeadingPlusMinusLeavesCommandIntact(t *testing.T) {
 		if got := in[n:]; got != c.rest {
 			t.Errorf("Parse(%q) consumed %d bytes leaving %q, want %q", in, n, got, c.rest)
 		}
+	}
+}
+
+// ---- operator precedence -----------------------------------------------------
+
+// ',' and ';' are the lowest-precedence operators, and their right side is a
+// full address including a '+'/'-' chain: sam's compoundaddr takes a simpleaddr
+// on the left, then recurses on the right. Parsing them at the same precedence
+// as '+' makes `2,+1` mean `(2,$)+1`, which selects an empty range at end of
+// file instead of the lines asked for — an address that looks right and quietly
+// picks the wrong text.
+func TestCommaBindsLooserThanPlusMinus(t *testing.T) {
+	// "aa\nbb\ncc\ndd\n": lines start at 0, 3, 6, 9.
+	f := makeFile("aa\nbb\ncc\ndd\n")
+	tests := []struct {
+		addr       string
+		dotS, dotE int
+		want       buffer.Range
+	}{
+		// a2 is relative to dot, which stays at line 1.
+		{"2,+1", 0, 3, buffer.Range{Start: 3, End: 6}},
+		{"1,+2", 0, 3, buffer.Range{Start: 0, End: 9}},
+		// ';' moves dot to a1 first, so +1 is the line after line 2.
+		{"2;+1", 0, 3, buffer.Range{Start: 3, End: 9}},
+		{"1;+1", 0, 3, buffer.Range{Start: 0, End: 6}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.addr, func(t *testing.T) {
+			setDot(f, tt.dotS, tt.dotE)
+			if got := evalStr(t, tt.addr, f); got != tt.want {
+				t.Errorf("%s = %v, want %v", tt.addr, got, tt.want)
+			}
+		})
+	}
+}
+
+// A ';' chain is right-associative, so the third address is relative to the
+// second and not to the range built so far. Left association would evaluate it
+// against a range starting at line 1.
+func TestSemicolonChainIsRightAssociative(t *testing.T) {
+	f := makeFile("aa\nbb\ncc\ndd\n")
+	setDot(f, 0, 3)
+	// 1;+1;+1 -> dot=line1, then line2, then line3. Range is line1..line3.
+	if got := evalStr(t, "1;+1;+1", f); got != (buffer.Range{Start: 0, End: 9}) {
+		t.Errorf("1;+1;+1 = %v, want [0,9)", got)
+	}
+}
+
+// Two addresses in a row have an implicit '+' between them: sam's simpleaddr
+// inserts the missing one, so /bb/1 is /bb/+1.
+func TestImplicitPlusBetweenAdjacentAddresses(t *testing.T) {
+	f := makeFile("aa\nbb\ncc\ndd\n")
+	setDot(f, 0, 0)
+	if got := evalStr(t, "/bb/1", f); got != (buffer.Range{Start: 6, End: 9}) {
+		t.Errorf("/bb/1 = %v, want line 3 [6,9)", got)
+	}
+	setDot(f, 0, 0)
+	if got := evalStr(t, "1/cc/", f); got != (buffer.Range{Start: 6, End: 8}) {
+		t.Errorf("1/cc/ = %v, want [6,8)", got)
+	}
+}
+
+// An address that is not relative to anything cannot follow another: sam raises
+// Eaddress rather than inserting a '+' before it.
+func TestAbsoluteAddressCannotFollowAnother(t *testing.T) {
+	for _, src := range []string{"2.", "2$", "2'", "1.p"} {
+		if _, _, err := Parse(src); err == nil {
+			t.Errorf("Parse(%q): expected an error, got none", src)
+		}
+	}
+}
+
+// ---- out-of-order addresses --------------------------------------------------
+
+// Sam refuses a range that runs backwards — Eorder, "addresses out of order" —
+// rather than handing an inverted range to whatever command follows. Dave used
+// to return one, so 3,1d silently did nothing and 3,1= printed #6,#3.
+func TestOutOfOrderAddressesAreRefused(t *testing.T) {
+	f := makeFile("aa\nbb\ncc\ndd\n")
+	for _, src := range []string{"3,1", "$,1", "3;1"} {
+		setDot(f, 0, 3)
+		if err := evalErr(t, src, f); err == nil {
+			t.Errorf("%s: expected an error, got none", src)
+		}
+	}
+}
+
+// A range that merely ends where it starts is fine; only a backwards one is an
+// error.
+func TestEmptyRangeIsNotOutOfOrder(t *testing.T) {
+	f := makeFile("aa\nbb\ncc\ndd\n")
+	setDot(f, 0, 3)
+	if got := evalStr(t, "2,2", f); got != (buffer.Range{Start: 3, End: 6}) {
+		t.Errorf("2,2 = %v, want [3,6)", got)
+	}
+}
+
+// ---- file addresses ----------------------------------------------------------
+
+// `"pat"` selects a file and evaluates to that file's dot, and everything after
+// it in the address is evaluated there — sam binds the matched file and carries
+// on with it (`a = matchfile(ap->are)->dot; f = a.f`, sam/address.c). Dave used
+// to return the whole range of the matched file without rebinding, so the
+// command then ran against the file that was already current.
+func TestFileAddressSelectsTheFile(t *testing.T) {
+	mk := func(name, content string) *file.File {
+		f := file.NewNamed(name)
+		f.Buffer().Insert(0, content)
+		return f
+	}
+	a := mk("a.txt", "aa\nbb\ncc\n")
+	r := mk("other.txt", "ONE\nTWO\nTHREE\n")
+	r.SetDot(buffer.Range{Start: 4, End: 8}) // "TWO\n"
+	files := []*file.File{a, r}
+
+	eval := func(src string) (buffer.Range, *file.File) {
+		t.Helper()
+		node, _, err := Parse(src)
+		if err != nil {
+			t.Fatalf("Parse(%q): %v", src, err)
+		}
+		got, landed, err := Eval(node, a, files)
+		if err != nil {
+			t.Fatalf("Eval(%q): %v", src, err)
+		}
+		return got, landed
+	}
+
+	// A bare file address is that file's dot, in that file.
+	got, landed := eval(`"other"`)
+	if landed != r {
+		t.Errorf(`"other" landed in %v, want other.txt`, landed.Name())
+	}
+	if got != (buffer.Range{Start: 4, End: 8}) {
+		t.Errorf(`"other" = %v, want the file's dot [4,8)`, got)
+	}
+
+	// A line address after it is a line of that file, not of the current one.
+	got, landed = eval(`"other"3`)
+	if landed != r {
+		t.Errorf(`"other"3 landed in %v, want other.txt`, landed.Name())
+	}
+	if got != (buffer.Range{Start: 8, End: 14}) {
+		t.Errorf(`"other"3 = %v, want line 3 of other.txt [8,14)`, got)
+	}
+
+	// So is a search.
+	got, landed = eval(`"other"/THREE/`)
+	if landed != r {
+		t.Errorf(`"other"/THREE/ landed in %v, want other.txt`, landed.Name())
+	}
+	if got != (buffer.Range{Start: 8, End: 13}) {
+		t.Errorf(`"other"/THREE/ = %v, want [8,13)`, got)
+	}
+
+	// An address with no file pattern still lands where it started.
+	if _, landed := eval("2"); landed != a {
+		t.Errorf("2 landed in %v, want a.txt", landed.Name())
+	}
+}
+
+// The two sides of a ',' are both evaluated against the incoming file, so a
+// range cannot straddle a file switch. Sam refuses it too (a1.f != a2.f).
+func TestRangeCannotStraddleFiles(t *testing.T) {
+	mk := func(name, content string) *file.File {
+		f := file.NewNamed(name)
+		f.Buffer().Insert(0, content)
+		return f
+	}
+	a := mk("a.txt", "aa\nbb\n")
+	r := mk("other.txt", "ONE\nTWO\n")
+	files := []*file.File{a, r}
+
+	node, _, err := Parse(`"other",$`)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if _, _, err := Eval(node, a, files); err == nil {
+		t.Error(`"other",$ : expected an error, got none`)
 	}
 }

@@ -83,7 +83,9 @@ exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[28,33) 
 exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[0,45) out="one two three\nfour five six\nséven eight\nnine\n" err=<nil>
 
 === ";"
-parse error: unknown command ";"
+  op="p" addr=true dest=false
+  addr-> [0,45)
+exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[0,45) out="one two three\nfour five six\nséven eight\nnine\n" err=<nil>
 
 === "1,2"
   op="p" addr=true dest=false
@@ -262,13 +264,13 @@ exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[0,14) o
 
 === "1,2+1"
   op="p" addr=true dest=false
-  addr-> [28,40)
-exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[28,40) out="séven eight\n" err=<nil>
+  addr-> [0,40)
+exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[0,40) out="one two three\nfour five six\nséven eight\n" err=<nil>
 
 === "1;.+1"
   op="p" addr=true dest=false
-  addr-> [14,28)
-exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[14,28) out="four five six\n" err=<nil>
+  addr-> [0,28)
+exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[0,28) out="one two three\nfour five six\n" err=<nil>
 
 === "#0+1"
   op="p" addr=true dest=false
@@ -291,7 +293,9 @@ exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[0,7) ou
 exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[4,7) out="" err=addr: "x": no matching file
 
 === "\"x\"1"
-parse error: unknown command "1"
+  op="p" addr=true dest=false
+  addr-> error: addr: "x": no matching file
+exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[4,7) out="" err=addr: "x": no matching file
 
 === "a/added/"
   op="a" addr=false dest=false args=["added"]
@@ -409,37 +413,37 @@ exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[4,7) ou
 exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[4,7) out="#0,#28\n" err=<nil>
 
 === "s/two/2/"
-  op="s" addr=false dest=false pat="two" pat2="2"
+  op="s" addr=false dest=false pat="two" pat2="2" n=1
   addr-> none
 exec: contents="one 2 three\nfour five six\nséven eight\nnine\n" dot=[4,5) out="" err=<nil>
 
 === ",s/e/E/"
-  op="s" addr=true dest=false pat="e" pat2="E"
+  op="s" addr=true dest=false pat="e" pat2="E" n=1
   addr-> [0,45)
 exec: contents="onE two three\nfour five six\nséven eight\nnine\n" dot=[2,3) out="" err=<nil>
 
 === ",s/e/E/g"
-  op="s" addr=true dest=false pat="e" pat2="E" flag="g"
+  op="s" addr=true dest=false pat="e" pat2="E" flag="g" n=1
   addr-> [0,45)
 exec: contents="onE two thrEE\nfour fivE six\nsévEn Eight\nninE\n" dot=[43,44) out="" err=<nil>
 
 === "s2/e/E/"
-  op="s" addr=false dest=false pat="e" pat2="E" flag="2"
+  op="s" addr=false dest=false pat="e" pat2="E" n=2
   addr-> none
-exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[4,7) out="" err=<nil>
+exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[4,7) out="" err=s: no match
 
 === "s9/e/E/"
-  op="s" addr=false dest=false pat="e" pat2="E" flag="9"
+  op="s" addr=false dest=false pat="e" pat2="E" n=9
   addr-> none
-exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[4,7) out="" err=<nil>
+exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[4,7) out="" err=s: no match
 
 === "s/e/E"
-  op="s" addr=false dest=false pat="e" pat2="E"
+  op="s" addr=false dest=false pat="e" pat2="E" n=1
   addr-> none
 exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[4,7) out="" err=s: no match
 
 === "s/e"
-  op="s" addr=false dest=false pat="e"
+  op="s" addr=false dest=false pat="e" n=1
   addr-> none
 exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[4,7) out="" err=s: no match
 
@@ -447,27 +451,27 @@ exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[4,7) ou
 parse error: s: missing pattern
 
 === "s/"
-  op="s" addr=false dest=false
+  op="s" addr=false dest=false n=1
   addr-> none
 exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[4,7) out="" err=s: no match
 
 === "s/\\/x/Y/"
-  op="s" addr=false dest=false pat="/x" pat2="Y"
+  op="s" addr=false dest=false pat="/x" pat2="Y" n=1
   addr-> none
 exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[4,7) out="" err=s: no match
 
 === "s/(t)(w)/\\2\\1/"
-  op="s" addr=false dest=false pat="(t)(w)" pat2="\\2\\1"
+  op="s" addr=false dest=false pat="(t)(w)" pat2="\\2\\1" n=1
   addr-> none
-exec: contents="one \\2\\1o three\nfour five six\nséven eight\nnine\n" dot=[4,8) out="" err=<nil>
+exec: contents="one wto three\nfour five six\nséven eight\nnine\n" dot=[4,6) out="" err=<nil>
 
 === "s/two/&&/"
-  op="s" addr=false dest=false pat="two" pat2="&&"
+  op="s" addr=false dest=false pat="two" pat2="&&" n=1
   addr-> none
 exec: contents="one twotwo three\nfour five six\nséven eight\nnine\n" dot=[4,10) out="" err=<nil>
 
 === ",s/[aeiou]/./g"
-  op="s" addr=true dest=false pat="[aeiou]" pat2="." flag="g"
+  op="s" addr=true dest=false pat="[aeiou]" pat2="." flag="g" n=1
   addr-> [0,45)
 exec: contents=".n. tw. thr..\nf..r f.v. s.x\nsév.n ..ght\nn.n.\n" dot=[43,44) out="" err=<nil>
 
@@ -514,10 +518,10 @@ exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[4,7) ou
 exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[4,7) out="" err=<nil>
 
 === "x p"
-  op="x" addr=false dest=false pat=".*\\n"
+  op="x" addr=false dest=false pat=".*\\n|.+"
     op="p" addr=false dest=false
   addr-> none
-exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[4,7) out="" err=<nil>
+exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[4,7) out="two\n" err=<nil>
 
 === "x/o/"
 parse error: missing body command
@@ -570,7 +574,10 @@ exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[4,7) ou
 exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[4,7) out="" err=<nil>
 
 === "X p"
-parse error: missing body command
+  op="X" addr=false dest=false
+    op="p" addr=false dest=false
+  addr-> none
+exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[4,7) out="two\n" err=<nil>
 
 === ",x/o/ x/o/ c/Q/"
   op="x" addr=true dest=false pat="o"
@@ -582,17 +589,17 @@ exec: contents="Qne twQ three\nfQur five six\nséven eight\nnine\n" dot=[15,16) 
 === "u"
   op="u" addr=false dest=false n=1
   addr-> none
-exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[4,7) out="" err=nothing to undo
+exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[4,7) out="" err=<nil>
 
 === "u2"
   op="u" addr=false dest=false n=2
   addr-> none
-exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[4,7) out="" err=nothing to undo
+exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[4,7) out="" err=<nil>
 
 === "u9"
   op="u" addr=false dest=false n=9
   addr-> none
-exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[4,7) out="" err=nothing to undo
+exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[4,7) out="" err=<nil>
 
 === "q"
   op="q" addr=false dest=false
@@ -710,7 +717,11 @@ exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[4,7) ou
 exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[14,28) out="one two three\nfour five six\n" err=<nil>
 
 === "1p;2p"
-parse error: unknown command ";"
+  op="p" addr=true dest=false
+  addr-> [0,14)
+  op="p" addr=true dest=false
+  addr-> [0,28)
+exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[0,28) out="one two three\none two three\nfour five six\n" err=<nil>
 
 === "   1p   "
   op="p" addr=true dest=false

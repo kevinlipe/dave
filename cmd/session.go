@@ -29,7 +29,8 @@ type Session struct {
 	// The GUI reloads the config file and clears this flag.
 	ConfigRequest bool
 
-	// quitPending is true after the first 'q' when modified files exist.
+	// quitPending is true after the first 'q' when modified files exist, and is
+	// cleared by any further change.
 	quitPending bool
 }
 
@@ -48,14 +49,23 @@ func (s *Session) AddFile(f *file.File) {
 }
 
 // RemoveFile removes f from the file list.
-// Returns an error if f is modified and force is false.
+//
+// A modified file is refused once and dropped on the second try, which is sam's
+// closeok latch (sam/sam.c:237, trytoclose). The paper ties this directly to
+// undo's safety argument: potentially dangerous commands go unguarded because
+// undo can take them back, and D is protected precisely because it destroys the
+// information undo would need. Guarding it every time, with no way through,
+// turns the protection into a dead end. Modifying the file clears the latch, so
+// the confirmation returns for the next round of changes.
 func (s *Session) RemoveFile(f *file.File, force bool) error {
-	if f.Modified() && !force {
+	if f.Modified() && !force && !f.CloseOK() {
+		f.SetCloseOK()
 		return fmt.Errorf("%s: modified file", f.Name())
 	}
 	for i, ff := range s.Files {
 		if ff == f {
 			s.Files = append(s.Files[:i], s.Files[i+1:]...)
+			s.Undo.forget(f)
 			if s.Current == f {
 				if len(s.Files) > 0 {
 					s.Current = s.Files[0]
@@ -95,39 +105,6 @@ func (s *Session) printf(format string, args ...any) {
 	fmt.Fprintf(s.Output, format, args...)
 }
 
-// ---- UndoLog ----------------------------------------------------------------
-
-// undoEntry records one command's worth of changes across all affected files.
-type undoEntry struct {
-	changes []fileUndo
-}
-
-type fileUndo struct {
-	f        *file.File
-	inverse  *buffer.Transcript
-	savedDot buffer.Range
-}
-
-// UndoLog is a stack of undo entries.
-type UndoLog struct {
-	entries []undoEntry
-}
-
-func newUndoLog() *UndoLog { return &UndoLog{} }
-
-func (u *UndoLog) push(e undoEntry) { u.entries = append(u.entries, e) }
-
-func (u *UndoLog) pop() (undoEntry, bool) {
-	if len(u.entries) == 0 {
-		return undoEntry{}, false
-	}
-	e := u.entries[len(u.entries)-1]
-	u.entries = u.entries[:len(u.entries)-1]
-	return e, true
-}
-
-func (u *UndoLog) len() int { return len(u.entries) }
-
 // ---- Command execution context ----------------------------------------------
 
 // execCtx holds state during a single top-level command execution.
@@ -141,14 +118,32 @@ type execCtx struct {
 	// nest counts how many levels of structural commands (x, g, {, …) we're
 	// inside. Shell commands only print "!\n" at the top level (nest==0).
 	nest int
+	// join asks commit to extend the open typing run rather than start a new
+	// undo step. Only ApplyEdit sets it.
+	join bool
 }
 
 type filePending struct {
 	transcript *buffer.Transcript
-	savedDot   buffer.Range // dot before this command
+
+	// State as of the start of this command, captured the first time the
+	// command touches the file. This is sam's filemark, which saves prevdot,
+	// prevmark and prevmod before the first logged change (sam/file.c:590);
+	// undo restores all of it, which is what makes `e file` then `u` put back
+	// "the name, dot, and modified bit".
+	savedDot     buffer.Range
+	savedMark    buffer.Range
+	savedName    string
+	savedVersion int
+
+	// renamed records that this command changed the file's name, so an entry
+	// gets logged even when no text changed. Sam logs a Filename record from
+	// getname() for both `e` and `f` (sam/sam.c getname -> logsetname).
+	renamed bool
+
 	// resetModified is set by commands whose semantics leave the buffer
 	// matching disk (currently just `e`). At commit time, this overrides
-	// the default SetModified(true) so the file is treated as clean.
+	// the default MarkChanged so the file is treated as clean.
 	resetModified bool
 }
 
@@ -164,8 +159,11 @@ func (ctx *execCtx) pending(f *file.File) *filePending {
 	p, ok := ctx.perFile[f]
 	if !ok {
 		p = &filePending{
-			transcript: buffer.NewTranscript(),
-			savedDot:   f.Dot(),
+			transcript:   buffer.NewTranscript(),
+			savedDot:     f.Dot(),
+			savedMark:    f.Mark(),
+			savedName:    f.Name(),
+			savedVersion: f.Version(),
 		}
 		ctx.perFile[f] = p
 		ctx.order = append(ctx.order, f)
@@ -178,38 +176,58 @@ func (ctx *execCtx) addChange(f *file.File, pos, del int, text string) error {
 	return ctx.pending(f).transcript.Add(buffer.Change{Pos: pos, Del: del, Text: text})
 }
 
-// commit applies all pending transcripts, saves inverse for undo, and
-// updates dots. Returns the first error encountered.
+// commit applies all pending transcripts and records the command as one undo
+// entry covering every file it touched. Returns the first error encountered.
 //
-// If Apply fails partway through a multi-file transaction, the entry so
-// far is still pushed to the undo log so `u` can back out the changes
-// that did land. The error is then returned to the caller.
+// One command is one entry however many files or mutations it covered, which is
+// what sam's shared sequence number buys and what makes an x loop over a hundred
+// matches a single `u`. A command that changed nothing records no entry, so the
+// undo that follows reaches past it to the last command that did.
+//
+// If Apply fails partway through a multi-file transaction, the changes recorded
+// so far are still logged so `u` can back out what did land. The error is then
+// returned to the caller.
 func (ctx *execCtx) commit() error {
-	entry := undoEntry{}
+	entry := histEntry{}
 	for _, f := range ctx.order {
 		p := ctx.perFile[f]
+		var trs []*buffer.Transcript
 		if !p.transcript.IsEmpty() {
 			inv, err := p.transcript.Apply(f.Buffer())
 			if err != nil {
-				if len(entry.changes) > 0 {
-					ctx.session.Undo.push(entry)
-				}
+				ctx.session.Undo.record(entry, ctx.join)
 				return err
 			}
-			entry.changes = append(entry.changes, fileUndo{
-				f:        f,
-				inverse:  inv,
-				savedDot: p.savedDot,
-			})
-			f.SetModified(true)
+			trs = []*buffer.Transcript{inv}
+			f.MarkChanged()
+		} else if !p.renamed {
+			// Nothing logged for this file. A pending entry can exist without
+			// a change — `e` on an empty file that reads back empty — and sam
+			// logs nothing in that case either.
+			if p.resetModified {
+				f.MarkClean()
+			}
+			continue
 		}
 		if p.resetModified {
-			f.SetModified(false)
+			f.MarkClean()
 		}
+		entry.changes = append(entry.changes, fileChange{
+			f:       f,
+			trs:     trs,
+			dot:     p.savedDot,
+			mark:    p.savedMark,
+			name:    p.savedName,
+			version: p.savedVersion,
+		})
 	}
 	if len(entry.changes) > 0 {
-		ctx.session.Undo.push(entry)
+		// Any change re-arms the quit guard, so a refused q followed by more
+		// editing is refused again. Sam clears quitok the same way, from the
+		// per-command update (sam/file.c:425).
+		ctx.session.quitPending = false
 	}
+	ctx.session.Undo.record(entry, ctx.join)
 	return nil
 }
 
@@ -221,53 +239,24 @@ func (ctx *execCtx) rollback() {
 
 // ---- Undo execution ---------------------------------------------------------
 
-// DoUndo undoes the last command. It is a convenience wrapper for menu/UI use.
-func (s *Session) DoUndo() error { return s.doUndo(1) }
-
 // ApplyEdit applies a single interactive edit (keyboard typing or deletion) to
 // file f, recording it in the undo log. pos is the rune insert position, del
 // is the number of runes to delete before inserting, and text is the new text.
+// A run of ordinary typing coalesces into one undo step, so backing out a word
+// costs one u rather than one per character. Sam gets this from samterm, which
+// batches a typing run into one message and flushes it on any non-typing key
+// (samterm/main.c flushtyping).
 func (s *Session) ApplyEdit(f *file.File, pos, del int, text string) error {
 	ctx := newExecCtx(s)
+	ctx.join = s.Undo.canJoin(f, pos, del, text)
 	if err := ctx.addChange(f, pos, del, text); err != nil {
 		ctx.rollback()
 		return err
 	}
-	return ctx.commit()
-}
-
-// doUndo undoes the last n commands. n == 0 is a no-op, as in sam, where an
-// explicit u0 falls out of the count loop without undoing anything
-// (sam/xec.c:267).
-func (s *Session) doUndo(n int) error {
-	if n < 0 {
-		// sam redoes on a negative count. Dave keeps no redo log, so say so
-		// rather than quietly undoing, which is what a mis-parse used to do.
-		return fmt.Errorf("u: redo is not implemented")
+	if err := ctx.commit(); err != nil {
+		return err
 	}
-	for i := 0; i < n; i++ {
-		entry, ok := s.Undo.pop()
-		if !ok {
-			if i == 0 {
-				return fmt.Errorf("nothing to undo")
-			}
-			break
-		}
-		// Apply inverse changes in reverse order.
-		for j := len(entry.changes) - 1; j >= 0; j-- {
-			fu := entry.changes[j]
-			inv := fu.inverse
-			// We need to undo: apply the inverse transcript.
-			_, err := inv.Apply(fu.f.Buffer())
-			if err != nil {
-				return fmt.Errorf("undo: %w", err)
-			}
-			// If the buffer is now back to original, clear modified.
-			// We don't track this precisely; the modified bit stays set.
-			// (Sam's behavior: undo does not clear modified unless written.)
-			fu.f.SetDot(fu.savedDot)
-		}
-	}
+	s.Undo.noteRun(f, pos, del, text)
 	return nil
 }
 

@@ -130,7 +130,7 @@ func dumpAddrEval(a *addr.Addr) string {
 	f := file.New()
 	f.Buffer().Insert(0, characterizeFile)
 	f.SetDot(buffer.Range{Start: 4, End: 7})
-	r, err := addr.Eval(a, f, []*file.File{f})
+	r, _, err := addr.Eval(a, f, []*file.File{f})
 	if err != nil {
 		return "error: " + err.Error()
 	}

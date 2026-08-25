@@ -1,5 +1,7 @@
-// Package regexp wraps Go's regexp package with Sam's extensions:
-//   - '@' matches any character including newline (Go's '.' does not)
+// Package regexp wraps Go's regexp package with sam's pattern syntax plus one
+// dave extension:
+//   - '@' matches any character including newline (a dave extension; sam has
+//     no such operator, and treats '@' as an ordinary character)
 //   - '\n' in a pattern matches a literal newline
 //   - '?' delimiters for backward search (e.g. ?pat?)
 //   - Empty pattern reuses the last compiled pattern
@@ -60,6 +62,11 @@ func Compile(pattern string) (*Regexp, error) {
 	if err != nil {
 		return nil, fmt.Errorf("regexp: %w", err)
 	}
+	// Sam prefers the earliest match and then the longest one (newmatch,
+	// sam/regexp.c). Go's default is Perl's leftmost-first, which would make
+	// /foo|foobar/ match only "foo". Longest switches the whole-match
+	// preference and leaves (?m) and submatch assignment alone.
+	re.Longest()
 	r := &Regexp{re: re, pattern: pattern}
 	if len(cache) >= maxCached {
 		clear(cache)
@@ -171,20 +178,99 @@ func (r *Regexp) ReplaceExpand(src string, template string, idx []int) string {
 func samToGo(pat string) string {
 	var b strings.Builder
 	b.WriteString("(?m)")
-	i := 0
-	for i < len(pat) {
-		if pat[i] == '@' {
+	for i := 0; i < len(pat); {
+		switch {
+		case pat[i] == '[':
+			i = writeClass(&b, pat, i)
+		case pat[i] == '@':
 			b.WriteString(`[\s\S]`)
 			i++
-		} else if pat[i] == '\\' && i+1 < len(pat) && pat[i+1] == 'n' {
-			b.WriteByte('\n')
-			i += 2
-		} else {
+		case pat[i] == '\\':
+			i = writeEscape(&b, pat, i)
+		case pat[i] == '{' || pat[i] == '}':
+			// Sam has no repetition braces, so these are ordinary characters
+			// there. Go would read a{2,3} as counted repetition — a second
+			// meaning for braces that reads against the 0,$ address model.
+			b.WriteByte('\\')
+			b.WriteByte(pat[i])
+			i++
+		default:
 			b.WriteByte(pat[i])
 			i++
 		}
 	}
 	return b.String()
+}
+
+// writeEscape copies the escape sequence at pat[i] and returns the index past
+// it. Sam's lex knows exactly one escape, \n; every other \X is the literal X
+// (sam/regexp.c). Go reads \d, \w, \b, \t and friends as classes, anchors or
+// control characters, which is a silent difference in what a pattern selects
+// rather than an error anyone would notice. Escaped punctuation already means
+// the literal in both, so it keeps its backslash.
+func writeEscape(b *strings.Builder, pat string, i int) int {
+	if i+1 >= len(pat) {
+		// A trailing backslash is a literal one: sam's lex leaves c as '\\'
+		// when nothing follows it. Go would reject the pattern.
+		b.WriteString(`\\`)
+		return i + 1
+	}
+	c := pat[i+1]
+	switch {
+	case c == 'n':
+		b.WriteString(`\n`)
+	case c >= '0' && c <= '9' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z':
+		b.WriteByte(c)
+	default:
+		b.WriteByte('\\')
+		b.WriteByte(c)
+	}
+	return i + 2
+}
+
+// writeClass copies the character class starting at pat[i] and returns the
+// index past its closing ']'.
+//
+// A negated class gains a newline. Sam seeds every negated class with one as it
+// builds it (`classp[n++] = '\n'; /* don't match newline in negate case */`,
+// bldcclass), so `[^ ]` cannot cross a line boundary there; Go's can, which
+// makes `,x/[^ ]+/` iterate line-spanning runs here and line-bounded ones in
+// sam. Scanning the class is what the insertion costs: the newline has to go
+// inside the brackets, and a POSIX name like [:alpha:] carries a ']' of its own
+// that does not end the class.
+func writeClass(b *strings.Builder, pat string, i int) int {
+	b.WriteByte('[')
+	i++
+	negated := i < len(pat) && pat[i] == '^'
+	if negated {
+		b.WriteByte('^')
+		i++
+	}
+	for i < len(pat) && pat[i] != ']' {
+		switch {
+		case pat[i] == '[' && i+1 < len(pat) && pat[i+1] == ':':
+			if end := strings.Index(pat[i:], ":]"); end >= 0 {
+				b.WriteString(pat[i : i+end+2])
+				i += end + 2
+				continue
+			}
+			b.WriteByte('[')
+			i++
+		case pat[i] == '\\':
+			i = writeEscape(b, pat, i)
+		default:
+			b.WriteByte(pat[i])
+			i++
+		}
+	}
+	if negated {
+		b.WriteString(`\n`)
+	}
+	if i < len(pat) {
+		b.WriteByte(']')
+		i++
+	}
+	return i
 }
 
 // ResetLastPattern clears the last-used pattern (for testing).

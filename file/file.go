@@ -17,13 +17,29 @@ import (
 
 // File represents an open file in Dave's buffer list.
 type File struct {
-	buf      *buffer.Buffer
-	name     string       // associated filename (may be empty for new buffers)
-	modified bool         // true if contents differ from disk
-	dot      buffer.Range // current selection (codepoint offsets)
-	mark     buffer.Range // 'k' mark position
-	loaded   bool         // true if contents have been read from disk
-	crlf     bool         // true if the file uses CRLF line endings on disk
+	buf  *buffer.Buffer
+	name string       // associated filename (may be empty for new buffers)
+	dot  buffer.Range // current selection (codepoint offsets)
+	mark buffer.Range // 'k' mark position
+
+	// Dirtiness is a position in the edit history, not a bit: version is
+	// where the buffer is now, cleanVersion where it was at the last read or
+	// write, high the last version issued. Undo restores an old version and a
+	// later edit issues a fresh higher one, so the comparison holds for any
+	// path through the history. A stored bool cannot: a write changes what
+	// clean means for every point, and a bool recorded before it does not
+	// know. Sam calls these seq and cleanseq (sam/file.c:59).
+	version      int
+	cleanVersion int
+	high         int
+
+	loaded bool // true if contents have been read from disk
+	crlf   bool // true if the file uses CRLF line endings on disk
+
+	// closeok is sam's second-chance latch on D (sam/sam.c:237): the first D of
+	// a modified file refuses and sets it, the second goes through. Kept in
+	// step with dirtiness, so editing again earns a fresh refusal.
+	closeok bool
 }
 
 // New creates a new, empty, unnamed File.
@@ -72,7 +88,7 @@ func (f *File) EnsureLoaded() error {
 		return fmt.Errorf("file: reading %q: %w", f.name, err)
 	}
 	f.buf = buffer.NewFromString(f.DecodeContent(string(data)))
-	f.modified = false
+	f.MarkClean()
 	return nil
 }
 
@@ -86,10 +102,37 @@ func (f *File) Name() string { return f.name }
 func (f *File) SetName(name string) { f.name = name }
 
 // Modified reports whether the file has unsaved changes.
-func (f *File) Modified() bool { return f.modified }
+func (f *File) Modified() bool { return f.version != f.cleanVersion }
 
-// SetModified sets the modified bit.
-func (f *File) SetModified(v bool) { f.modified = v }
+// MarkChanged advances the file to a new version. Called once per command that
+// changed it.
+func (f *File) MarkChanged() {
+	f.high++
+	f.version = f.high
+	f.closeok = false
+}
+
+// MarkClean records that the buffer now matches disk.
+func (f *File) MarkClean() {
+	f.cleanVersion = f.version
+	f.closeok = true
+}
+
+// Version returns the file's position in its edit history.
+func (f *File) Version() int { return f.version }
+
+// SetVersion moves the file to a version it held before; undo and redo use it.
+func (f *File) SetVersion(v int) {
+	f.version = v
+	f.closeok = !f.Modified()
+}
+
+// CloseOK reports whether this file may be dropped without confirmation.
+func (f *File) CloseOK() bool { return f.closeok }
+
+// SetCloseOK records that a D on this file has already been refused once, so
+// the next one succeeds.
+func (f *File) SetCloseOK() { f.closeok = true }
 
 // Dot returns the current selection.
 func (f *File) Dot() buffer.Range { return f.dot }
@@ -102,6 +145,11 @@ func (f *File) Mark() buffer.Range { return f.mark }
 
 // SetMark sets the mark to the current dot.
 func (f *File) SetMark() { f.mark = f.dot }
+
+// SetMarkRange sets the mark to an arbitrary range. Undo needs it: sam logs
+// the mark alongside dot and restores both, so a `k` that a command overwrote
+// comes back with that command (sam/file.c fileunsetmark).
+func (f *File) SetMarkRange(r buffer.Range) { f.mark = r }
 
 // Len returns the number of codepoints in the buffer.
 // Calls EnsureLoaded implicitly (panics on error — caller should pre-load).
@@ -121,7 +169,7 @@ func (f *File) String() string { return f.buf.String() }
 // For headless (-d) mode, pass isCurrent=false.
 func (f *File) MenuLine(isCurrent, isInPane bool) string {
 	mod := '-'
-	if f.modified {
+	if f.Modified() {
 		mod = '\''
 	} else if isInPane {
 		mod = '+'
@@ -162,7 +210,7 @@ func (f *File) Save() error {
 	if err := WriteAtomic(f.name, f.WriteContent); err != nil {
 		return err
 	}
-	f.modified = false
+	f.MarkClean()
 	return nil
 }
 
@@ -259,7 +307,7 @@ func (f *File) Replace(path string) error {
 	}
 	f.buf = buffer.NewFromString(f.DecodeContent(string(data)))
 	f.dot = buffer.Range{}
-	f.modified = false
+	f.MarkClean()
 	f.loaded = true
 	return nil
 }
