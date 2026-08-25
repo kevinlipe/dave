@@ -358,6 +358,69 @@ func TestUndoMultiple(t *testing.T) {
 	assertContents(t, f.String(), "abc")
 }
 
+// The count on u is parsed the way sam's getnum does (sam/cmd.c:166): a full
+// multi-digit number, an optional leading '-', and no blanks skipped. This
+// pins the edges. A single-digit parser passes the u3 case above but leaves
+// the trailing digits of u12 behind as a stray address command, which undoes
+// once and then reports a bogus out-of-range line — the worst answer available
+// when you are backing out a global edit in a hurry.
+func TestUndoCountParsing(t *testing.T) {
+	tests := []struct {
+		cmd     string
+		want    string // buffer contents after the u
+		wantErr bool
+	}{
+		{"u1", "x!!!!!!!!!!!", false},
+		{"u3", "x!!!!!!!!!", false},
+		{"u12", "x", false},
+		{"u99", "x", false},            // more than the log holds stops at the bottom
+		{"u0", "x!!!!!!!!!!!!", false}, // sam: an explicit 0 undoes nothing
+		{"u", "x!!!!!!!!!!!", false},   // no number means 1
+		{"u-1", "x!!!!!!!!!!!!", true}, // sam redoes; dave has no redo log
+		{"u-", "x!!!!!!!!!!!!", true},  // getnum: a bare '-' is -1
+	}
+	for _, tt := range tests {
+		t.Run(tt.cmd, func(t *testing.T) {
+			var out strings.Builder
+			s := NewSession(&out)
+			f := file.New()
+			f.Buffer().Insert(0, "x")
+			f.SetDot(dot(0, 1))
+			s.AddFile(f)
+			for i := 0; i < 12; i++ {
+				assertNoError(t, s.ExecString("a/!/"))
+			}
+
+			err := s.ExecString(tt.cmd)
+			if tt.wantErr {
+				assertError(t, err)
+			} else {
+				assertNoError(t, err)
+			}
+			assertContents(t, f.String(), tt.want)
+		})
+	}
+}
+
+// A digit string longer than an int holds must saturate rather than wrap: a
+// wrapped count can come out negative, which routes a fat-fingered u into the
+// redo error instead of undoing. Checked across lengths because where the wrap
+// lands depends on the width of int — 19 nines is the first to go negative on
+// 64-bit, and a 32-bit int turns over far sooner.
+func TestUndoCountSaturates(t *testing.T) {
+	for l := 1; l <= 25; l++ {
+		src := "u" + strings.Repeat("9", l)
+		c, _, err := ParseCommand(src, 0)
+		if err != nil {
+			t.Fatalf("%s: %v", src, err)
+		}
+		if c.N <= 0 || c.N > maxCount*10 {
+			t.Errorf("%s: N = %d, want a positive count no larger than %d",
+				src, c.N, maxCount*10)
+		}
+	}
+}
+
 func TestUndoNothingToUndo(t *testing.T) {
 	var out strings.Builder
 	s := NewSession(&out)

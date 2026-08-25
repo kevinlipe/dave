@@ -236,8 +236,15 @@ func (s *Session) ApplyEdit(f *file.File, pos, del int, text string) error {
 	return ctx.commit()
 }
 
-// doUndo undoes the last n commands.
+// doUndo undoes the last n commands. n == 0 is a no-op, as in sam, where an
+// explicit u0 falls out of the count loop without undoing anything
+// (sam/xec.c:267).
 func (s *Session) doUndo(n int) error {
+	if n < 0 {
+		// sam redoes on a negative count. Dave keeps no redo log, so say so
+		// rather than quietly undoing, which is what a mis-parse used to do.
+		return fmt.Errorf("u: redo is not implemented")
+	}
 	for i := 0; i < n; i++ {
 		entry, ok := s.Undo.pop()
 		if !ok {

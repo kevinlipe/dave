@@ -140,9 +140,14 @@ Every command that takes a *file* argument expands a leading `~` or `~/` to the 
 | Command | Effect |
 |---------|--------|
 | `u`     | Undo the last change. Repeat to undo further. |
-| `u n`   | Undo the last *n* changes. |
+| `un`    | Undo the last *n* changes. |
+| `u0`    | Undo nothing. |
 
-Undo works across multi-file commands: a single `u` reverses the entire command regardless of how many files or changes were involved.
+The count is written with no space before it: `u5`, not `u 5`. A space ends the command, so `u 5` undoes once and then treats `5` as an address.
+
+Undo works across multi-file commands: a single `u` reverses the entire command regardless of how many files or changes were involved — and one command means one `u`, however many changes it made, so an `x` loop over a hundred matches comes back with a single `u` and not `u100`.
+
+Sam redoes on a negative count (`u-1`). Dave keeps no redo log and reports an error instead.
 
 ### Shell Commands
 

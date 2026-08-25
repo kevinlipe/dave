@@ -269,6 +269,23 @@ since a change can move a break point backwards.
 
 ## Known divergences from sam
 
-None outstanding. The two found during the address refactor — regexp
-search direction after `+`/`-`, and a leading `+`/`-` not taking an
-implicit dot — are fixed.
+The two found during the address refactor — regexp search direction
+after `+`/`-`, and a leading `+`/`-` not taking an implicit dot — are
+fixed. One outstanding:
+
+### `u` has no redo
+
+Sam's count on `u` is signed, and a negative count redoes:
+`getnum(2)` accepts a leading `-` (`sam/cmd.c:166`) and `u_cmd` walks
+`undo(FALSE)` that many times (`sam/xec.c:267`). Dave parses the sign
+and reports `u: redo is not implemented` rather than doing something
+plausible-looking with it.
+
+Implementing it is not a parser change. Sam's undo is a per-file
+sequence number over a log the file keeps in both directions
+(`sam/file.c`); dave's is a stack of inverse transcripts that are
+discarded once applied (`cmd/session.go`). Redo means keeping the
+popped entries and their forward transcripts on a second stack, and
+deciding when a new command clears it — the usual rule, and the one
+worth copying, is that any change made after an undo discards the redo
+stack.

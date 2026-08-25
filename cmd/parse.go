@@ -77,6 +77,35 @@ func (p *cmdParser) consume() byte {
 	return ch
 }
 
+// maxCount saturates a command count so a long digit string cannot overflow
+// int. Any value this large exhausts the undo log anyway.
+const maxCount = 1 << 30
+
+// parseCount reads a command's numeric argument the way sam's getnum does
+// (sam/cmd.c:166): an optional '-' followed by digits, with no blanks skipped
+// on either side. A missing number is 1, so a bare '-' is -1; an explicit 0
+// stays 0, which sam treats as a no-op.
+func (p *cmdParser) parseCount() int {
+	sign := 1
+	if p.peek() == '-' {
+		sign = -1
+		p.consume()
+	}
+	if !isDigit(p.peek()) {
+		return sign
+	}
+	n := 0
+	for isDigit(p.peek()) {
+		d := int(p.consume() - '0')
+		if n < maxCount {
+			n = n*10 + d
+		}
+	}
+	return sign * n
+}
+
+func isDigit(c byte) bool { return c >= '0' && c <= '9' }
+
 func (p *cmdParser) skipWS() {
 	for p.pos < len(p.input) && (p.input[p.pos] == ' ' || p.input[p.pos] == '\t') {
 		p.pos++
@@ -139,7 +168,7 @@ type cmdSpec struct {
 	spPat string // if a space stands in for the delimiter, use this pattern
 	body  bool   // a body command follows
 	group bool   // a { } group follows
-	count bool   // an optional single digit follows
+	count bool   // an optional signed count follows
 	rest  bool   // the rest of the line is the argument
 	dest  bool   // a destination address follows
 
@@ -213,10 +242,7 @@ func (p *cmdParser) parseArgs(spec *cmdSpec, cmd *Command) error {
 		cmd.Body = cmds
 	}
 	if spec.count {
-		cmd.N = 1
-		if p.pos < len(p.input) && p.input[p.pos] >= '1' && p.input[p.pos] <= '9' {
-			cmd.N = int(p.consume() - '0')
-		}
+		cmd.N = p.parseCount()
 	}
 	if spec.rest {
 		p.skipWS()
