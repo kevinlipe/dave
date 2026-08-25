@@ -4,7 +4,9 @@ import (
 	"dave/buffer"
 	"dave/cmd"
 	"dave/render"
+	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/veandco/go-sdl2/sdl"
 )
@@ -23,6 +25,7 @@ type CmdWindow struct {
 	dot      buffer.Range // cursor/selection within buf
 	scrollY  int32
 	lines    []string // cached result of strings.Split(buf.String(), "\n")
+	starts   []int    // codepoint offset of each line in lines
 	linesGen int      // buf.Gen() when lines was last computed
 }
 
@@ -40,11 +43,42 @@ func (cw *CmdWindow) Buf() *buffer.Buffer { return cw.buf }
 // getLines returns the buffer content split into lines, using a cached result
 // when the buffer hasn't changed since the last call.
 func (cw *CmdWindow) getLines() []string {
-	if gen := cw.buf.Gen(); gen != cw.linesGen {
-		cw.lines = strings.Split(cw.buf.String(), "\n")
-		cw.linesGen = gen
-	}
+	cw.ensureLines()
 	return cw.lines
+}
+
+// lineStarts returns the codepoint offset at which each line begins. Drawing
+// needs it to map a line back onto dot, and having it cached means a line that
+// is scrolled out of view costs nothing to skip over.
+func (cw *CmdWindow) lineStarts() []int {
+	cw.ensureLines()
+	return cw.starts
+}
+
+// lineAt returns the index of the line containing codepoint offset cp.
+func (cw *CmdWindow) lineAt(cp int) int {
+	starts := cw.lineStarts()
+	// The first line starting after cp; the one before it contains cp.
+	i := sort.Search(len(starts), func(i int) bool { return starts[i] > cp })
+	if i > 0 {
+		i--
+	}
+	return i
+}
+
+func (cw *CmdWindow) ensureLines() {
+	gen := cw.buf.Gen()
+	if gen == cw.linesGen {
+		return
+	}
+	cw.lines = strings.Split(cw.buf.String(), "\n")
+	cw.starts = make([]int, len(cw.lines))
+	off := 0
+	for i, ln := range cw.lines {
+		cw.starts[i] = off
+		off += utf8.RuneCountInString(ln) + 1 // +1 for the \n
+	}
+	cw.linesGen = gen
 }
 
 // Dot returns the current selection.
@@ -72,18 +106,10 @@ func (cw *CmdWindow) EnsureVisible(lineH, rectH int32) {
 	if viewH <= 0 {
 		return
 	}
-	// Find the line index containing dot.
-	lines := cw.getLines()
-	lineStart := 0
-	cursorLine := len(lines) - 1
-	for i, line := range lines {
-		lineEnd := lineStart + len([]rune(line))
-		if cw.dot.Start <= lineEnd {
-			cursorLine = i
-			break
-		}
-		lineStart = lineEnd + 1
-	}
+	// Find the line index containing dot. Scanning for it used to convert
+	// every line above the cursor to runes, on every keystroke, and the
+	// cursor is normally at the end of the buffer.
+	cursorLine := cw.lineAt(cw.dot.Start)
 	cursorTop := int32(cursorLine) * lineH
 	cursorBot := cursorTop + lineH
 	if cursorTop < cw.scrollY || cursorBot > cw.scrollY+viewH {
@@ -157,11 +183,9 @@ func (cw *CmdWindow) CPAtXY(x, y int32, face render.Face) int {
 		lineIdx = len(lines) - 1
 	}
 
-	// Codepoint offset of the start of lineIdx.
-	lineStart := 0
-	for i := 0; i < lineIdx; i++ {
-		lineStart += len([]rune(lines[i])) + 1 // +1 for '\n'
-	}
+	// Codepoint offset of the start of lineIdx, from the cached table rather
+	// than by walking every line above it.
+	lineStart := cw.lineStarts()[lineIdx]
 
 	// Find character within the line based on x.
 	relX := x - render.ScrollBarW - render.PanePad
@@ -407,6 +431,7 @@ func (cw *CmdWindow) Draw(ren *sdl.Renderer, rect sdl.Rect, face render.Face, pa
 	}
 
 	lines := cw.getLines()
+	starts := cw.lineStarts()
 	// Always keep at least one line so the cursor has somewhere to sit.
 	// Do not strip the trailing empty element: the cursor may be on that line.
 
@@ -429,17 +454,35 @@ func (cw *CmdWindow) Draw(ren *sdl.Renderer, rect sdl.Rect, face render.Face, pa
 	// Clip to the border-free interior so text can't bleed onto the border.
 	ren.SetClipRect(&inner)
 	dot := cw.dot
-	lineStart := 0 // codepoint offset of the start of the current line
-	for i, line := range lines {
+
+	// Only visible lines are drawn. The command window is append-only, so the
+	// buffer holds every line of output for the whole session while four or
+	// five of them are on screen; walking all of them per frame -- and
+	// converting each to runes before asking whether it was visible -- made
+	// every repaint cost the length of the scrollback.
+	//
+	// Every line is lineH tall, so the first visible one is arithmetic rather
+	// than a scan. The bound is conservative and the per-line check below
+	// still decides.
+	first := 0
+	if d := rect.Y - textY - lineH; d > 0 {
+		first = int(d / lineH)
+		if first > len(lines) {
+			first = len(lines)
+		}
+	}
+	for i := first; i < len(lines); i++ {
+		y := textY + int32(i)*lineH
+		if y > rect.Y+rect.H {
+			break // past the bottom; nothing below is visible
+		}
+		if y+lineH < rect.Y {
+			continue // above the top
+		}
+		line := lines[i]
+		lineStart := starts[i] // codepoint offset of the start of this line
 		lineRunes := []rune(line)
 		lineEnd := lineStart + len(lineRunes) // not including the \n
-
-		y := textY + int32(i)*lineH
-		// Clip to cmdwin rect.
-		if y+lineH < rect.Y || y > rect.Y+rect.H {
-			lineStart = lineEnd + 1
-			continue
-		}
 
 		// Draw selection highlight for overlap with dot.
 		if dot.Start != dot.End {
@@ -475,7 +518,6 @@ func (cw *CmdWindow) Draw(ren *sdl.Renderer, rect sdl.Rect, face render.Face, pa
 			return err
 		}
 
-		lineStart = lineEnd + 1 // +1 for the \n
 	}
 
 	ren.SetClipRect(nil)

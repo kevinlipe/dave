@@ -32,6 +32,23 @@ support.
   16ms frame. This is the next lever if editing latency ever matters
   again, not a problem today.
 
+### Redrawing happens on event batches that changed nothing
+
+- **Where:** `main.go` — the event loop drains events then calls
+  `drawFrame()` unconditionally.
+- **Smell:** mouse motion with no button held is the clear case:
+  `HandleMouseMotion` correctly returns at `input/input.go:271` having
+  done nothing, and the frame is repainted anyway. Moving the pointer
+  across the window produces a stream of identical frames.
+- **Fix:** compare cheap state across the batch — buffer generations,
+  scroll offsets, dot, focus, menu open — and skip the draw when none
+  moved. Derive it rather than having each handler set a dirty flag, for
+  the same reason CRLF encoding became a property of the writer instead
+  of something every write path had to remember.
+- **Note:** the loop itself is already right — `WaitEvent` blocks,
+  `PollEvent` drains, one draw per batch, no timers and no cursor blink,
+  so dave idles at zero.
+
 ### `drawBody` re-reads the same line several times per frame
 
 - **Where:** `pane/pane.go:340` — `s := buf.ReadAt(drawHi-1, 1)` then
@@ -97,6 +114,30 @@ now invalidates every pane explicitly rather than relying on `SetFace`
 doing it as a side effect, which also covers a reload that changes
 `tab_width` or `margin` while the font fails to load.
 
+### ~~The command window redrew its whole scrollback every frame~~ — done
+
+`CmdWindow.Draw` walked every line in the buffer and converted each to
+runes *before* asking whether it was on screen, with no `break` past the
+bottom. The command window is append-only, so that cost grew with every
+command run for the whole session, on every frame — including the frames
+mouse motion triggers. `EnsureVisible` (every keystroke) and `CPAtXY`
+(every click and drag event) had the same scan.
+
+All three now read a cached table of per-line codepoint offsets, built
+with the line split it was already doing. Drawing starts at an
+arithmetic first-visible index and breaks past the bottom;
+`EnsureVisible` binary-searches; `CPAtXY` is a lookup.
+`input/cmdwin_test.go` — the package's first tests for this type — pins
+the table against the running computation it replaced, and is
+mutation-verified against byte-vs-codepoint offsets, an uncounted
+newline, both `lineAt` boundary errors, and a cache that never
+invalidates.
+
+`main.go` also pushed the window title to the window server on every
+frame, rebuilding it with a `MenuLine` per pane, for a string that
+changes when a filename or modified flag does. It is compared against
+the last one now.
+
 ### ~~`render/` has no tests~~ — done
 
 `render/p9face_test.go` covers the Plan 9 binary path: image decoding at
@@ -143,6 +184,43 @@ the write path no longer uses it at all.
   allocation-free iterator the matcher can drive, or accepting the copy.
   Not urgent now that the per-match quadratics are gone: a search costs
   one copy per command rather than one per match.
+
+### `CmdWindow` is a second implementation of `Pane`
+
+- **Where:** `input/cmdwin.go` against `pane/pane.go`
+- **Smell:** both are a scrollable, selectable, editable text view over a
+  buffer, written twice. `CmdWindow` independently has `ScrollBy`,
+  `ScrollY`, `EnsureVisible`, `CPAtXY`, `Dot`, `ExtendDrag`, `Snarf`,
+  `Cut`, `Paste`, `deleteSelection`, `deleteBackward`, `deleteForward`
+  and its own draw with selection and caret. `Pane` has all the same
+  over `VisualLine{Lo,Hi}` offsets; `CmdWindow` has them over a cached
+  `[]string`.
+- **What it costs:** the per-frame fix above had to be made twice, in
+  two shapes. The kerning split lives in `cmdwin.go` twice over — the
+  hit-test at `:174` sums advances, the caret and selection at `:457`
+  and `:469` use `MeasureText`. Cut/Paste is asymmetric: methods on
+  `CmdWindow`, but inlined into `applyMenuResult` for panes
+  (`main.go:384`), so a new action gets written twice. There is a dead
+  `isCmd` parameter on `Pane.drawScrollbar` (`pane/pane.go:337`), whose
+  only caller passes `false` — someone started this once.
+- **Shape of the fix:** not "CmdWindow becomes a Pane" but "CmdWindow
+  owns a Pane for the text-view part", keeping execute-on-Enter,
+  `AppendOutput` and its keyboard handling. The differences are smaller
+  than they look: no olivetti is just `wordWrap=false`, which `Pane`
+  already turns into `margin = 0`; append-only is not a `Pane` concern
+  at all. The two that need real work are the palette — `Pane`
+  hardcodes `pal.Text`, `pal.Background`, `pal.BodySelection*` and
+  `pal.Scrollbar` at about eight sites and would need those as roles
+  chosen at construction — and the fact that `Pane` is built on a
+  `*file.File` while `CmdWindow` holds a bare buffer.
+- **Not urgent:** the performance argument for it is gone, since the
+  divergence it caused is now fixed on both sides. What is left is
+  avoiding future divergence, which is real but not pressing. **Do not
+  attempt it before `CmdWindow` has tests for behaviour** — `Draw`,
+  `HandleKey`, `execute`, cut/paste and drag selection are all
+  uncovered, and the 13 places in `input/input.go` and `main.go` that
+  branch on cmdwin-versus-pane are each a chance to get it subtly wrong
+  in a way only hand-testing the GUI would find.
 
 ## Known limitations
 

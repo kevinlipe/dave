@@ -89,6 +89,9 @@ func runGUI(cfg *config.Config, sess *cmd.Session) error {
 	var activeMenu *menu.Menu
 
 	// drawFrame renders the current state to the window.
+	// The window title changes when a filename or its modified flag does,
+	// which is rare; pushing it to the window server on every frame is not.
+	lastTitle := ""
 	drawFrame := func() {
 		winW, winH := win.Size()
 		cmdRect, paneRects := layout(winW, winH, cmdBorder.Y, len(panes))
@@ -121,17 +124,19 @@ func runGUI(cfg *config.Config, sess *cmd.Session) error {
 		}
 
 		// Window title: "dave: <status><name> ..." for each open pane.
+		title := "dave"
 		if len(panes) > 0 {
 			cf := handler.CurrentFilePane()
-			title := "dave: "
+			title = "dave: "
 			for _, p := range panes {
 				if p.File != nil {
 					title += " " + p.File.MenuLine(p == cf, true)
 				}
 			}
+		}
+		if title != lastTitle {
 			win.Win.SetTitle(title)
-		} else {
-			win.Win.SetTitle("dave")
+			lastTitle = title
 		}
 
 		// Vertical divider between two panes.
