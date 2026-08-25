@@ -103,9 +103,9 @@ type undoEntry struct {
 }
 
 type fileUndo struct {
-	f          *file.File
-	inverse    *buffer.Transcript
-	savedDot   buffer.Range
+	f        *file.File
+	inverse  *buffer.Transcript
+	savedDot buffer.Range
 }
 
 // UndoLog is a stack of undo entries.
@@ -133,14 +133,14 @@ func (u *UndoLog) len() int { return len(u.entries) }
 // execCtx holds state during a single top-level command execution.
 // It accumulates changes (transcripts) per file and applies them atomically.
 type execCtx struct {
-	session    *Session
+	session *Session
 	// perFile records the pending transcript and saved dot for each file touched.
-	perFile    map[*file.File]*filePending
+	perFile map[*file.File]*filePending
 	// order tracks which files were touched, in order.
-	order      []*file.File
+	order []*file.File
 	// nest counts how many levels of structural commands (x, g, {, …) we're
 	// inside. Shell commands only print "!\n" at the top level (nest==0).
-	nest       int
+	nest int
 }
 
 type filePending struct {

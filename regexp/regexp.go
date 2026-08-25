@@ -187,6 +187,5 @@ func samToGo(pat string) string {
 	return b.String()
 }
 
-
 // ResetLastPattern clears the last-used pattern (for testing).
 func ResetLastPattern() { last = nil }

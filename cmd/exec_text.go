@@ -86,4 +86,3 @@ func (s *Session) execChange(f *file.File, dot buffer.Range, text string, ctx *e
 	f.SetDot(buffer.Range{Start: dot.Start, End: dot.Start + n})
 	return nil
 }
-

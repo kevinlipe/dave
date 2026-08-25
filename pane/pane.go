@@ -71,7 +71,7 @@ func (p *Pane) SetPalette(pal render.Palette) { p.pal = pal }
 // The scroll position is reset to the top so the new file is visible from the start.
 func (p *Pane) SetFile(f *file.File) {
 	p.File = f
-	p.paneW = 0  // force re-layout
+	p.paneW = 0   // force re-layout
 	p.scrollY = 0 // reset scroll to top of new file
 }
 
@@ -514,7 +514,6 @@ func expandTabsRunes(runes []rune, lo, hi int, startX int32, face render.Face, t
 	}
 	return string(out)
 }
-
 
 // ScrollbarJump returns the codepoint offset corresponding to a click at
 // pixel y within the scrollbar (y relative to the body top).

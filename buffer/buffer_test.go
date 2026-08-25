@@ -192,8 +192,8 @@ func TestLen(t *testing.T) {
 	}{
 		{"", 0},
 		{"hello", 5},
-		{"café", 4},   // 4 codepoints, 5 bytes
-		{"a—b", 3},   // 3 codepoints, 5 bytes
+		{"café", 4}, // 4 codepoints, 5 bytes
+		{"a—b", 3},  // 3 codepoints, 5 bytes
 		{"😀", 1},
 	}
 	for _, c := range cases {
