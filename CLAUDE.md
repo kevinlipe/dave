@@ -89,18 +89,23 @@ wrong value. Passing on the first run is not evidence.
     go test ./pane/ -run TestWrapCharacterize -update
 
 **Commits** are conventional-commit style with a scope (`fix(file):`,
-`perf(pane):`). Bodies explain *why*, carry measurements where the change is
-about performance, and say what the tests pin.
+`perf(pane):`). The body explains **what changed and why** — the context, the
+reasoning, the option not taken. It does not explain *how*: assume the diff
+covers that. Include a measurement when the change is about performance.
+
+Keep it short. A small change deserves a subject line and a sentence or two;
+only a change that turns on real reasoning earns several paragraphs. If the
+body is walking through the diff, it is too long.
 
 **gofmt**: several files carry pre-existing alignment drift. Format the files
 you touch; don't sweep the repo in an unrelated change.
 
 ## Gotchas
 
-- **`md/` is gitignored and stale.** The early design docs there no longer
-  reflect decisions that hold. Do not treat them as authoritative. `TODO.md` is
-  current and is where open work, known limitations, and rejected options live —
-  read it before proposing a change to rendering or layout.
+- **`md/` is gitignored and stale** — all of it. Those early design docs do not
+  describe the editor as it is; don't treat any of them as authoritative.
+  `TODO.md` is current, and is where open work, known limitations and rejected
+  options live — read it before proposing a change to rendering or layout.
 - **A clone gets no design docs.** `README.md`, `TODO.md`, `doc/command-ref.md`
   and this file are the whole written record.
 - **`file.WriteContent` is not called `WriteTo` on purpose.** `go vet`'s
