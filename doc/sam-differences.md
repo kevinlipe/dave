@@ -112,8 +112,16 @@ addresses already read `0,$`.
 
 ## Minor
 
-Two differences small enough that nothing appears to depend on them, recorded so
+Differences small enough that nothing appears to depend on them, recorded so
 they are not mistaken for bugs.
+
+**`=` prints the name, not the path.** 9front's `printposn` prefixes the
+working directory whenever the file name is relative, so every position reads as
+a full path: `/home/you/src/dave/main.go:#0,#3`. Dave prints the name the file
+carries — `main.go:#0,#3`. The prefix earns its keep where a position is going to
+be plumbed to another program; at a prompt it is mostly a long line to read past,
+and `=` is used far more often for the second than the first. The two Sams do not
+agree here either: plan9port prints no name at all.
 
 **`$` at end of file.** Sam's forward `EOL` matches only immediately before a
 real newline, so `/c$/` does not match the last line of a file that does not end

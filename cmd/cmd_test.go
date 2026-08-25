@@ -1290,9 +1290,11 @@ func TestEditAndReadOutputFormat(t *testing.T) {
 	})
 }
 
-// A relative name is reported against the working directory, as sam's printposn
-// does, so a position reads as a reference to a place on disk.
-func TestEqualPrefixesTheWorkingDirectory(t *testing.T) {
+// = reports the name as the file carries it. 9front's printposn prefixes the
+// working directory when the name is relative, which makes every position a
+// full path; dave keeps the short name, and doc/sam-differences.md records why.
+// (plan9port prints no name at all, so the two sams do not agree here either.)
+func TestEqualPrintsTheNameAsGiven(t *testing.T) {
 	var out strings.Builder
 	s := NewSession(&out)
 	f := file.NewNamed("relative.txt")
@@ -1301,15 +1303,10 @@ func TestEqualPrefixesTheWorkingDirectory(t *testing.T) {
 	s.AddFile(f)
 
 	assertNoError(t, s.ExecString("=#"))
-	wd, err := os.Getwd()
-	if err != nil {
-		t.Skip("no working directory")
-	}
-	if want := wd + "/relative.txt:#0,#3\n"; out.String() != want {
+	if want := "relative.txt:#0,#3\n"; out.String() != want {
 		t.Errorf("= printed %q, want %q", out.String(), want)
 	}
 
-	// An absolute name is left alone.
 	out.Reset()
 	f.SetName("/tmp/abs.txt")
 	assertNoError(t, s.ExecString("=#"))

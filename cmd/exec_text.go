@@ -3,8 +3,6 @@ package cmd
 import (
 	"dave/buffer"
 	"dave/file"
-	"os"
-	"path/filepath"
 	"unicode/utf8"
 )
 
@@ -80,15 +78,9 @@ func lineAfter(f *file.File, dot buffer.Range) buffer.Range {
 }
 
 func (s *Session) execEqual(f *file.File, dot buffer.Range, flag string) error {
-	// A relative name is reported against the working directory, as sam's
-	// printposn does, so the position reads as a reference to a place on disk
-	// rather than to whatever the reader's own directory happens to be.
+	// The name as given. 9front's printposn prefixes the working directory when
+	// the name is relative; dave does not — see doc/sam-differences.md.
 	if name := f.Name(); name != "" {
-		if !filepath.IsAbs(name) {
-			if wd, err := os.Getwd(); err == nil {
-				name = filepath.Join(wd, name)
-			}
-		}
 		s.printf("%s:", name)
 	}
 	if flag == "#" {
