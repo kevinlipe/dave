@@ -29,9 +29,9 @@ type TTFFace struct {
 	height   int
 	ascent   int
 	ren      *sdl.Renderer
-	glyphs   map[rune]glyphEntry  // cached textures + dimensions
-	advances map[rune]int         // cached advance widths
-	kerns    map[[2]rune]int32    // cached kern pairs
+	glyphs   map[rune]glyphEntry // cached textures + dimensions
+	advances map[rune]int        // cached advance widths
+	kerns    map[[2]rune]int32   // cached kern pairs
 }
 
 // NewTTFFace parses ttfData as a TrueType/OpenType font and returns a

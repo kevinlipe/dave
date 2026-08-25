@@ -40,27 +40,99 @@ support.
   exists and does this without allocating. Worse, `drawLineText` reads
   the line and then `drawLineSelection` re-reads slices of it through
   `XForCP` → `measureRange` → `buf.ReadAt` → `[]rune`.
+- **Worse than it looks:** `drawLineText` then goes
+  `ReadAt` → `[]rune` → `expandTabsRunes` → `string`, four allocations
+  per visible line per frame, and `DrawText` decodes that string back
+  into runes. A selected line draws the whole line and then the selected
+  span over it (`pane/pane.go:470`, `:480`), so selected glyphs are
+  drawn twice.
 - **Fix:** use `RuneAt` for the peek; read each visible line's runes
   once per draw and pass the slice down to the measure and selection
-  paths.
+  paths. Having `Face.DrawText` take `[]rune` would delete the
+  rune→string→rune round trip at the same time, and is a smaller change
+  than glyph batching.
+
+### Text is measured with kerning and positioned without it
+
+- **Where:** `render/ttfface.go:91` (`MeasureText`, kerned) against
+  `pane/wrap.go:223`, `pane/pane.go:512`, `input/cursor.go:302` and
+  `input/cmdwin.go:174`, which all sum `GlyphAdvance` and do not kern.
+  `input/cmdwin.go` has both: the hit-test at `:174` is unkerned, the
+  caret and selection at `:457`/`:469` are kerned.
+- **Smell:** `MeasureText(s) != sum(GlyphAdvance(r))` whenever a font
+  kerns, so a click resolves to one rune and the caret draws somewhere
+  else, drifting further along the line.
+- **Latent:** Go Mono's kern table is empty for every pair probed, so
+  the default config cannot show it. It appears the first time `font` is
+  set to a proportional face. `Plan9Face` has no kerning at all, so the
+  Plan 9 path is already consistent.
+- **Fix:** pick one. Dropping kerning from `TTFFace.MeasureText` matches
+  what every other path already does and is a two-line change; routing
+  all positioning through `MeasureText` is correct but touches wrap,
+  hit-test and selection. **Settle this before the kern fast path
+  below** — there is no point optimising a lookup whose callers disagree
+  about whether it should happen.
 
 ### Glyphs are drawn one `Copy` call at a time
 
-- **Where:** `render/ttfface.go:119` — `SetColorMod` / `Copy` per glyph
+- **Where:** `render/ttfface.go:119` and `render/p9face.go:105` — both
+  faces do `SetColorMod` / `Copy` per glyph
 - **Smell:** every glyph is its own texture bind, state change and draw
   call.
 - **Fix:** batch runs of same-coloured text into a single
   `RenderGeometry` call. Only worth the complexity if profiling shows
-  draw-call overhead actually dominates — do the two items above first
-  and re-measure.
+  draw-call overhead actually dominates — do the `drawBody` item above
+  first and re-measure.
 
 ### Kern lookup is a map hit per character pair
 
-- **Where:** `render/ttfface.go:82` — `kerns map[[2]rune]int32`
+- **Where:** `render/ttfface.go:82` — `kerns map[[2]rune]int32`. The
+  Plan 9 face has the same shape at `p9Font.cache`, a `map[rune]` hit
+  per rune in both `MeasureText` and `DrawText`.
 - **Smell:** a map lookup per rune pair in both `MeasureText` and
   `DrawText`. Fine for static text; noticeable per frame on long lines.
 - **Fix:** ASCII fast path — a `[128][128]int32` array for the common
-  case, falling through to the map for everything else.
+  case, falling through to the map for everything else. See the kerning
+  correctness item above first.
+
+### HiDPI scaling applies to TTF faces and not to Plan 9 ones
+
+- **Where:** `render/window.go:186` — `loadFace` takes the display
+  `scale` and uses it only in the TTF branch (`cfg.FontSize*scale`).
+- **Smell:** on a HiDPI display a TTF face compensates automatically and
+  a Plan 9 face does not, so bitmap fonts render at half size unless
+  `plan9_scale` is set by hand.
+- **Possibly deliberate:** fractional scaling of a bitmap font looks bad
+  either way, which is what the `edgeGamma` fudge in `p9face.go` exists
+  to paper over, and a manual knob at least lets the user pick a value
+  that looks right. Worth deciding on purpose rather than by omission.
+
+### ~~The layout cache does not know the font changed~~ — done
+
+`Pane.Relayout` keys its cache on `(paneW, bufGen)`, which does not
+include the face, and `InvalidateLayout` — written for exactly this —
+had no production callers. The Plan 9 "scale font" menu item mutated
+face metrics in place, so glyphs resized against a layout computed for
+the old size. That menu item is gone: `plan9_scale` is config-only now,
+applied when the face is built, and `Config` reloads it. `applyConfig`
+now invalidates every pane explicitly rather than relying on `SetFace`
+doing it as a side effect, which also covers a reload that changes
+`tab_width` or `margin` while the font fails to load.
+
+### ~~`render/` has no tests~~ — done
+
+`render/p9face_test.go` covers the Plan 9 binary path: image decoding at
+k1/k2/k4/k8, compressed against uncompressed, the back-reference
+decompressor including overlapping runs, subfont and fontchar parsing
+with signed left bearings, `.font` file parsing, and the malformed-input
+cases for each. Mutation-verified — polarity flips, an off-by-one in the
+back-reference offset or count, a fontchar width read from the wrong
+entry, and byte-order swaps each fail a test. The subfont char count is
+now bounded (`p9MaxSubfontChars`) so a corrupt header cannot size an
+allocation.
+
+The two `Face` implementations are still untested above the parsing
+layer, since that needs a renderer.
 
 ## Elsewhere
 

@@ -139,10 +139,10 @@ func (w *Window) Close() {
 
 // DrawBorder draws a w-pixel thick border inside rect using the current draw color.
 func DrawBorder(ren *sdl.Renderer, rect sdl.Rect, w int32) {
-	ren.FillRect(&sdl.Rect{X: rect.X, Y: rect.Y, W: rect.W, H: w})                          // top
-	ren.FillRect(&sdl.Rect{X: rect.X, Y: rect.Y + rect.H - w, W: rect.W, H: w})             // bottom
-	ren.FillRect(&sdl.Rect{X: rect.X, Y: rect.Y, W: w, H: rect.H})                          // left
-	ren.FillRect(&sdl.Rect{X: rect.X + rect.W - w, Y: rect.Y, W: w, H: rect.H})             // right
+	ren.FillRect(&sdl.Rect{X: rect.X, Y: rect.Y, W: rect.W, H: w})              // top
+	ren.FillRect(&sdl.Rect{X: rect.X, Y: rect.Y + rect.H - w, W: rect.W, H: w}) // bottom
+	ren.FillRect(&sdl.Rect{X: rect.X, Y: rect.Y, W: w, H: rect.H})              // left
+	ren.FillRect(&sdl.Rect{X: rect.X + rect.W - w, Y: rect.Y, W: w, H: rect.H}) // right
 }
 
 // DrawCursor draws an I-beam cursor at pixel position (x, y) with the given

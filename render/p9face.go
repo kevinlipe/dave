@@ -35,7 +35,7 @@ type Plan9Face struct {
 	font     *p9Font
 	ren      *sdl.Renderer
 	textures map[*p9SubfontImage]*sdl.Texture
-	scale    float64 // 1.0 or 1.5
+	scale    float64 // fixed at construction from cfg.plan9_scale
 }
 
 // NewPlan9Face loads a Plan 9 .font file and returns a Face ready for drawing.
@@ -118,32 +118,23 @@ func (pf *Plan9Face) Close() {
 	pf.textures = make(map[*p9SubfontImage]*sdl.Texture)
 }
 
-// Scale returns the current scale factor.
-func (pf *Plan9Face) Scale() float64 { return pf.scale }
-
-// SetScale changes the scale factor and clears the texture cache so glyphs
-// are re-rendered at the new size on the next draw call.
-func (pf *Plan9Face) SetScale(scale float64) {
-	if scale <= 0 {
-		scale = 1.0
-	}
-	pf.scale = scale
-	for _, tex := range pf.textures {
-		tex.Destroy()
-	}
-	pf.textures = make(map[*p9SubfontImage]*sdl.Texture)
-}
-
 // texture returns (building if necessary) the SDL2 texture for img.
 // Ink pixels are stored as white+alpha so SetColorMod tints at draw time.
 func (pf *Plan9Face) texture(img *p9SubfontImage) (*sdl.Texture, error) {
 	if tex, ok := pf.textures[img]; ok {
 		return tex, nil
 	}
-	// Use linear filtering when scaling so upscaled glyphs are smooth.
+	// Linear filtering, so an upscaled glyph is smooth rather than blocky.
+	// SDL samples this hint when the texture is created, so it only needs to
+	// hold across CreateTexture; it is restored rather than zeroed, since it
+	// is process-global.
 	if pf.scale > 1.0 {
+		prev := sdl.GetHint(sdl.HINT_RENDER_SCALE_QUALITY)
+		if prev == "" {
+			prev = "0"
+		}
 		sdl.SetHint(sdl.HINT_RENDER_SCALE_QUALITY, "1")
-		defer sdl.SetHint(sdl.HINT_RENDER_SCALE_QUALITY, "0")
+		defer sdl.SetHint(sdl.HINT_RENDER_SCALE_QUALITY, prev)
 	}
 	w, h := int32(img.width), int32(img.height)
 	tex, err := pf.ren.CreateTexture(uint32(sdl.PIXELFORMAT_RGBA32), sdl.TEXTUREACCESS_STATIC, w, h)
@@ -154,13 +145,14 @@ func (pf *Plan9Face) texture(img *p9SubfontImage) (*sdl.Texture, error) {
 	rgba := make([]byte, int(w)*int(h)*4)
 	for i, lum := range img.pix {
 		opacity := 255 - lum
-		// When scaling up, apply a gamma curve to push semi-transparent edge
-		// pixels toward fully transparent. This counteracts the "fat stroke"
-		// effect from bilinear filtering of bitmap glyphs. gamma=2.0 works
-		// well for moderate scale factors (1.1–1.25).
+		// When scaling up, push semi-transparent edge pixels toward fully
+		// transparent, countering the "fat stroke" bilinear filtering gives a
+		// bitmap glyph. Tuned by eye at the scale factors a 1080p laptop wants
+		// for lucm/pelm (~1.1-1.25); it is a fudge for fractional scaling, and
+		// an integer scale would not need it.
 		if pf.scale > 1.0 {
 			a := float64(opacity) / 255.0
-			opacity = uint8(math.Pow(a, 3.0) * 255.0)
+			opacity = uint8(math.Pow(a, edgeGamma) * 255.0)
 		}
 		base := i * 4
 		rgba[base+0] = 255
@@ -413,8 +405,8 @@ func readP9Subfont(br *bufio.Reader) (*p9Subfont, error) {
 	if err != nil {
 		return nil, fmt.Errorf("subfont ascent: %w", err)
 	}
-	if n <= 0 {
-		return nil, fmt.Errorf("subfont n=%d", n)
+	if n <= 0 || n > p9MaxSubfontChars {
+		return nil, fmt.Errorf("subfont n=%d out of range", n)
 	}
 
 	raw := make([]byte, (n+1)*6)
@@ -447,6 +439,15 @@ const (
 	p9NMEM   = 1024
 	p9NMATCH = 3
 )
+
+// edgeGamma shapes glyph edge alpha when a bitmap font is scaled up; see
+// Plan9Face.texture. Higher is crisper.
+const edgeGamma = 3.0
+
+// p9MaxSubfontChars bounds the character count read from a subfont header, so
+// a truncated or corrupt file cannot ask for an unbounded allocation. Plan 9
+// subfonts hold at most a few hundred glyphs; 65536 is far past any real one.
+const p9MaxSubfontChars = 65536
 
 func readP9Image(br *bufio.Reader) (*p9RawImage, error) {
 	var magic [11]byte

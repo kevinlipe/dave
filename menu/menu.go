@@ -40,8 +40,8 @@ type Result struct {
 // Menu is a rendered popup overlay.
 type Menu struct {
 	items   []Item
-	x, y    int32  // top-left of the popup in window coords
-	hovered int    // index of hovered item, or -1
+	x, y    int32 // top-left of the popup in window coords
+	hovered int   // index of hovered item, or -1
 	open    bool
 }
 
@@ -56,10 +56,9 @@ const padX = 10
 
 // NewBufferMenu creates the right-click buffer menu with the given open files.
 // hasSecondPane controls whether "pane" or "kill pane" is shown.
-// scaleLabel, if non-empty, adds a "scale font"/"unscale font" item (Plan 9 fonts only).
 // activeFile, if non-nil, is positioned under the click point so that action items
 // (like "new") appear above the cursor and require deliberate upward movement.
-func NewBufferMenu(files []*file.File, inPane map[*file.File]bool, hasSecondPane bool, scaleLabel string, activeFile *file.File, x, y int32) *Menu {
+func NewBufferMenu(files []*file.File, inPane map[*file.File]bool, hasSecondPane bool, activeFile *file.File, x, y int32) *Menu {
 	paneLabel := "pane"
 	if hasSecondPane {
 		paneLabel = "kill pane"
@@ -69,9 +68,6 @@ func NewBufferMenu(files []*file.File, inPane map[*file.File]bool, hasSecondPane
 		{Kind: ItemAction, Label: paneLabel},
 		{Kind: ItemAction, Label: "close"},
 		{Kind: ItemAction, Label: "write"},
-	}
-	if scaleLabel != "" {
-		items = append(items, Item{Kind: ItemAction, Label: scaleLabel})
 	}
 	items = append(items, Item{Kind: ItemDave, Label: "~~dave~~"})
 	// Add non-active files first, then active file last so it sits under the cursor.

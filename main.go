@@ -250,7 +250,6 @@ func runGUI(cfg *config.Config, sess *cmd.Session) error {
 						for _, p := range panes {
 							inPane[p.File] = true
 						}
-						scaleLabel := plan9ScaleLabel(face, cfg.Plan9Scale)
 						// Only pass activeFile if it is tracked in the session;
 						// an empty sidebar placeholder must not appear in the list.
 						var activeFile *file.File
@@ -262,7 +261,7 @@ func runGUI(cfg *config.Config, sess *cmd.Session) error {
 								}
 							}
 						}
-						activeMenu = menu.NewBufferMenu(sess.Files, inPane, len(panes) > 1, scaleLabel, activeFile, ev.X, ev.Y)
+						activeMenu = menu.NewBufferMenu(sess.Files, inPane, len(panes) > 1, activeFile, ev.X, ev.Y)
 					}
 					if activeMenu != nil {
 						activeMenu.Clamp(winW, winH, face)
@@ -411,14 +410,6 @@ func applyMenuResult(res menu.Result, sess *cmd.Session, panes []*pane.Pane, han
 		}
 	case "undo":
 		sess.DoUndo()
-	case "scale font", "unscale font":
-		if p9, ok := face.(*render.Plan9Face); ok {
-			if p9.Scale() == 1.0 {
-				p9.SetScale(cfg.Plan9Scale)
-			} else {
-				p9.SetScale(1.0)
-			}
-		}
 	case "look":
 		ap := handler.ActivePane()
 		if ap != nil && ap.File != nil {
@@ -468,7 +459,10 @@ func applyMenuResult(res menu.Result, sess *cmd.Session, panes []*pane.Pane, han
 // lookForward searches buf for the first occurrence of needle at or after
 // start (codepoint offset), wrapping around to 0 if not found. Returns the
 // start and end codepoint offsets of the match, or (-1, -1) if not found.
-func lookForward(buf interface{ String() string; Len() int }, needle string, start int) (int, int) {
+func lookForward(buf interface {
+	String() string
+	Len() int
+}, needle string, start int) (int, int) {
 	runes := []rune(buf.String())
 	n := len(runes)
 	needleRunes := []rune(needle)
@@ -501,20 +495,6 @@ func lookForward(buf interface{ String() string; Len() int }, needle string, sta
 	return -1, -1
 }
 
-// plan9ScaleLabel returns "scale font" or "unscale font" when face is a
-// Plan9Face and configScale differs from 1.0, so the menu item is only
-// shown for Plan 9 fonts where toggling has a visible effect.
-func plan9ScaleLabel(face render.Face, configScale float64) string {
-	p9, ok := face.(*render.Plan9Face)
-	if !ok || configScale == 1.0 {
-		return ""
-	}
-	if p9.Scale() == 1.0 {
-		return "scale font"
-	}
-	return "unscale font"
-}
-
 // applyConfig reloads the config file and pushes all new values into the
 // running GUI. cfg is updated in-place so all panes that hold a *Config
 // pointer pick up the new values automatically. Returns a one-line status
@@ -545,6 +525,15 @@ func applyConfig(win *render.Window, cfg *config.Config, pal *render.Palette, fa
 
 	// Apply new values into the existing *Config so panes see them via their pointer.
 	*cfg = *newCfg
+
+	// Panes read tab_width and margin live through that pointer, so the cached
+	// layout is now stale. SetFace invalidates too, but only on the path where
+	// the font actually reloaded -- a font that failed to load leaves the old
+	// face in place, and a reload that changed only tab_width would otherwise
+	// keep the old layout. Invalidating here makes it independent of both.
+	for _, p := range panes {
+		p.InvalidateLayout()
+	}
 
 	// Rebuild and push the new palette.
 	newPal := render.PaletteFromConfig(cfg)
