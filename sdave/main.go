@@ -10,6 +10,7 @@
 package main
 
 import (
+	"bufio"
 	"dave/buffer"
 	"dave/cmd"
 	"dave/file"
@@ -55,33 +56,33 @@ func main() {
 
 	// Process each input file, or stdin if none given.
 	if len(args) == 0 {
-		if err := processReader(os.Stdin, script, *suppress); err != nil {
+		if err := processReader(os.Stdout, os.Stdin, script, *suppress); err != nil {
 			fmt.Fprintf(os.Stderr, "sdave: %v\n", err)
 			os.Exit(1)
 		}
 		return
 	}
 	for _, name := range args {
-		if err := processFile(name, script, *suppress); err != nil {
+		if err := processFile(os.Stdout, name, script, *suppress); err != nil {
 			fmt.Fprintf(os.Stderr, "sdave: %s: %v\n", name, err)
 			os.Exit(1)
 		}
 	}
 }
 
-// processFile loads name from disk, runs script against it, and prints the
-// result unless suppress is true.
-func processFile(name, script string, suppress bool) error {
+// processFile loads name from disk, runs script against it, and writes the
+// result to w unless suppress is true.
+func processFile(w io.Writer, name, script string, suppress bool) error {
 	f := file.NewNamed(name)
 	if err := f.EnsureLoaded(); err != nil {
 		return err
 	}
-	return process(f, script, suppress)
+	return process(w, f, script, suppress)
 }
 
 // processReader reads all of r into a fresh buffer, runs script against it,
-// and prints the result unless suppress is true.
-func processReader(r io.Reader, script string, suppress bool) error {
+// and writes the result to w unless suppress is true.
+func processReader(w io.Writer, r io.Reader, script string, suppress bool) error {
 	data, err := io.ReadAll(r)
 	if err != nil {
 		return fmt.Errorf("reading stdin: %w", err)
@@ -89,25 +90,34 @@ func processReader(r io.Reader, script string, suppress bool) error {
 	f := file.New()
 	content := f.DecodeContent(string(data))
 	f.Buffer().Insert(0, content)
-	return process(f, script, suppress)
+	return process(w, f, script, suppress)
 }
 
 // process runs script against f in a fresh session, then writes the buffer
-// to stdout unless suppress is true.
+// to w unless suppress is true.
+//
+// The destination is a parameter rather than os.Stdout so the whole pipeline
+// is testable; cmd.NewSession already takes a writer for the same reason.
 //
 // Like ssam, the initial dot is set to the whole file so that commands like
 // s/re/repl/ work without an explicit address.
-func process(f *file.File, script string, suppress bool) error {
+func process(w io.Writer, f *file.File, script string, suppress bool) error {
 	// Set dot to the whole file before running the script.
 	f.SetDot(buffer.Range{Start: 0, End: f.Len()})
 
-	s := cmd.NewSession(os.Stdout)
+	// The script's own output and the buffer dump share one buffered writer,
+	// so they stay in order and neither costs a syscall per line: the buffer
+	// streams out in gap segments, and a CRLF file a line at a time.
+	bw := bufio.NewWriter(w)
+	s := cmd.NewSession(bw)
 	s.AddFile(f)
-	if err := s.ExecString(script); err != nil {
-		return err
+	err := s.ExecString(script)
+	if err == nil && !suppress {
+		err = f.WriteContent(bw)
 	}
-	if !suppress {
-		return f.WriteTo(os.Stdout)
+	// Flush whatever the script managed to print, even on the way out.
+	if ferr := bw.Flush(); err == nil {
+		err = ferr
 	}
-	return nil
+	return err
 }

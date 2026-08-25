@@ -2,6 +2,7 @@ package file
 
 import (
 	"dave/buffer"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -37,11 +38,19 @@ func TestExpandPath(t *testing.T) {
 	}
 }
 
+// writeString adapts a plain string to WriteAtomic's streaming signature.
+func writeString(s string) func(io.Writer) error {
+	return func(w io.Writer) error {
+		_, err := io.WriteString(w, s)
+		return err
+	}
+}
+
 func TestWriteAtomic(t *testing.T) {
 	dir := t.TempDir()
 	// Nested path — MkdirAll should create sub/dir.
 	path := filepath.Join(dir, "sub", "dir", "out.txt")
-	if err := WriteAtomic(path, "hello dave"); err != nil {
+	if err := WriteAtomic(path, writeString("hello dave")); err != nil {
 		t.Fatalf("WriteAtomic: %v", err)
 	}
 	got, err := os.ReadFile(path)
@@ -63,7 +72,7 @@ func TestWriteAtomicReplacesExisting(t *testing.T) {
 	if err := os.WriteFile(path, []byte("original"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := WriteAtomic(path, "replaced"); err != nil {
+	if err := WriteAtomic(path, writeString("replaced")); err != nil {
 		t.Fatalf("WriteAtomic: %v", err)
 	}
 	got, err := os.ReadFile(path)

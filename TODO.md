@@ -64,25 +64,30 @@ support.
 
 ## Elsewhere
 
-### `file.Save` allocates the file three times over
+### ~~`file.Save` allocates the file three times over~~ — done
 
-- **Where:** `file/file.go:166`, and `EncodeContent` at `file.go:59`
-- **Smell:** reads the whole buffer to a string, `strings.ReplaceAll`
-  for CRLF, then writes — three allocations the size of the file. Fine
-  small, painful past a few MB. `WriteTo` (`file.go:150`) has the same
-  shape.
-- **Fix:** stream through an `io.Writer` that CRLF-encodes on the fly.
+The write path streams. `buffer.WriteTo`/`WriteRangeTo` (`buffer/write.go`)
+write the gap buffer's two segments straight to an `io.Writer` without
+flattening it, and CRLF encoding is a writer wrapper (`file/crlf.go`) rather
+than a `strings.ReplaceAll`. Writing an 880 KB file went from 884 KB and one
+allocation to zero (LF) or 16 bytes (CRLF, the interface box), and from
+143 µs to 8 ns. `file/alloc_test.go` guards it.
 
-### `buffer.String()` still copies the whole file at 7 call sites
+Encoding also moved from being each write path's duty to a property of the
+writer, which is what fixed the CRLF bug in `WriteTo` — three write paths had
+to remember to encode and one didn't.
 
-Down from ~15; the address and command paths no longer use it per match.
+### `buffer.String()` still copies the whole file at 5 call sites
 
-- `pane/wrap.go:56` is now only reached on a full wrap — a resize, a font
+Down from ~15; the address and command paths no longer use it per match, and
+the write path no longer uses it at all.
+
+- `pane/wrap.go:55` is now only reached on a full wrap — a resize, a font
   change, word wrap toggled, or an edit older than the buffer's edit log —
-  rather than on every keystroke. `file/file.go:150`/`:166` are covered
-  above.
-- The rest: `addr/addr.go:159` (`evalRegexp`), `cmd/exec_struct.go:43`
-  and `:91` (`execX`, `execY`), `main.go:472` (`lookForward`).
+  rather than on every keystroke.
+- `addr/addr.go:159` (`evalRegexp`), `cmd/exec_struct.go:43` and `:91`
+  (`execX`, `execY`) — all three via `file.String()` — and `main.go:472`
+  (`lookForward`).
 - **Note:** the regexp ones are the awkward set, because Go's `regexp`
   wants a string — removing the copy there means either an
   allocation-free iterator the matcher can drive, or accepting the copy.

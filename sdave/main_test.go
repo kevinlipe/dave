@@ -246,7 +246,7 @@ func TestProcessFileReportsUnreadableFiles(t *testing.T) {
 // A stream editor preserves the line endings it was given: a CRLF file in is a
 // CRLF file out. Inside the buffer the content is always LF — DecodeContent
 // strips the \r on the way in — so this only works if the write path encodes
-// it back, which is what file.WriteTo does for sdave.
+// it back, which is what file.WriteContent does for sdave.
 func TestProcessFilePreservesCRLFLineEndings(t *testing.T) {
 	p := write(t, "crlf.txt", "a\r\nb\r\n")
 	var w strings.Builder

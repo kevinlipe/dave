@@ -4,6 +4,7 @@ import (
 	"dave/buffer"
 	"dave/file"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"unicode/utf8"
@@ -133,12 +134,13 @@ func (s *Session) execW(f *file.File, dot buffer.Range, name string) error {
 	if name == "" {
 		return fmt.Errorf("w: no filename")
 	}
-	// Write addressed range, restoring original line endings if needed.
+	// The addressed range streams straight out of the buffer; WriteRange
+	// restores the file's original line endings on the way.
 	_, statErr := os.Stat(name)
 	isNew := os.IsNotExist(statErr)
-	runes := f.Buffer().ReadAt(dot.Start, dot.Len())
-	content := f.EncodeContent(runes)
-	if err := file.WriteAtomic(name, content); err != nil {
+	if err := file.WriteAtomic(name, func(w io.Writer) error {
+		return f.WriteRange(w, dot.Start, dot.End)
+	}); err != nil {
 		return fmt.Errorf("w: %w", err)
 	}
 	if name == f.Name() {
@@ -148,7 +150,7 @@ func (s *Session) execW(f *file.File, dot buffer.Range, name string) error {
 	if isNew {
 		s.printf("(new file) ")
 	}
-	if !strings.HasSuffix(runes, "\n") && dot.Len() > 0 {
+	if dot.Len() > 0 && f.Buffer().RuneAt(dot.End-1) != '\n' {
 		s.printf("?warning: last char not newline\n")
 	}
 	s.printf("#%d\n", dot.Len())

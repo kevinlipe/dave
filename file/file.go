@@ -6,6 +6,7 @@
 package file
 
 import (
+	"bufio"
 	"dave/buffer"
 	"fmt"
 	"io"
@@ -45,20 +46,11 @@ func (f *File) CRLF() bool { return f.crlf }
 
 // DecodeContent strips \r from CRLF content and records the line-ending style.
 func (f *File) DecodeContent(raw string) string {
-	if strings.Contains(raw, "\r\n") {
-		f.crlf = true
+	f.crlf = detectCRLF(raw)
+	if f.crlf {
 		return strings.ReplaceAll(raw, "\r\n", "\n")
 	}
-	f.crlf = false
 	return raw
-}
-
-// EncodeContent restores \r\n line endings if the file originally used CRLF.
-func (f *File) EncodeContent(s string) string {
-	if f.crlf {
-		return strings.ReplaceAll(s, "\n", "\r\n")
-	}
-	return s
 }
 
 // EnsureLoaded reads the file from disk if it hasn't been loaded yet.
@@ -145,16 +137,20 @@ func (f *File) MenuLine(isCurrent, isInPane bool) string {
 	return fmt.Sprintf("%c%c %s", mod, cur, name)
 }
 
-// WriteTo writes the entire file contents to w.
-func (f *File) WriteTo(w io.Writer) error {
-	_, err := io.WriteString(w, f.buf.String())
+// WriteContent writes the entire file contents to w in the file's own line
+// endings, streaming straight out of the buffer without copying it.
+//
+// It is not io.WriterTo: File has two write paths, this one and WriteRange,
+// and they are worth naming for what they write.
+func (f *File) WriteContent(w io.Writer) error {
+	_, err := f.buf.WriteTo(f.writer(w))
 	return err
 }
 
-// WriteRange writes the contents of [lo, hi) codepoints to w.
+// WriteRange writes the contents of [lo, hi) codepoints to w, in the file's
+// own line endings.
 func (f *File) WriteRange(w io.Writer, lo, hi int) error {
-	s := f.buf.ReadAt(lo, hi-lo)
-	_, err := io.WriteString(w, s)
+	_, err := f.buf.WriteRangeTo(f.writer(w), lo, hi-lo)
 	return err
 }
 
@@ -163,7 +159,7 @@ func (f *File) Save() error {
 	if f.name == "" {
 		return fmt.Errorf("file: no filename to save to")
 	}
-	if err := WriteAtomic(f.name, f.EncodeContent(f.buf.String())); err != nil {
+	if err := WriteAtomic(f.name, f.WriteContent); err != nil {
 		return err
 	}
 	f.modified = false
@@ -191,15 +187,17 @@ func ExpandPath(path string) string {
 	return filepath.Join(home, path[2:])
 }
 
-// WriteAtomic writes content to path via a temp file and rename, creating
-// parent directories as needed. Either the destination is fully replaced or
+// WriteAtomic writes to path via a temp file and rename, creating parent
+// directories as needed. The content is produced by write, which is handed a
+// buffered writer — callers stream into it rather than building the whole
+// file in memory first. Either the destination is fully replaced or
 // it is unchanged; a crash mid-write cannot leave a truncated file at path.
 //
 // The file is fsynced before the rename, and the containing directory is
 // fsynced after, so the update survives a power loss on POSIX filesystems.
 // Directory fsync is best-effort — Windows returns an error on directory
 // handles, which we ignore since the file itself is already durable.
-func WriteAtomic(path, content string) error {
+func WriteAtomic(path string, write func(io.Writer) error) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("file: creating directory %q: %w", dir, err)
@@ -209,7 +207,15 @@ func WriteAtomic(path, content string) error {
 	if err != nil {
 		return fmt.Errorf("file: creating temp file: %w", err)
 	}
-	if _, err := io.WriteString(fh, content); err != nil {
+	// Buffered: the CRLF encoder emits a write per line, and the gap buffer
+	// two per file. Neither should be a syscall each.
+	bw := bufio.NewWriter(fh)
+	if err := write(bw); err != nil {
+		fh.Close()
+		os.Remove(tmp)
+		return fmt.Errorf("file: writing %q: %w", path, err)
+	}
+	if err := bw.Flush(); err != nil {
 		fh.Close()
 		os.Remove(tmp)
 		return fmt.Errorf("file: writing %q: %w", path, err)
