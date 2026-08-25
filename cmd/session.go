@@ -32,6 +32,10 @@ type Session struct {
 	// quitPending is true after the first 'q' when modified files exist, and is
 	// cleared by any further change.
 	quitPending bool
+
+	// lastShell is the most recent shell command text, shared by <, >, | and !.
+	// An empty argument reruns it, as sam does with plan9cmd.
+	lastShell string
 }
 
 // NewSession creates an empty session.

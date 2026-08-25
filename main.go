@@ -40,8 +40,23 @@ func main() {
 		f := file.NewNamed(name)
 		s.AddFile(f)
 	}
+	// The first file named is the current one, as in sam
+	// (`current(file.filepptr[0])`); AddFile leaves the last one current.
+	if len(s.Files) > 0 {
+		s.Current = s.Files[0]
+	}
 
 	if headless {
+		// Sam's cmdloop loads the current file before its first prompt and
+		// reports it with filename(f). It does this only when not downloaded,
+		// so the window build stays quiet.
+		if f := s.Current; f != nil {
+			if err := f.EnsureLoaded(); err != nil {
+				fmt.Fprintf(os.Stderr, "? %v\n", err)
+			} else {
+				fmt.Printf("%s\n", f.MenuLine(true, false))
+			}
+		}
 		runREPL(s)
 		return
 	}
@@ -588,9 +603,7 @@ func runREPL(s *cmd.Session) {
 			break
 		}
 		line := scanner.Text()
-		if state.IsReady() && line == "" {
-			continue
-		}
+
 		accum += line + "\n"
 		complete := state.Feed(line)
 		if !complete {

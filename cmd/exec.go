@@ -59,6 +59,8 @@ func (s *Session) execCmd(cmd *Command, f *file.File, ctx *execCtx) error {
 		return s.execD(cmd.Args[0])
 	case 'n':
 		return s.execN()
+	case '!':
+		return s.execBang(cmd.Args[0], ctx)
 	case 'X':
 		return s.execXFile(cmd.Pat, cmd.AllFiles, cmd.Body, ctx)
 	case 'Y':
@@ -93,6 +95,11 @@ func (s *Session) execCmd(cmd *Command, f *file.File, ctx *execCtx) error {
 		return s.execDelete(f, dot, ctx)
 	case 'p':
 		return s.execPrint(f, dot)
+	case '\n':
+		if cmd.Addr != nil {
+			return s.execPrint(f, dot)
+		}
+		return s.execNewline(f, dot)
 	case '=':
 		return s.execEqual(f, dot, cmd.Flag)
 	case 'k':

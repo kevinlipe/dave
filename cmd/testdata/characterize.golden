@@ -5,7 +5,9 @@ parse: (no commands)
 parse: (no commands)
 
 === "\n"
-parse: (no commands)
+  op="\n" addr=false dest=false
+  addr-> none
+exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[0,14) out="one two three\n" err=<nil>
 
 === "0"
   op="p" addr=true dest=false
@@ -390,7 +392,7 @@ exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[4,7) ou
 === "n"
   op="n" addr=false dest=false
   addr-> none
-exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[4,7) out="-. (unnamed)\n" err=<nil>
+exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[4,7) out=" -. (unnamed)\n" err=<nil>
 
 === "="
   op="=" addr=false dest=false
@@ -697,7 +699,9 @@ parse error: unknown command "Z"
 parse error: unknown command "Z"
 
 === "!"
-parse error: unknown command "!"
+  op="!" addr=false dest=false args=[""]
+  addr-> none
+exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[4,7) out="" err=!: no command
 
 === "}"
 parse error: unknown command "}"
@@ -729,7 +733,13 @@ exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[0,28) o
 exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[0,14) out="one two three\n" err=<nil>
 
 === "\n\n1p\n\n"
+  op="\n" addr=false dest=false
+  addr-> none
+  op="\n" addr=false dest=false
+  addr-> none
   op="p" addr=true dest=false
   addr-> [0,14)
-exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[0,14) out="one two three\n" err=<nil>
+  op="\n" addr=false dest=false
+  addr-> none
+exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[14,28) out="one two three\nfour five six\none two three\nfour five six\n" err=<nil>
 

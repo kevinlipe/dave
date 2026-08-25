@@ -102,10 +102,9 @@ func runDifferential(t *testing.T, scriptPath string) {
 	// Both scripts end by writing the buffer and quitting. The first q reports
 	// the modified file and the second one goes through, in both editors.
 	//
-	// The trailing newline is trimmed first. A blank line is not nothing: sam
-	// reads it as the \n command, which prints the line after dot and moves
-	// there, while dave's REPL skips it. Leaving one in would make the harness
-	// diff its own scaffolding.
+	// The trailing newline is trimmed first: a blank line is the \n command in
+	// both editors now, so leaving one in would have the harness diff a command
+	// of its own making rather than one the case asked for.
 	tail := func(out string) string {
 		return strings.TrimRight(string(script), "\n") + "\nw " + out + "\nq\nq\n"
 	}
@@ -160,9 +159,7 @@ func runDave(t *testing.T, path, script string) string {
 	var state InputState
 	for scanner.Scan() {
 		line := scanner.Text()
-		if state.IsReady() && line == "" {
-			continue
-		}
+
 		accum += line + "\n"
 		if !state.Feed(line) {
 			continue

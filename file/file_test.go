@@ -198,8 +198,8 @@ func TestCloseOKFollowsVersion(t *testing.T) {
 func TestMenuLineUnmodifiedNotCurrent(t *testing.T) {
 	f := NewNamed("foo.txt")
 	ml := f.MenuLine(false, false)
-	if ml != "-- foo.txt" {
-		t.Errorf("MenuLine = %q, want %q", ml, "-- foo.txt")
+	if ml != " -  foo.txt" {
+		t.Errorf("MenuLine = %q, want %q", ml, " -  foo.txt")
 	}
 }
 
@@ -207,16 +207,16 @@ func TestMenuLineModifiedCurrent(t *testing.T) {
 	f := NewNamed("foo.txt")
 	f.MarkChanged()
 	ml := f.MenuLine(true, false)
-	if ml != "'. foo.txt" {
-		t.Errorf("MenuLine = %q, want %q", ml, "'. foo.txt")
+	if ml != "'-. foo.txt" {
+		t.Errorf("MenuLine = %q, want %q", ml, "'-. foo.txt")
 	}
 }
 
 func TestMenuLineUnnamed(t *testing.T) {
 	f := New()
 	ml := f.MenuLine(false, false)
-	if ml != "-- (unnamed)" {
-		t.Errorf("MenuLine = %q, want %q", ml, "-- (unnamed)")
+	if ml != " -  (unnamed)" {
+		t.Errorf("MenuLine = %q, want %q", ml, " -  (unnamed)")
 	}
 }
 
@@ -297,5 +297,34 @@ func TestReplace(t *testing.T) {
 	}
 	if f.Modified() {
 		t.Error("after Replace, modified should be false")
+	}
+}
+
+// The three columns are independent, as sam's are: modified, has a window,
+// current. Folding the first two together — which dave used to do — loses the
+// window when the file is modified, and X, Y and the "pat" address all match
+// against this line.
+func TestMenuLineColumnsAreIndependent(t *testing.T) {
+	f := NewNamed("foo.txt")
+	for _, tt := range []struct {
+		mod, pane, cur bool
+		want           string
+	}{
+		{false, false, false, " -  foo.txt"},
+		{false, false, true, " -. foo.txt"},
+		{false, true, false, " +  foo.txt"},
+		{true, false, false, "'-  foo.txt"},
+		{true, true, false, "'+  foo.txt"},
+		{true, true, true, "'+. foo.txt"},
+	} {
+		if tt.mod {
+			f.MarkChanged()
+		} else {
+			f.MarkClean()
+		}
+		if got := f.MenuLine(tt.cur, tt.pane); got != tt.want {
+			t.Errorf("mod=%v pane=%v cur=%v: MenuLine = %q, want %q",
+				tt.mod, tt.pane, tt.cur, got, tt.want)
+		}
 	}
 }

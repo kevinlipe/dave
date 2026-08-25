@@ -275,7 +275,9 @@ func (cw *CmdWindow) execute(sess *cmd.Session) error {
 	}
 	cmdText = strings.TrimSpace(cmdText)
 	if cmdText == "" {
-		return nil
+		// An empty command line is sam's \n command: print the line after dot
+		// and move there, so Enter on a blank line pages down the file.
+		return sess.ExecString("\n")
 	}
 
 	// "Config" is a GUI command handled by the event loop, not the text engine.

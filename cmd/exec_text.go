@@ -3,6 +3,8 @@ package cmd
 import (
 	"dave/buffer"
 	"dave/file"
+	"os"
+	"path/filepath"
 	"unicode/utf8"
 )
 
@@ -24,8 +26,69 @@ func (s *Session) execPrint(f *file.File, dot buffer.Range) error {
 	return nil
 }
 
+// execNewline is sam's nl_cmd with no address: expand dot to whole lines and
+// print that; if dot already covers whole lines exactly, print the line after
+// it instead. Pressing Enter on an empty command line therefore walks down the
+// file, which is how sam pages through one.
+//
+// The two expansions follow lineaddr's l==0 cases (sam/address.c): backwards
+// from dot's start to the beginning of its line, and forwards from one before
+// dot's end to just past the next newline — so a dot that already ends right
+// after a newline is not extended over the line that follows.
+func (s *Session) execNewline(f *file.File, dot buffer.Range) error {
+	whole := wholeLines(f, dot)
+	if whole == dot {
+		whole = lineAfter(f, dot)
+	}
+	return s.execPrint(f, whole)
+}
+
+func wholeLines(f *file.File, dot buffer.Range) buffer.Range {
+	buf := f.Buffer()
+	start := dot.Start
+	for start > 0 && buf.RuneAt(start-1) != '\n' {
+		start--
+	}
+	if dot.End == 0 {
+		return buffer.Range{Start: 0, End: 0}
+	}
+	end := dot.End - 1
+	for end < buf.Len() && buf.RuneAt(end) != '\n' {
+		end++
+	}
+	if end < buf.Len() {
+		end++ // include the newline the line ends with
+	}
+	return buffer.Range{Start: start, End: end}
+}
+
+// lineAfter is the whole line following dot, empty at end of file.
+func lineAfter(f *file.File, dot buffer.Range) buffer.Range {
+	buf := f.Buffer()
+	start := dot.End
+	if start >= buf.Len() {
+		return buffer.Range{Start: buf.Len(), End: buf.Len()}
+	}
+	end := start
+	for end < buf.Len() && buf.RuneAt(end) != '\n' {
+		end++
+	}
+	if end < buf.Len() {
+		end++
+	}
+	return buffer.Range{Start: start, End: end}
+}
+
 func (s *Session) execEqual(f *file.File, dot buffer.Range, flag string) error {
+	// A relative name is reported against the working directory, as sam's
+	// printposn does, so the position reads as a reference to a place on disk
+	// rather than to whatever the reader's own directory happens to be.
 	if name := f.Name(); name != "" {
+		if !filepath.IsAbs(name) {
+			if wd, err := os.Getwd(); err == nil {
+				name = filepath.Join(wd, name)
+			}
+		}
 		s.printf("%s:", name)
 	}
 	if flag == "#" {

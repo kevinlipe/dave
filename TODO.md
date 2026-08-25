@@ -273,52 +273,13 @@ The canonical reference is 9front (`~/src/9front/sys/src/cmd/sam`), as the
 tree with the most users today. plan9port is consulted where it helps
 explain intent, but where the two differ 9front wins.
 
-Accepted differences — the two deliberate departures, the two sam
-behaviours dave declines to copy, and what dave's regexps do beyond
-sam's — are documented for users in `doc/sam-differences.md`. What
-follows is open.
+Nothing is open. The accepted differences — the two deliberate
+departures, what dave declines to copy, and what dave's regexps do
+beyond sam's — are documented for users in `doc/sam-differences.md`.
 
-Audited against the C so far: undo and redo and everything they touch
-(the modify bit, `D`, `q`, `b`, addressing, `w`'s guard), regexps,
-addresses, the structural commands, and now the shell redirections, the
-`e`/`r` I/O paths and `{}` groups. Every finding below was reproduced in
-`-d`.
-
-### Shell redirections
-
-**An empty command does not rerun the last one.** Sam keeps the text in
-`plan9cmd` and reuses it when the argument is empty, raising `Enocmd`
-only when there has never been one (sam/shell.c). Dave runs `sh -c ""`,
-so `<` on its own replaces the addressed range with nothing.
-
-**`!` is not implemented.** Sam runs the command with no I/O connected
-and prints `!` when it finishes. Dave has no such command; `!echo hi`
-reports an unknown command.
-
-**The child's environment is not set.** Sam's `updateenv` exports the
-file name as `$%` and dot as `$%dot` before exec, so a shell command can
-address the file it was run from. Dave sets neither.
-
-### A blank line is not the `\n` command
-
-Sam reads an empty line as the `\n` command: it prints the line after dot
-and moves there, so three blank lines walk down the file. Dave's REPL
-skips empty input entirely. Found by the differential harness, which was
-diffing its own scaffolding until the scripts stopped ending in one.
-
-### Minor
-
-**`e`/`r` accept a name with no blank before it.** `efoo` reads `foo`
-here; sam raises `Eblank`.
-
-**The `#n` count is printed differently.** Sam prints `#123` from
-`closeio`, then for `e` the menu line; dave prints `name: #123`.
-
-**`=` does not prefix the working directory.** 9front's `printposn`
-prints `[cwd]name:` before the position when the file name is not
-absolute; dave prints `name:`. (plan9port prints no name at all and, for
-line addresses, both lines and characters — the two trees differ here,
-and dave follows 9front.)
-
-**Loading a file prints nothing.** Sam's `load()` calls `filename(f)`,
-so starting `sam -d foo` reports ` -. foo`. Dave is silent until asked.
+Audited against the C: undo and redo and everything they touch (the
+modify bit, `D`, `q`, `b`, addressing, `w`'s guard), regexps, addresses,
+the structural commands, the shell redirections, the `e`/`r` I/O paths
+and `{}` groups. Not yet swept: nothing in the command language, but the
+rendering layer has never been compared to samterm, and the differential
+harness reaches neither it nor interactive typing.

@@ -20,6 +20,20 @@ func shellCommand() (string, []string) {
 	return "sh", []string{"-c"}
 }
 
+// shellText resolves the argument of <, >, | or !. An empty one reruns the last
+// shell command any of them was given, which sam keeps in plan9cmd and reports
+// as Enocmd only when there has never been one.
+func (s *Session) shellText(arg string) (string, error) {
+	if strings.TrimSpace(arg) == "" {
+		if s.lastShell == "" {
+			return "", fmt.Errorf("no command")
+		}
+		return s.lastShell, nil
+	}
+	s.lastShell = arg
+	return arg, nil
+}
+
 // runShell runs a shell command, returning its standard output when captured.
 //
 // A non-zero exit is a warning, not a failure. Sam applies whatever the command
@@ -71,7 +85,11 @@ func (s *Session) bang(ctx *execCtx) {
 	}
 }
 
-func (s *Session) execShellIn(f *file.File, dot buffer.Range, shellCmd string, ctx *execCtx) error {
+func (s *Session) execShellIn(f *file.File, dot buffer.Range, arg string, ctx *execCtx) error {
+	shellCmd, err := s.shellText(arg)
+	if err != nil {
+		return fmt.Errorf("<: %w", err)
+	}
 	out, err := s.runShell(shellCmd, "", true, true)
 	if err != nil {
 		return fmt.Errorf("< %s: %w", shellCmd, err)
@@ -83,7 +101,11 @@ func (s *Session) execShellIn(f *file.File, dot buffer.Range, shellCmd string, c
 	return nil
 }
 
-func (s *Session) execShellOut(f *file.File, dot buffer.Range, shellCmd string, ctx *execCtx) error {
+func (s *Session) execShellOut(f *file.File, dot buffer.Range, arg string, ctx *execCtx) error {
+	shellCmd, err := s.shellText(arg)
+	if err != nil {
+		return fmt.Errorf(">: %w", err)
+	}
 	if _, err := s.runShell(shellCmd, f.Buffer().ReadAt(dot.Start, dot.Len()), false, false); err != nil {
 		return fmt.Errorf("> %s: %w", shellCmd, err)
 	}
@@ -91,13 +113,33 @@ func (s *Session) execShellOut(f *file.File, dot buffer.Range, shellCmd string, 
 	return nil
 }
 
-func (s *Session) execShellPipe(f *file.File, dot buffer.Range, shellCmd string, ctx *execCtx) error {
+func (s *Session) execShellPipe(f *file.File, dot buffer.Range, arg string, ctx *execCtx) error {
+	shellCmd, err := s.shellText(arg)
+	if err != nil {
+		return fmt.Errorf("|: %w", err)
+	}
 	out, err := s.runShell(shellCmd, f.Buffer().ReadAt(dot.Start, dot.Len()), true, true)
 	if err != nil {
 		return fmt.Errorf("| %s: %w", shellCmd, err)
 	}
 	if err := s.replaceDot(f, dot, out, ctx); err != nil {
 		return err
+	}
+	s.bang(ctx)
+	return nil
+}
+
+// execBang runs a command with nothing connected to the buffer — sam's '!',
+// which takes no address and reports only that it finished.
+func (s *Session) execBang(arg string, ctx *execCtx) error {
+	shellCmd, err := s.shellText(arg)
+	if err != nil {
+		return fmt.Errorf("!: %w", err)
+	}
+	// Sam does not check the status of ! either; it is not in the list warn_s
+	// is called for.
+	if _, err := s.runShell(shellCmd, "", false, false); err != nil {
+		return fmt.Errorf("! %s: %w", shellCmd, err)
 	}
 	s.bang(ctx)
 	return nil

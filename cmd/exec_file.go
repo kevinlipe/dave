@@ -126,7 +126,9 @@ func (s *Session) execE(f *file.File, name string, ctx *execCtx) error {
 	pend.renamed = true
 	f.SetName(name)
 	f.SetDot(buffer.Range{})
-	s.printf("%s: #%d\n", name, utf8.RuneCountInString(newContent))
+	// Sam reports e with the menu line and no count: edit() passes -1 to
+	// closeio for e, which suppresses the count, then calls filename(f).
+	s.printf("%s\n", f.MenuLine(f == s.Current, false))
 	return nil
 }
 
@@ -144,7 +146,9 @@ func (s *Session) execR(f *file.File, dot buffer.Range, name string, ctx *execCt
 	}
 	n := utf8.RuneCountInString(content)
 	f.SetDot(buffer.Range{Start: dot.Start, End: dot.Start + n})
-	s.printf("%s: #%d\n", name, n)
+	// Just the count: sam's readio prints nothing, and closeio prints #n. The
+	// name belongs to w, whose writef prints it before creating the file.
+	s.printf("#%d\n", n)
 	return nil
 }
 

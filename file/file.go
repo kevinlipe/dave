@@ -168,13 +168,19 @@ func (f *File) String() string { return f.buf.String() }
 //
 // For headless (-d) mode, pass isCurrent=false.
 func (f *File) MenuLine(isCurrent, isInPane bool) string {
-	mod := '-'
+	// Three independent columns, as sam has them
+	// (`dprint("%c%c%c %s\n", " '"[f->mod], "-+"[f->rasp!=0], " ."[f==curfile], …)`).
+	// Dave used to fold "modified" and "has a window" into one column, so a
+	// modified file open in a pane reported only that it was modified — and
+	// since X, Y and the "pat" address match against this line, there was no
+	// way to select on having a window either.
+	mod, win, cur := ' ', '-', ' '
 	if f.Modified() {
 		mod = '\''
-	} else if isInPane {
-		mod = '+'
 	}
-	cur := '-'
+	if isInPane {
+		win = '+'
+	}
 	if isCurrent {
 		cur = '.'
 	}
@@ -182,7 +188,7 @@ func (f *File) MenuLine(isCurrent, isInPane bool) string {
 	if name == "" {
 		name = "(unnamed)"
 	}
-	return fmt.Sprintf("%c%c %s", mod, cur, name)
+	return fmt.Sprintf("%c%c%c %s", mod, win, cur, name)
 }
 
 // WriteContent writes the entire file contents to w in the file's own line

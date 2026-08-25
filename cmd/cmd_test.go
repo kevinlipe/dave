@@ -1252,3 +1252,84 @@ func TestXNullMatchRule(t *testing.T) {
 		})
 	}
 }
+
+// ---- what e, r and = print ---------------------------------------------------
+
+// Sam reports e with the file's menu line and no count — edit() passes -1 to
+// closeio, which suppresses it, then calls filename(f). r gets the opposite:
+// just the count, since the name belongs to w, whose writef prints it before
+// creating the file. Dave printed "name: #n" for both.
+func TestEditAndReadOutputFormat(t *testing.T) {
+	dir := t.TempDir()
+	src := dir + "/src.txt"
+	if err := os.WriteFile(src, []byte("aaa\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("e", func(t *testing.T) {
+		var out strings.Builder
+		s := NewSession(&out)
+		f := file.NewNamed(dir + "/dst.txt")
+		s.AddFile(f)
+		assertNoError(t, s.ExecString("e "+src))
+		if got, want := out.String(), " -. "+src+"\n"; got != want {
+			t.Errorf("e printed %q, want the menu line %q", got, want)
+		}
+	})
+
+	t.Run("r", func(t *testing.T) {
+		var out strings.Builder
+		s := NewSession(&out)
+		f := file.New()
+		f.SetDot(dot(0, 0))
+		s.AddFile(f)
+		assertNoError(t, s.ExecString("r "+src))
+		if got := out.String(); got != "#4\n" {
+			t.Errorf("r printed %q, want just the count", got)
+		}
+	})
+}
+
+// A relative name is reported against the working directory, as sam's printposn
+// does, so a position reads as a reference to a place on disk.
+func TestEqualPrefixesTheWorkingDirectory(t *testing.T) {
+	var out strings.Builder
+	s := NewSession(&out)
+	f := file.NewNamed("relative.txt")
+	f.Buffer().Insert(0, "abc\n")
+	f.SetDot(dot(0, 3))
+	s.AddFile(f)
+
+	assertNoError(t, s.ExecString("=#"))
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Skip("no working directory")
+	}
+	if want := wd + "/relative.txt:#0,#3\n"; out.String() != want {
+		t.Errorf("= printed %q, want %q", out.String(), want)
+	}
+
+	// An absolute name is left alone.
+	out.Reset()
+	f.SetName("/tmp/abs.txt")
+	assertNoError(t, s.ExecString("=#"))
+	if want := "/tmp/abs.txt:#0,#3\n"; out.String() != want {
+		t.Errorf("= printed %q, want %q", out.String(), want)
+	}
+}
+
+// Sam's getname wants a blank between the command and its argument: `efoo` is
+// Eblank, not a request to read "foo". The shell redirections are exempt — the
+// rest of the line is the command text there.
+func TestNameArgumentNeedsABlank(t *testing.T) {
+	for _, src := range []string{"efoo", "rfoo", "ffoo", "wfoo"} {
+		if _, _, err := ParseCommand(src, 0); err == nil {
+			t.Errorf("%q: expected an error, got none", src)
+		}
+	}
+	for _, src := range []string{"e foo", "r foo", "f foo", "w foo", "e", "w", "|tr a-z A-Z", "!echo hi", "bfoo"} {
+		if _, _, err := ParseCommand(src, 0); err != nil {
+			t.Errorf("%q: unexpected error: %v", src, err)
+		}
+	}
+}

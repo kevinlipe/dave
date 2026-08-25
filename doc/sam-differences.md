@@ -67,6 +67,13 @@ buffer no longer corresponds to anything on disk under that name.
 Dave changes the name and leaves the modify bit alone. The rename is undoable
 either way; only the dirtying is missing, and it is not worth the churn.
 
+### `$%` and `$%dot` are not exported
+
+Sam's `updateenv` puts the file name in `$%` and dot in `$%dot` before
+running a shell command, so `<` or `|` can address the file it was invoked
+from. plan9port dropped it, and it does not survive the trip to a POSIX
+shell anyway — `$%` is not a name `sh` can expand. Dave does not set them.
+
 ### `u` past 32767
 
 Sam stores a command's count in a `short` (`sam/parse.h`), so `u32768` wraps

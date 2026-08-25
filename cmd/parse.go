@@ -42,10 +42,25 @@ func ParseCommand(s string, pos int) (*Command, int, error) {
 func ParseCommands(s string) ([]*Command, error) {
 	var cmds []*Command
 	pos := 0
+	first := true
 	for pos < len(s) {
-		// Skip whitespace and newlines between commands.
-		for pos < len(s) && (s[pos] == ' ' || s[pos] == '\t' || s[pos] == '\n' || s[pos] == '\r') {
+		// Skip blanks, and the newline that ends the command just parsed. Any
+		// newline beyond that one is a command in its own right: sam reads a
+		// line holding nothing but a newline as nl_cmd, which prints the line
+		// after dot and moves there.
+		for pos < len(s) && (s[pos] == ' ' || s[pos] == '\t' || s[pos] == '\r') {
 			pos++
+		}
+		for pos < len(s) && s[pos] == '\n' {
+			pos++
+			if !first {
+				first = true // that newline ended the previous command
+			} else {
+				cmds = append(cmds, &Command{Op: '\n'})
+			}
+			for pos < len(s) && (s[pos] == ' ' || s[pos] == '\t' || s[pos] == '\r') {
+				pos++
+			}
 		}
 		if pos >= len(s) {
 			break
@@ -58,6 +73,7 @@ func ParseCommands(s string) ([]*Command, error) {
 			break
 		}
 		cmds = append(cmds, cmd)
+		first = false
 		pos = newPos
 	}
 	return cmds, nil
@@ -174,10 +190,14 @@ func (p *cmdParser) parseOne() (*Command, error) {
 // group commands that share an argument shape but not an address rule — d and q
 // parse alike and address differently.
 //
-// Sam's list is `b B D e f n q u X Y !` plus `cd`; dave has neither `!` nor
-// `cd`. Everything absent here takes an address: `r` and the shell redirections
-// default to dot, `w` to the whole file.
-const noAddrCmds = "bBDefnquXY"
+// Sam's list is `b B D e f n q u X Y !` plus `cd`; dave has no `cd`. Everything
+// absent here takes an address: `r` and the shell redirections default to dot,
+// `w` to the whole file.
+const noAddrCmds = "bBDefnquXY!"
+
+// needBlankCmds must have a blank between the command and its argument. These
+// are sam's getname callers (sam/sam.c: `if(c!=' ' && c!='\t') error(Eblank)`).
+const needBlankCmds = "erfw"
 
 // cmdSpec says how to read the arguments of each command in ops. Between
 // them these fields describe every command's syntax except the two shapes
@@ -203,6 +223,7 @@ type cmdSpec struct {
 var cmdtab = []cmdSpec{
 	{ops: "aic", text: true},
 	{ops: "dpknq"},
+	{ops: "\n"},
 	{ops: "=", parse: parseEqualsFlag},
 	{ops: "s", parse: parseSubst},
 	// x and friends accept a space in place of the delimiter, standing for
@@ -215,7 +236,7 @@ var cmdtab = []cmdSpec{
 	{ops: "{", group: true},
 	{ops: "u", count: true},
 	{ops: "mt", dest: true},
-	{ops: "bBDerfw<>|", rest: true},
+	{ops: "bBDerfw<>|!", rest: true},
 }
 
 // okDelim rejects delimiters sam refuses (sam/cmd.c okdelim). A letter, digit
@@ -296,6 +317,14 @@ func (p *cmdParser) parseArgs(spec *cmdSpec, cmd *Command) error {
 		cmd.N = p.parseCount(true)
 	}
 	if spec.rest {
+		// Sam's getname wants a blank between the command and its argument:
+		// `efoo` is Eblank, not a request to read "foo". It applies to the
+		// commands that go through getname, not to the shell redirections,
+		// where the rest of the line is the command text.
+		if c := p.peek(); c != 0 && c != ' ' && c != '\t' && c != '\n' && c != '\r' &&
+			strings.IndexByte(needBlankCmds, cmd.Op) >= 0 {
+			return fmt.Errorf("%c: blank expected", cmd.Op)
+		}
 		p.skipWS()
 		cmd.Args = []string{p.restOfLine()}
 	}
