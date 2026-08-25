@@ -3,6 +3,7 @@ package cmd
 import (
 	"bufio"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -49,15 +50,15 @@ import (
 // samBin is the oracle. plan9port installs it as `sam`.
 const samBin = "sam"
 
-// The names the two files are given inside each run's directory. They are ugly
-// on purpose: dave prints the file name before a position while plan9port does
-// not, so the harness has to strip it, and a name that could occur in the text
-// being edited would be stripped out of a `p` that ran into the next line. That
-// is not hypothetical — it swallowed a line the first time this ran.
-const (
-	fileName = "_f_"
-	outName  = "_out_"
-)
+// The names given to the files inside each run's directory: _f1_, _f2_, … for
+// the inputs, _out_ for what the script writes. They are ugly on purpose: dave
+// prints the file name before a position while plan9port does not, so the
+// harness has to strip it, and a name that could occur in the text being edited
+// would be stripped out of a `p` that ran into the next line. That is not
+// hypothetical — it swallowed a line the first time this ran.
+const outName = "_out_"
+
+func inputName(i int) string { return fmt.Sprintf("_f%d_", i+1) }
 
 func TestDifferential(t *testing.T) {
 	if _, err := exec.LookPath(samBin); err != nil {
@@ -84,21 +85,42 @@ func runDifferential(t *testing.T, scriptPath string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	input, err := os.ReadFile(strings.TrimSuffix(scriptPath, ".sam") + ".in")
-	if err != nil {
-		t.Fatal(err)
+	// A case opens one file by default and more when it supplies them: .in,
+	// then .in2, .in3 and so on, in that order on the command line. Sam sorts
+	// the list by name and takes the first, so _f1_ is the current file
+	// whatever order they were given in.
+	var inputs [][]byte
+	base := strings.TrimSuffix(scriptPath, ".sam")
+	for i := 0; ; i++ {
+		name := base + ".in"
+		if i > 0 {
+			name = fmt.Sprintf("%s.in%d", base, i+1)
+		}
+		b, err := os.ReadFile(name)
+		if err != nil {
+			if i == 0 {
+				t.Fatal(err)
+			}
+			break
+		}
+		inputs = append(inputs, b)
 	}
 
 	// Each side gets its own directory so their writes cannot collide, and so
 	// the paths in their output can be reduced to the same names.
 	samDir, daveDir := t.TempDir(), t.TempDir()
-	samFile, daveFile := filepath.Join(samDir, fileName), filepath.Join(daveDir, fileName)
-	samOut, daveOut := filepath.Join(samDir, outName), filepath.Join(daveDir, outName)
-	for _, p := range []string{samFile, daveFile} {
-		if err := os.WriteFile(p, input, 0o644); err != nil {
-			t.Fatal(err)
+	write := func(dir string) []string {
+		var paths []string
+		for i, in := range inputs {
+			p := filepath.Join(dir, inputName(i))
+			if err := os.WriteFile(p, in, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			paths = append(paths, p)
 		}
+		return paths
 	}
+	samFiles, daveFiles := write(samDir), write(daveDir)
 
 	// Both scripts end by writing the buffer and quitting. The first q reports
 	// the modified file and the second one goes through, in both editors.
@@ -106,16 +128,22 @@ func runDifferential(t *testing.T, scriptPath string) {
 	// The trailing newline is trimmed first: a blank line is the \n command in
 	// both editors now, so leaving one in would have the harness diff a command
 	// of its own making rather than one the case asked for.
-	tail := func(out string) string {
-		return strings.TrimRight(string(script), "\n") + "\nw " + out + "\nq\nq\n"
+	//
+	// $F1, $F2 … stand for the input paths, which are per-run and absolute, so
+	// a case can name a file for b, D, e or r without knowing where it landed.
+	build := func(dir string, files []string) string {
+		text := strings.TrimRight(string(script), "\n")
+		for i := len(files) - 1; i >= 0; i-- {
+			text = strings.ReplaceAll(text, fmt.Sprintf("$F%d", i+1), files[i])
+		}
+		return text + "\nw " + filepath.Join(dir, outName) + "\nq\nq\n"
 	}
-	samScript, daveScript := tail(samOut), tail(daveOut)
 
-	samText := runSam(t, samFile, samScript)
-	daveText := runDave(t, daveFile, daveScript)
+	samText := runSam(t, samFiles, build(samDir, samFiles))
+	daveText := runDave(t, daveFiles, build(daveDir, daveFiles))
 
-	samSaved := readOrEmpty(samOut)
-	daveSaved := readOrEmpty(daveOut)
+	samSaved := readOrEmpty(filepath.Join(samDir, outName))
+	daveSaved := readOrEmpty(filepath.Join(daveDir, outName))
 	if samSaved != daveSaved {
 		t.Errorf("the buffers differ.\nsam  wrote %q\ndave wrote %q", samSaved, daveSaved)
 	}
@@ -129,9 +157,9 @@ func runDifferential(t *testing.T, scriptPath string) {
 
 // runSam runs the oracle over a copy of the input, returning everything it
 // printed on either stream.
-func runSam(t *testing.T, path, script string) string {
+func runSam(t *testing.T, paths []string, script string) string {
 	t.Helper()
-	c := exec.Command(samBin, "-d", path)
+	c := exec.Command(samBin, append([]string{"-d"}, paths...)...)
 	c.Stdin = strings.NewReader(script)
 	out, err := c.CombinedOutput()
 	var ee *exec.ExitError
@@ -145,15 +173,21 @@ func runSam(t *testing.T, path, script string) string {
 // (main.go runREPL) reproduced in process, so the harness does not need the
 // binary — and therefore does not need SDL, keeping the engine's test suite
 // buildable without it.
-func runDave(t *testing.T, path, script string) string {
+func runDave(t *testing.T, paths []string, script string) string {
 	t.Helper()
 	var out strings.Builder
 	s := NewSession(&out)
-	f := file.NewNamed(path)
-	s.AddFile(f)
-	if err := f.EnsureLoaded(); err != nil {
+	for _, p := range paths {
+		s.AddFile(file.NewNamed(p))
+	}
+	// main.go's -d startup: the first file in the list — which AddFile keeps in
+	// name order — is current, and it is loaded and reported before the first
+	// command runs.
+	s.Current = s.Files[0]
+	if err := s.Current.EnsureLoaded(); err != nil {
 		t.Fatal(err)
 	}
+	s.AnnounceLoad(s.Current)
 
 	scanner := bufio.NewScanner(strings.NewReader(script))
 	var accum string
@@ -179,15 +213,12 @@ func runDave(t *testing.T, path, script string) string {
 }
 
 var (
-	// A menu line: the modified mark, the pane mark, the current mark, a
-	// space, then the name. Sam prints one when it loads a file; dave does not.
-	menuLine = regexp.MustCompile(`^[ ']['+-][ .] \S`)
 	// The file name dave prints before a position. plan9port's printposn prints
 	// none; 9front's does, and dave follows 9front, so the harness takes it off
 	// both sides rather than picking a winner. Anchored to the exact name, not
 	// to "anything before a colon": p prints without a trailing newline, so the
 	// text ahead of a position report is arbitrary.
-	posnName = regexp.MustCompile(regexp.QuoteMeta(fileName) + `:(#|\d)`)
+	posnName = regexp.MustCompile(`_f\d+_:(#|\d)`)
 )
 
 // normalise strips the formatting the two editors are allowed to differ in, so
@@ -201,12 +232,9 @@ func normalise(text, dir string) string {
 	text = strings.ReplaceAll(text, dir, "")
 
 	var keep []string
-	for i, line := range strings.Split(text, "\n") {
+	for _, line := range strings.Split(text, "\n") {
 		switch {
 		case line == "":
-			continue
-		// Sam announces the file it loaded; dave stays quiet until asked.
-		case i == 0 && menuLine.MatchString(line):
 			continue
 		// The complaint about unwritten changes on the first q, worded
 		// differently by each.

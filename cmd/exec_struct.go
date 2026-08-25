@@ -4,6 +4,7 @@ import (
 	"dave/buffer"
 	"dave/file"
 	dregs "dave/regexp"
+	"fmt"
 	"unicode/utf8"
 )
 
@@ -122,58 +123,76 @@ func nextRune(s string, i int) int {
 	return i + w
 }
 
-// execXFile runs the body in every file whose menu line matches. With no
-// pattern at all — `X p` — it runs in every file, as sam does.
-func (s *Session) execXFile(pat string, all bool, body []*Command, ctx *execCtx) error {
-	var re *dregs.Regexp
-	if !all {
-		var err error
-		if re, err = dregs.Compile(pat); err != nil {
-			return err
-		}
+// fileLoop runs body in each file f selected by want, then puts the current
+// file back where it was — sam's filelooper does this, so a loop that visits
+// every file does not leave the last one it happened to reach as the current
+// one, and a w after an X writes what the user was working on.
+//
+// A b inside the body is an explicit choice and survives: 9front tracks that
+// with newcur. plan9port restores unconditionally, discarding the b; 9front's
+// reading is the defensible one.
+//
+// Nesting is refused, as sam refuses it with EnestXY: the loop walks the file
+// list while the body may add to or delete from it.
+func (s *Session) fileLoop(want func(ml string) bool, body []*Command, ctx *execCtx) error {
+	if s.inFileLoop {
+		return fmt.Errorf("can't nest X or Y")
 	}
+	s.inFileLoop = true
+	s.newCurrent = false
 	ctx.nest++
-	for _, f := range s.Files {
-		ml := f.MenuLine(f == s.Current, false)
-		if all || re.MatchString(ml) {
-			s.Current = f
-			for _, cmd := range body {
-				if err := s.execCmd(cmd, f, ctx); err != nil {
-					ctx.nest--
-					return err
-				}
+	defer func() {
+		ctx.nest--
+		s.inFileLoop = false
+	}()
+
+	cur := s.Current
+	for _, f := range append([]*file.File(nil), s.Files...) {
+		if !want(f.MenuLine(f == s.Current, false)) {
+			continue
+		}
+		s.Current = f
+		for _, cmd := range body {
+			if err := s.execCmd(cmd, f, ctx); err != nil {
+				return err
 			}
 		}
 	}
-	ctx.nest--
+	if !s.newCurrent && cur != nil && s.FindFile(cur.Name()) != nil {
+		s.Current = cur
+	}
 	return nil
+}
+
+// execXFile runs the body in every file whose menu line matches. With no
+// pattern at all — `X p` — it runs in every file, as sam does.
+func (s *Session) execXFile(pat string, all bool, body []*Command, ctx *execCtx) error {
+	want, err := fileMatcher(pat, all, true)
+	if err != nil {
+		return err
+	}
+	return s.fileLoop(want, body, ctx)
 }
 
 // execYFile is execXFile with the match inverted — except with no pattern,
 // where sam runs the body in every file for Y as well.
 func (s *Session) execYFile(pat string, all bool, body []*Command, ctx *execCtx) error {
-	var re *dregs.Regexp
-	if !all {
-		var err error
-		if re, err = dregs.Compile(pat); err != nil {
-			return err
-		}
+	want, err := fileMatcher(pat, all, false)
+	if err != nil {
+		return err
 	}
-	ctx.nest++
-	for _, f := range s.Files {
-		ml := f.MenuLine(f == s.Current, false)
-		if all || !re.MatchString(ml) {
-			s.Current = f
-			for _, cmd := range body {
-				if err := s.execCmd(cmd, f, ctx); err != nil {
-					ctx.nest--
-					return err
-				}
-			}
-		}
+	return s.fileLoop(want, body, ctx)
+}
+
+func fileMatcher(pat string, all, sense bool) (func(string) bool, error) {
+	if all {
+		return func(string) bool { return true }, nil
 	}
-	ctx.nest--
-	return nil
+	re, err := dregs.Compile(pat)
+	if err != nil {
+		return nil, err
+	}
+	return func(ml string) bool { return re.MatchString(ml) == sense }, nil
 }
 
 // execGroup runs body commands sequentially, each starting with dot=groupDot.

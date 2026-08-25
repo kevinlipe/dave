@@ -34,6 +34,12 @@ type Session struct {
 	// cleared by any further change.
 	quitPending bool
 
+	// inFileLoop guards against nesting X or Y, which sam refuses (EnestXY).
+	// newCurrent records that the body of one changed the current file, so the
+	// loop leaves that choice alone instead of putting the old one back.
+	inFileLoop bool
+	newCurrent bool
+
 	// lastShell is the most recent shell command text, shared by <, >, | and !.
 	// An empty argument reruns it, as sam does with plan9cmd.
 	lastShell string
@@ -127,11 +133,33 @@ func (s *Session) modifiedFiles() []*file.File {
 	return result
 }
 
-// warnNulls reports NUL bytes dropped by the last read, once. Sam elides them
-// and warns the same way (sam/io.c readio).
-func (s *Session) warnNulls(f *file.File) {
+// reportLoad announces a file that was just read from disk, as sam's load()
+// does: the menu line first, then any warning the read produced. Files are read
+// on demand, so this fires when a command first reaches one and when a `"pat"`
+// address selects one.
+func (s *Session) reportLoad(f *file.File) bool {
+	if f == nil {
+		return false
+	}
+	loaded := f.JustLoaded()
+	if loaded {
+		s.printf("%s\n", f.MenuLine(f == s.Current, false))
+	}
 	if f.TookNulls() {
 		s.printf("?warning: null characters elided\n")
+	}
+	return loaded
+}
+
+// AnnounceLoad reports a file just read from disk. Startup uses it so the line
+// is printed once and the flag consumed; every later load goes through the same
+// path from execCmd.
+func (s *Session) AnnounceLoad(f *file.File) { s.reportLoad(f) }
+
+// reportLoads announces any file read while an address was evaluated.
+func (s *Session) reportLoads() {
+	for _, f := range s.Files {
+		s.reportLoad(f)
 	}
 }
 

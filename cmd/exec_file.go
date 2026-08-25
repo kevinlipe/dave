@@ -28,7 +28,16 @@ func (s *Session) execB(arg string, ctx *execCtx) error {
 		f := s.FindFile(name)
 		if f != nil {
 			s.Current = f
-			s.reportCurrent(f, ctx)
+			s.newCurrent = true
+			// Sam's b_cmd reads the file if it has not been read, which
+			// announces it, and otherwise reports the menu line itself — one
+			// line either way.
+			if err := f.EnsureLoaded(); err != nil {
+				return err
+			}
+			if !s.reportLoad(f) {
+				s.reportCurrent(f, ctx)
+			}
 			return nil
 		}
 	}
@@ -56,8 +65,14 @@ func (s *Session) execBig(arg string, ctx *execCtx) error {
 			s.AddFile(f)
 		}
 		s.Current = f
+		s.newCurrent = true
 		s.OpenRequest = f
-		s.reportCurrent(f, ctx)
+		if err := f.EnsureLoaded(); err != nil {
+			return err
+		}
+		if !s.reportLoad(f) {
+			s.reportCurrent(f, ctx)
+		}
 	}
 	return nil
 }
@@ -108,7 +123,9 @@ func (s *Session) execE(f *file.File, name string, ctx *execCtx) error {
 		return fmt.Errorf("e: %w", err)
 	}
 	newContent := f.DecodeContent(string(data))
-	s.warnNulls(f)
+	if f.TookNulls() {
+		s.printf("?warning: null characters elided\n")
+	}
 	oldLen := f.Len()
 	// Replace all old content with new content via transcript.
 	if oldLen > 0 || newContent != "" {

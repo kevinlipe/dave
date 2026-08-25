@@ -38,7 +38,7 @@ func (s *Session) execCmd(cmd *Command, f *file.File, ctx *execCtx) error {
 		if err := f.EnsureLoaded(); err != nil {
 			return err
 		}
-		s.warnNulls(f)
+		s.reportLoad(f)
 	}
 
 	switch cmd.Op {
@@ -91,6 +91,8 @@ func (s *Session) execCmd(cmd *Command, f *file.File, ctx *execCtx) error {
 		if af != f {
 			f, s.Current = af, af
 		}
+		// A "pat" address can read a file to select it.
+		s.reportLoads()
 	}
 
 	switch cmd.Op {

@@ -55,12 +55,7 @@ func main() {
 			if err := f.EnsureLoaded(); err != nil {
 				fmt.Fprintf(os.Stderr, "? %v\n", err)
 			} else {
-				// Sam's load prints the menu line first and then reads, so a
-				// warning from the read follows it.
-				fmt.Printf("%s\n", f.MenuLine(true, false))
-				if f.TookNulls() {
-					fmt.Printf("?warning: null characters elided\n")
-				}
+				s.AnnounceLoad(f)
 			}
 		}
 		runREPL(s)

@@ -37,6 +37,12 @@ type File struct {
 	loaded bool // true if contents have been read from disk
 	crlf   bool // true if the file uses CRLF line endings on disk
 
+	// justLoaded is set when EnsureLoaded actually read from disk, for the
+	// caller to report. Sam's load() prints the file's menu line before
+	// reading, and it is called on demand — by a command reaching a file that
+	// has not been read, and by a `"pat"` address selecting one.
+	justLoaded bool
+
 	// nulls is set when the last read dropped NUL bytes, for the caller to
 	// report once. Sam elides them and warns "null characters elided"
 	// (sam/io.c readio); a NUL in the buffer would reach everything downstream.
@@ -144,7 +150,16 @@ func (f *File) EnsureLoaded() error {
 	f.buf = buffer.NewFromString(f.DecodeContent(string(data)))
 	f.MarkClean()
 	f.noteDiskTime()
+	f.justLoaded = true
 	return nil
+}
+
+// JustLoaded reports whether the last EnsureLoaded read from disk, and clears
+// the flag so the load is announced once.
+func (f *File) JustLoaded() bool {
+	l := f.justLoaded
+	f.justLoaded = false
+	return l
 }
 
 // Buffer returns the underlying buffer. The caller must call EnsureLoaded first.
