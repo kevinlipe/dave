@@ -273,13 +273,58 @@ The canonical reference is 9front (`~/src/9front/sys/src/cmd/sam`), as the
 tree with the most users today. plan9port is consulted where it helps
 explain intent, but where the two differ 9front wins.
 
-Nothing is open. The accepted differences — the two deliberate
-departures, what dave declines to copy, and what dave's regexps do
-beyond sam's — are documented for users in `doc/sam-differences.md`.
+Accepted differences are documented for users in
+`doc/sam-differences.md`. What follows is open.
 
-Audited against the C: undo and redo and everything they touch (the
-modify bit, `D`, `q`, `b`, addressing, `w`'s guard), regexps, addresses,
+Audited: undo and redo and everything they touch, regexps, addresses,
 the structural commands, the shell redirections, the `e`/`r` I/O paths
-and `{}` groups. Not yet swept: nothing in the command language, but the
-rendering layer has never been compared to samterm, and the differential
-harness reaches neither it nor interactive typing.
+and `{}` groups. The command language is clean against the differential
+harness. The findings below come from a pass over the areas that pass
+never reached — the file list, disk I/O, and the command set itself.
+
+### `w` does not notice the file changing underneath it
+
+Sam stats the file before writing and refuses when it has changed since
+the buffer was read — `warn_S(Wdate, …)`, "write might change good
+version of", and `writef` returns without writing (sam/io.c). It updates
+its record of the file at the same time, so a second `w` goes through:
+the same second-chance shape as `D` and `q`.
+
+Dave writes unconditionally. Edit a file, have something else change it
+on disk, and `w` discards that change with no warning. Verified by
+running both editors against a file rewritten underneath them.
+
+This is the last data-loss path found so far.
+
+### The file list is not sorted
+
+Sam keeps the list in name order (`sortname`, sam/multi.c) and warns
+`Wdupname` when a name is already in it. Dave appends in the order files
+were named. Observable in four places: the order `n` prints, which file
+is current at startup (sam takes the first in sorted order), the order
+`X` and `Y` visit files, and which file `b` picks when given several
+names.
+
+    dave -d zbb zaa   ->  sam makes zaa current, dave zbb
+
+### NUL bytes are kept
+
+Sam elides them on read and warns "null characters elided" (sam/io.c).
+Dave keeps them, so a NUL reaches the buffer and everything downstream.
+
+### Three commands are missing
+
+`cd` changes the working directory, which matters for the shell
+redirections and for relative names given to `e`, `r` and `w`.
+
+`^` and `_` run a command and load its output into the *command* buffer
+rather than the file — `^` with no address, `_` piping dot through it.
+Both are 9front-only; plan9port has neither.
+
+### Not looked at
+
+Read in the C, never exercised: the rescue path that writes `$HOME/sam.save`
+when sam dies with modified files; the append-only check on write; sam's
+other command-line flags. Nothing in samterm has been compared at all —
+dave's window layer is deliberately a different design, but that is an
+assumption nobody has tested rather than a decision anyone recorded.
