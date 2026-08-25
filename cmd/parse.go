@@ -168,6 +168,10 @@ func (p *cmdParser) parseOne() (*Command, error) {
 	}
 
 	op := p.consume()
+	if op == 'c' && p.peek() == 'd' {
+		p.consume()
+		op = OpCd
+	}
 	spec := lookupCmd(op)
 	if spec == nil {
 		return nil, fmt.Errorf("unknown command %q", string(op))
@@ -182,6 +186,13 @@ func (p *cmdParser) parseOne() (*Command, error) {
 	return cmd, nil
 }
 
+// OpCd is the cd command. Sam spells it as two characters and reads it with a
+// peek after 'c' — "the sleazy two-character case", as cmd.c puts it — so it
+// needs an opcode of its own that no letter collides with. It has to reach the
+// tables as one byte: string(rune(OpCd)) would encode it as two in UTF-8 and
+// the lookup, which scans bytes, would never find it.
+const OpCd = 0x80 | 'c'
+
 // noAddrCmds are the commands that take no address, so an address on one is an
 // error rather than something silently ignored. Sam calls this defaddr aNo and
 // raises Enoaddr (`if(ct->defaddr==aNo && cmd.addr) error(Enoaddr)`,
@@ -193,11 +204,11 @@ func (p *cmdParser) parseOne() (*Command, error) {
 // Sam's list is `b B D e f n q u X Y !` plus `cd`; dave has no `cd`. Everything
 // absent here takes an address: `r` and the shell redirections default to dot,
 // `w` to the whole file.
-const noAddrCmds = "bBDefnquXY!"
+var noAddrCmds = "bBDefnquXY!" + string([]byte{OpCd})
 
 // needBlankCmds must have a blank between the command and its argument. These
 // are sam's getname callers (sam/sam.c: `if(c!=' ' && c!='\t') error(Eblank)`).
-const needBlankCmds = "erfw"
+var needBlankCmds = "erfw" + string([]byte{OpCd})
 
 // cmdSpec says how to read the arguments of each command in ops. Between
 // them these fields describe every command's syntax except the two shapes
@@ -237,6 +248,7 @@ var cmdtab = []cmdSpec{
 	{ops: "u", count: true},
 	{ops: "mt", dest: true},
 	{ops: "bBDerfw<>|!", rest: true},
+	{ops: string([]byte{OpCd}), rest: true},
 }
 
 // okDelim rejects delimiters sam refuses (sam/cmd.c okdelim). A letter, digit

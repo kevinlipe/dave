@@ -40,8 +40,9 @@ func main() {
 		f := file.NewNamed(name)
 		s.AddFile(f)
 	}
-	// The first file named is the current one, as in sam
-	// (`current(file.filepptr[0])`); AddFile leaves the last one current.
+	// The first file in the list is the current one, as in sam
+	// (`current(file.filepptr[0])`). The list is kept in name order, so this is
+	// the alphabetically first name, not the first one on the command line.
 	if len(s.Files) > 0 {
 		s.Current = s.Files[0]
 	}
@@ -54,7 +55,12 @@ func main() {
 			if err := f.EnsureLoaded(); err != nil {
 				fmt.Fprintf(os.Stderr, "? %v\n", err)
 			} else {
+				// Sam's load prints the menu line first and then reads, so a
+				// warning from the read follows it.
 				fmt.Printf("%s\n", f.MenuLine(true, false))
+				if f.TookNulls() {
+					fmt.Printf("?warning: null characters elided\n")
+				}
 			}
 		}
 		runREPL(s)

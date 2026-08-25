@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"strings"
 )
 
@@ -49,7 +50,29 @@ func NewSession(out io.Writer) *Session {
 // AddFile adds f to the session's file list and makes it current.
 func (s *Session) AddFile(f *file.File) {
 	s.Files = append(s.Files, f)
+	s.sortFiles(f)
 	s.Current = f
+}
+
+// sortFiles keeps the list in name order, as sam does (sortname, sam/multi.c),
+// and warns when the name added is already in it. The order is visible in four
+// places: what n prints, which file is current at startup, the order X and Y
+// visit files, and which of several names b picks.
+//
+// added, when not nil, is the file whose name just changed; it is the one a
+// duplicate is reported against.
+func (s *Session) sortFiles(added *file.File) {
+	if added != nil {
+		for _, f := range s.Files {
+			if f != added && f.Name() != "" && f.Name() == added.Name() {
+				s.printf("?warning: duplicate file name %s\n", added.Name())
+				break
+			}
+		}
+	}
+	sort.SliceStable(s.Files, func(i, j int) bool {
+		return s.Files[i].Name() < s.Files[j].Name()
+	})
 }
 
 // RemoveFile removes f from the file list.
@@ -102,6 +125,14 @@ func (s *Session) modifiedFiles() []*file.File {
 		}
 	}
 	return result
+}
+
+// warnNulls reports NUL bytes dropped by the last read, once. Sam elides them
+// and warns the same way (sam/io.c readio).
+func (s *Session) warnNulls(f *file.File) {
+	if f.TookNulls() {
+		s.printf("?warning: null characters elided\n")
+	}
 }
 
 // printf writes a formatted string to the session output.

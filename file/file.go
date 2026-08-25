@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // File represents an open file in Dave's buffer list.
@@ -35,6 +36,16 @@ type File struct {
 
 	loaded bool // true if contents have been read from disk
 	crlf   bool // true if the file uses CRLF line endings on disk
+
+	// nulls is set when the last read dropped NUL bytes, for the caller to
+	// report once. Sam elides them and warns "null characters elided"
+	// (sam/io.c readio); a NUL in the buffer would reach everything downstream.
+	nulls bool
+
+	// diskTime is the file's modification time when it was last read or
+	// written. Sam keeps the same record (plus dev and qid) so a write can tell
+	// that the file changed underneath it — see WriteStale.
+	diskTime time.Time
 
 	// closeok is sam's second-chance latch on D (sam/sam.c:237): the first D of
 	// a modified file refuses and sets it, the second goes through. Kept in
@@ -64,9 +75,52 @@ func (f *File) CRLF() bool { return f.crlf }
 func (f *File) DecodeContent(raw string) string {
 	f.crlf = detectCRLF(raw)
 	if f.crlf {
-		return strings.ReplaceAll(raw, "\r\n", "\n")
+		raw = strings.ReplaceAll(raw, "\r\n", "\n")
+	}
+	if strings.IndexByte(raw, 0) >= 0 {
+		f.nulls = true
+		raw = strings.ReplaceAll(raw, "\x00", "")
 	}
 	return raw
+}
+
+// TookNulls reports whether the last read dropped NUL bytes, and clears the
+// flag so the warning is given once.
+func (f *File) TookNulls() bool {
+	n := f.nulls
+	f.nulls = false
+	return n
+}
+
+// noteDiskTime records the file's modification time as of now, which is what a
+// later write compares against.
+func (f *File) noteDiskTime() {
+	if fi, err := os.Stat(f.name); err == nil {
+		f.diskTime = fi.ModTime()
+	} else {
+		f.diskTime = time.Time{}
+	}
+}
+
+// NoteWritten records that the file on disk is now what the buffer holds.
+func (f *File) NoteWritten() { f.noteDiskTime() }
+
+// WriteStale reports whether the file on disk has changed since dave last read
+// or wrote it, and records the new time so that asking again says no.
+//
+// Sam refuses the write in that case and warns "write might change good version
+// of" (sam/io.c writef), updating its own record as it goes so a second w goes
+// through — the same second chance D and q give. Sam also compares the device
+// and inode; dave compares the modification time alone, which is portable and
+// catches the case that matters, someone else having written the file.
+func (f *File) WriteStale() bool {
+	fi, err := os.Stat(f.name)
+	if err != nil {
+		return false // gone, or never there: writing creates it
+	}
+	stale := !f.diskTime.IsZero() && fi.ModTime().After(f.diskTime)
+	f.diskTime = fi.ModTime()
+	return stale
 }
 
 // EnsureLoaded reads the file from disk if it hasn't been loaded yet.
@@ -89,6 +143,7 @@ func (f *File) EnsureLoaded() error {
 	}
 	f.buf = buffer.NewFromString(f.DecodeContent(string(data)))
 	f.MarkClean()
+	f.noteDiskTime()
 	return nil
 }
 
@@ -217,6 +272,7 @@ func (f *File) Save() error {
 		return err
 	}
 	f.MarkClean()
+	f.noteDiskTime()
 	return nil
 }
 

@@ -269,57 +269,20 @@ since a change can move a break point backwards.
 
 ## Known divergences from sam
 
-The canonical reference is 9front (`~/src/9front/sys/src/cmd/sam`), as the
-tree with the most users today. plan9port is consulted where it helps
-explain intent, but where the two differ 9front wins.
+There is no single canonical sam. Both trees are read —
+`~/src/9front/sys/src/cmd/sam` and `~/src/plan9/src/cmd/sam` — and where
+they differ the call is made case by case and recorded in
+`doc/sam-differences.md`. plan9port has won more of those calls than
+9front: it is the tree that runs here, and it is what the differential
+harness compares against.
 
 Accepted differences are documented for users in
 `doc/sam-differences.md`. What follows is open.
 
+Nothing is open in the command language, the file list or disk I/O.
 Audited: undo and redo and everything they touch, regexps, addresses,
-the structural commands, the shell redirections, the `e`/`r` I/O paths
-and `{}` groups. The command language is clean against the differential
-harness. The findings below come from a pass over the areas that pass
-never reached — the file list, disk I/O, and the command set itself.
-
-### `w` does not notice the file changing underneath it
-
-Sam stats the file before writing and refuses when it has changed since
-the buffer was read — `warn_S(Wdate, …)`, "write might change good
-version of", and `writef` returns without writing (sam/io.c). It updates
-its record of the file at the same time, so a second `w` goes through:
-the same second-chance shape as `D` and `q`.
-
-Dave writes unconditionally. Edit a file, have something else change it
-on disk, and `w` discards that change with no warning. Verified by
-running both editors against a file rewritten underneath them.
-
-This is the last data-loss path found so far.
-
-### The file list is not sorted
-
-Sam keeps the list in name order (`sortname`, sam/multi.c) and warns
-`Wdupname` when a name is already in it. Dave appends in the order files
-were named. Observable in four places: the order `n` prints, which file
-is current at startup (sam takes the first in sorted order), the order
-`X` and `Y` visit files, and which file `b` picks when given several
-names.
-
-    dave -d zbb zaa   ->  sam makes zaa current, dave zbb
-
-### NUL bytes are kept
-
-Sam elides them on read and warns "null characters elided" (sam/io.c).
-Dave keeps them, so a NUL reaches the buffer and everything downstream.
-
-### Three commands are missing
-
-`cd` changes the working directory, which matters for the shell
-redirections and for relative names given to `e`, `r` and `w`.
-
-`^` and `_` run a command and load its output into the *command* buffer
-rather than the file — `^` with no address, `_` piping dot through it.
-Both are 9front-only; plan9port has neither.
+the structural commands, the shell redirections, the `e`/`r` I/O paths,
+`{}` groups, the file list, and the read and write paths.
 
 ### Not looked at
 

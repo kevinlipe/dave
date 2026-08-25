@@ -165,6 +165,7 @@ func (s *Session) step(isundo bool) (bool, error) {
 	}
 	e := (*src)[len(*src)-1]
 
+	renamed := false
 	back := histEntry{changes: make([]fileChange, 0, len(e.changes))}
 	for _, c := range e.changes {
 		// Capture the state this change is about to overwrite, so the reverse
@@ -189,11 +190,16 @@ func (s *Session) step(isundo bool) (bool, error) {
 		c.f.SetDot(c.dot)
 		c.f.SetMarkRange(c.mark)
 		c.f.SetName(c.name)
+		renamed = true
 		c.f.SetVersion(c.version)
 	}
 
 	*src = (*src)[:len(*src)-1]
 	*dst = append(*dst, back)
+	if renamed {
+		// A restored name can change where the file sorts.
+		s.sortFiles(nil)
+	}
 	return true, nil
 }
 

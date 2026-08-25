@@ -33,11 +33,12 @@ import (
 //
 // # Limits worth knowing before trusting a green run
 //
-// The oracle is plan9port's sam, because that is what builds and runs on a
-// Unix box. Dave's reference is 9front, and the two are not the same program:
+// The oracle is plan9port's sam, because that is what builds and runs on a Unix
+// box. It is not the last word: 9front's sam differs from it in small ways —
 // `printposn` alone differs in both whether it prints the file name and what it
-// prints for a line address. A diff here is a *candidate*, to be settled
-// against the 9front source, not a verdict.
+// prints for a line address — and dave has sided with each tree at different
+// times. A diff here is a *candidate*, to be settled against both sources and
+// recorded in doc/sam-differences.md, not a verdict.
 //
 // It reaches the command language and nothing else. Rendering, panes,
 // interactive typing and the mouse are all invisible to it.

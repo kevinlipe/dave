@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"unicode/utf8"
 )
@@ -107,6 +108,7 @@ func (s *Session) execE(f *file.File, name string, ctx *execCtx) error {
 		return fmt.Errorf("e: %w", err)
 	}
 	newContent := f.DecodeContent(string(data))
+	s.warnNulls(f)
 	oldLen := f.Len()
 	// Replace all old content with new content via transcript.
 	if oldLen > 0 || newContent != "" {
@@ -125,6 +127,7 @@ func (s *Session) execE(f *file.File, name string, ctx *execCtx) error {
 	// e_cmd call getname(f, s, TRUE), which writes a Filename record.
 	pend.renamed = true
 	f.SetName(name)
+	s.sortFiles(f)
 	f.SetDot(buffer.Range{})
 	// Sam reports e with the menu line and no count: edit() passes -1 to
 	// closeio for e, which suppresses the count, then calls filename(f).
@@ -168,6 +171,15 @@ func (s *Session) execW(f *file.File, dot buffer.Range, name string, ctx *execCt
 	if name == "" {
 		return fmt.Errorf("w: no filename")
 	}
+	// Refuse to write over a file that changed since it was read. Sam warns
+	// and returns without writing, having updated its record, so a second w
+	// goes through (sam/io.c writef).
+	if name == f.Name() && f.WriteStale() {
+		// A warning, not an error: sam prints it and returns without writing,
+		// leaving a loop that reaches other files to carry on.
+		s.printf("?warning: write might change good version of %s\n", name)
+		return nil
+	}
 	// The addressed range streams straight out of the buffer; WriteRange
 	// restores the file's original line endings on the way.
 	_, statErr := os.Stat(name)
@@ -179,6 +191,7 @@ func (s *Session) execW(f *file.File, dot buffer.Range, name string, ctx *execCt
 	}
 	if name == f.Name() {
 		f.MarkClean()
+		f.NoteWritten()
 	}
 	s.printf("%s: ", name)
 	if isNew {
@@ -199,7 +212,57 @@ func (s *Session) execF(f *file.File, name string, ctx *execCtx) error {
 	if name != "" {
 		ctx.pending(f).renamed = true
 		f.SetName(name)
+		s.sortFiles(f)
 	}
 	s.printf("%s\n", f.MenuLine(f == s.Current, false))
+	return nil
+}
+
+// execCd changes the working directory and rewrites the open files' names so
+// they still point where they did. Sam does the same (sam/sam.c cd): a relative
+// name is made absolute against the directory being left, and a name under the
+// new directory is shortened to be relative to it.
+//
+// Without the rewrite, `cd` would quietly repoint every relative name at a
+// different file — which matters most for w.
+func (s *Session) execCd(arg string) error {
+	dir := strings.TrimSpace(arg)
+	if dir == "" {
+		h, err := os.UserHomeDir()
+		if err != nil {
+			return fmt.Errorf("cd: %w", err)
+		}
+		dir = h
+	}
+	dir = file.ExpandPath(dir)
+	old, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("cd: %w", err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		return fmt.Errorf("cd: %w", err)
+	}
+	s.printf("!\n")
+
+	now, err := os.Getwd()
+	if err != nil {
+		return nil
+	}
+	for _, f := range s.Files {
+		name := f.Name()
+		if name == "" {
+			continue
+		}
+		abs := name
+		if !filepath.IsAbs(abs) {
+			abs = filepath.Join(old, abs)
+		}
+		if rel, err := filepath.Rel(now, abs); err == nil && !strings.HasPrefix(rel, "..") {
+			f.SetName(rel)
+		} else {
+			f.SetName(abs)
+		}
+	}
+	s.sortFiles(nil)
 	return nil
 }

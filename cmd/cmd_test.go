@@ -5,8 +5,10 @@ import (
 	"dave/file"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // ---- test harness -----------------------------------------------------------
@@ -1328,5 +1330,167 @@ func TestNameArgumentNeedsABlank(t *testing.T) {
 		if _, _, err := ParseCommand(src, 0); err != nil {
 			t.Errorf("%q: unexpected error: %v", src, err)
 		}
+	}
+}
+
+// ---- the file list -----------------------------------------------------------
+
+// Sam keeps the list in name order (sortname, sam/multi.c). The order shows in
+// what n prints, which file is current at startup, the order X and Y visit
+// files, and which of several names b picks — so appending in the order files
+// were named is visible four ways.
+func TestFileListIsSortedByName(t *testing.T) {
+	var out strings.Builder
+	s := NewSession(&out)
+	for _, name := range []string{"zbb", "maa", "aaa"} {
+		f := file.NewNamed(name)
+		f.Buffer().Insert(0, name+"\n")
+		s.AddFile(f)
+	}
+	var got []string
+	for _, f := range s.Files {
+		got = append(got, f.Name())
+	}
+	if want := []string{"aaa", "maa", "zbb"}; !slicesEqual(got, want) {
+		t.Errorf("file list = %v, want %v", got, want)
+	}
+
+	// A rename re-sorts, as sam's filesetname does through sortname.
+	out.Reset()
+	s.Current = s.FindFile("aaa")
+	assertNoError(t, s.ExecString("f zzz"))
+	got = got[:0]
+	for _, f := range s.Files {
+		got = append(got, f.Name())
+	}
+	if want := []string{"maa", "zbb", "zzz"}; !slicesEqual(got, want) {
+		t.Errorf("after rename, file list = %v, want %v", got, want)
+	}
+}
+
+// A name already in the list is reported, as sam's sortname does.
+func TestDuplicateFileNameWarns(t *testing.T) {
+	var out strings.Builder
+	s := NewSession(&out)
+	s.AddFile(file.NewNamed("same"))
+	s.AddFile(file.NewNamed("same"))
+	if !strings.Contains(out.String(), "duplicate file name") {
+		t.Errorf("output %q, want a duplicate-name warning", out.String())
+	}
+}
+
+func slicesEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// ---- w notices the file changing underneath it -------------------------------
+
+// Sam stats the file before writing and refuses when it has changed since the
+// buffer was read, updating its record so a second w goes through — the same
+// second chance D and q give. Without it, an edit made elsewhere is discarded
+// silently.
+func TestWriteRefusesAStaleFileOnce(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/f.txt"
+	if err := os.WriteFile(path, []byte("orig\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var out strings.Builder
+	s := NewSession(&out)
+	f := file.NewNamed(path)
+	s.AddFile(f)
+	if err := f.EnsureLoaded(); err != nil {
+		t.Fatal(err)
+	}
+	assertNoError(t, s.ExecString(",s/orig/mine/"))
+
+	// Something else writes the file.
+	later := time.Now().Add(2 * time.Second)
+	if err := os.WriteFile(path, []byte("theirs\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(path, later, later); err != nil {
+		t.Fatal(err)
+	}
+
+	out.Reset()
+	assertNoError(t, s.ExecString("w"))
+	if !strings.Contains(out.String(), "warning") {
+		t.Errorf("first w said %q, want a warning", out.String())
+	}
+	if got, _ := os.ReadFile(path); string(got) != "theirs\n" {
+		t.Errorf("the refused write still changed the file to %q", got)
+	}
+
+	// The second goes through.
+	assertNoError(t, s.ExecString("w"))
+	if got, _ := os.ReadFile(path); string(got) != "mine\n" {
+		t.Errorf("second w left %q, want the buffer written", got)
+	}
+}
+
+// NUL bytes are dropped on read and reported, as sam's readio does; one in the
+// buffer would reach everything downstream.
+func TestNullBytesAreElided(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/nul.txt"
+	if err := os.WriteFile(path, []byte("a\x00b\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var out strings.Builder
+	s := NewSession(&out)
+	f := file.NewNamed(path)
+	s.AddFile(f)
+	assertNoError(t, s.ExecString(",p"))
+	if f.String() != "ab\n" {
+		t.Errorf("buffer = %q, want the NUL dropped", f.String())
+	}
+	if !strings.Contains(out.String(), "null characters elided") {
+		t.Errorf("output %q, want the elision reported", out.String())
+	}
+}
+
+// cd rewrites the open files' names so they still point where they did: a
+// relative name is made absolute against the directory being left, and a name
+// under the new directory is shortened against it. Without the rewrite, cd
+// quietly repoints every relative name at a different file — which matters most
+// for w. Confirmed against sam.
+func TestCdRewritesRelativeNames(t *testing.T) {
+	dir := t.TempDir()
+	sub := dir + "/sub"
+	if err := os.Mkdir(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Skip("no working directory")
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Skip("cannot chdir")
+	}
+	t.Cleanup(func() { os.Chdir(wd) })
+
+	var out strings.Builder
+	s := NewSession(&out)
+	f := file.NewNamed("f.txt")
+	s.AddFile(f)
+
+	// Down: f.txt is not under sub, so it becomes absolute.
+	assertNoError(t, s.ExecString("cd "+sub))
+	if !filepath.IsAbs(f.Name()) || filepath.Base(f.Name()) != "f.txt" {
+		t.Errorf("after cd sub, name = %q, want an absolute path to f.txt", f.Name())
+	}
+	// Back up: it is under the new directory again, so it shortens.
+	assertNoError(t, s.ExecString("cd "+dir))
+	if f.Name() != "f.txt" {
+		t.Errorf("after cd back, name = %q, want %q", f.Name(), "f.txt")
 	}
 }

@@ -38,6 +38,7 @@ func (s *Session) execCmd(cmd *Command, f *file.File, ctx *execCtx) error {
 		if err := f.EnsureLoaded(); err != nil {
 			return err
 		}
+		s.warnNulls(f)
 	}
 
 	switch cmd.Op {
@@ -61,6 +62,8 @@ func (s *Session) execCmd(cmd *Command, f *file.File, ctx *execCtx) error {
 		return s.execN()
 	case '!':
 		return s.execBang(cmd.Args[0], ctx)
+	case OpCd:
+		return s.execCd(cmd.Args[0])
 	case 'X':
 		return s.execXFile(cmd.Pat, cmd.AllFiles, cmd.Body, ctx)
 	case 'Y':

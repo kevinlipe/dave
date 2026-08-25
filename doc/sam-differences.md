@@ -3,9 +3,18 @@
 Dave's command language is Sam's, and the intent is that a command means the
 same thing in both. Where it does not, it is recorded here.
 
-The reference implementation is 9front's `sam` (`sys/src/cmd/sam`). Where 9front
-and plan9port differ, 9front wins; the only place that matters for Dave is
-`u_cmd`, and Dave follows 9front there.
+## Which Sam?
+
+There is no single canonical Sam. Rob Pike's paper describes the language;
+plan9port and 9front are two live implementations of it that have drifted apart
+in small ways, and neither is the authority the other answers to.
+
+Dave follows the paper where it speaks, the behaviour both trees share where it
+does not, and makes a recorded call where the two disagree. In practice that has
+meant siding with plan9port more often than not — partly because it is the tree
+that runs on the machines Dave is developed on, and partly because 9front's
+additions are mostly for its own terminal rather than for the language. Every
+place the two differ and Dave had to choose is listed below.
 
 Everything on this page is a decision, not a backlog. Divergences still open are
 in `TODO.md`.
@@ -73,6 +82,22 @@ Sam's `updateenv` puts the file name in `$%` and dot in `$%dot` before
 running a shell command, so `<` or `|` can address the file it was invoked
 from. plan9port dropped it, and it does not survive the trip to a POSIX
 shell anyway — `$%` is not a name `sh` can expand. Dave does not set them.
+
+### `^` and `_`
+
+9front adds two commands that run a shell command and load its output into the
+*command* buffer rather than the file: `^` with no address, `_` piping dot
+through it. plan9port has neither, and neither appears in the paper.
+
+They are shaped around samterm's command window being a file like any other,
+which is not how Dave models it. Dave's command window is a view, not an entry
+in the buffer list, so there is nothing for `^` to write into that `<` and `|`
+do not already reach.
+
+### `M`
+
+Another 9front command, sending a menu request to samterm. Dave has no
+sam/samterm split for it to talk across.
 
 ### `u` past 32767
 
