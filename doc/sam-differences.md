@@ -56,7 +56,7 @@ a command, or a step through the history all end the run.
 
 ## Not reproduced
 
-Two Sam behaviours Dave declines to copy.
+Two Sam behaviors Dave declines to copy.
 
 ### `f` does not mark the file modified
 
@@ -70,8 +70,8 @@ either way; only the dirtying is missing, and it is not worth the churn.
 ### `u` past 32767
 
 Sam stores a command's count in a `short` (`sam/parse.h`), so `u32768` wraps
-negative and redoes instead of undoing. That is an artefact of the C, not a
-behaviour, and Dave saturates the count instead.
+negative and redoes instead of undoing. That is an artifact of the C, not a
+behavior, and Dave saturates the count instead.
 
 ---
 
