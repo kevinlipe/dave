@@ -3,7 +3,6 @@ package cmd
 import (
 	"dave/buffer"
 	"dave/file"
-	"strings"
 	"unicode/utf8"
 )
 
@@ -16,11 +15,11 @@ func (s *Session) execDelete(f *file.File, dot buffer.Range, ctx *execCtx) error
 }
 
 func (s *Session) execPrint(f *file.File, dot buffer.Range) error {
-	text := f.Buffer().ReadAt(dot.Start, dot.Len())
-	s.printf("%s", text)
-	if !strings.HasSuffix(text, "\n") {
-		s.printf("\n")
-	}
+	// Exactly the addressed text, with nothing added. Sam's display writes the
+	// range and stops (sam/xec.c), so printing a range that does not end in a
+	// newline leaves the cursor mid-line — which is the honest report, and what
+	// makes `,x/.../ p` output concatenate the way a script expects.
+	s.printf("%s", f.Buffer().ReadAt(dot.Start, dot.Len()))
 	f.SetDot(dot)
 	return nil
 }

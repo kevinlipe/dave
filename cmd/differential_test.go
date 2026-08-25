@@ -48,6 +48,16 @@ import (
 // samBin is the oracle. plan9port installs it as `sam`.
 const samBin = "sam"
 
+// The names the two files are given inside each run's directory. They are ugly
+// on purpose: dave prints the file name before a position while plan9port does
+// not, so the harness has to strip it, and a name that could occur in the text
+// being edited would be stripped out of a `p` that ran into the next line. That
+// is not hypothetical — it swallowed a line the first time this ran.
+const (
+	fileName = "_f_"
+	outName  = "_out_"
+)
+
 func TestDifferential(t *testing.T) {
 	if _, err := exec.LookPath(samBin); err != nil {
 		t.Skipf("no %s on this machine; see make difftest", samBin)
@@ -81,8 +91,8 @@ func runDifferential(t *testing.T, scriptPath string) {
 	// Each side gets its own directory so their writes cannot collide, and so
 	// the paths in their output can be reduced to the same names.
 	samDir, daveDir := t.TempDir(), t.TempDir()
-	samFile, daveFile := filepath.Join(samDir, "f"), filepath.Join(daveDir, "f")
-	samOut, daveOut := filepath.Join(samDir, "out"), filepath.Join(daveDir, "out")
+	samFile, daveFile := filepath.Join(samDir, fileName), filepath.Join(daveDir, fileName)
+	samOut, daveOut := filepath.Join(samDir, outName), filepath.Join(daveDir, outName)
 	for _, p := range []string{samFile, daveFile} {
 		if err := os.WriteFile(p, input, 0o644); err != nil {
 			t.Fatal(err)
@@ -174,10 +184,12 @@ var (
 	// A menu line: the modified mark, the pane mark, the current mark, a
 	// space, then the name. Sam prints one when it loads a file; dave does not.
 	menuLine = regexp.MustCompile(`^[ ']['+-][ .] \S`)
-	// A position report. plan9port's printposn prints no file name; 9front's
-	// prints one, and dave follows 9front — so the name comes off both sides
-	// rather than the harness picking a winner.
-	posnName = regexp.MustCompile(`^\S*:(#|\d)`)
+	// The file name dave prints before a position. plan9port's printposn prints
+	// none; 9front's does, and dave follows 9front, so the harness takes it off
+	// both sides rather than picking a winner. Anchored to the exact name, not
+	// to "anything before a colon": p prints without a trailing newline, so the
+	// text ahead of a position report is arbitrary.
+	posnName = regexp.MustCompile(regexp.QuoteMeta(fileName) + `:(#|\d)`)
 )
 
 // normalise strips the formatting the two editors are allowed to differ in, so

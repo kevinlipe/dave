@@ -95,7 +95,9 @@ func TestProcessSuppressSkipsOnlyTheBufferDump(t *testing.T) {
 	if err != nil {
 		t.Fatalf("process: %v", err)
 	}
-	if want := "o\no\no\no\n"; out != want {
+	// p prints exactly the addressed text, adding nothing, so four one-character
+	// matches arrive as four characters. ssam does the same.
+	if want := "oooo"; out != want {
 		t.Errorf("p under -n wrote %q, want %q", out, want)
 	}
 }
@@ -107,7 +109,7 @@ func TestProcessCommandOutputPrecedesBufferDump(t *testing.T) {
 	if err != nil {
 		t.Fatalf("process: %v", err)
 	}
-	if want := "o\no\no\no\nfoo boo\n"; out != want {
+	if want := "oooofoo boo\n"; out != want {
 		t.Errorf("got %q, want %q", out, want)
 	}
 }

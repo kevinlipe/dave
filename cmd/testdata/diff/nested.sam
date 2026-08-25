@@ -1,0 +1,5 @@
+,x/.*\n/ x/[aeiou]/ =#
+,x/.*\n/ g/four/ =#
+,x/.*\n/ v/four/ =#
+,x/[aeiou]/ y/e/ =#
+,x/.*\n/ ,x/o/ =#

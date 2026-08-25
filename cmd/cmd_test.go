@@ -90,10 +90,13 @@ func TestDeleteWholeLine(t *testing.T) {
 
 // ---- Print ------------------------------------------------------------------
 
+// p prints exactly the addressed text. Sam's display writes the range and
+// stops, so a range that does not end in a newline leaves the cursor mid-line;
+// dave used to add one. Confirmed byte-for-byte against sam.
 func TestPrint(t *testing.T) {
 	r := runCmd(t, "hello world", dot(6, 11), "p")
 	assertNoError(t, r.err)
-	assertOutput(t, r.output, "world\n")
+	assertOutput(t, r.output, "world")
 	assertContents(t, r.contents, "hello world") // unchanged
 }
 
@@ -268,21 +271,12 @@ func TestY(t *testing.T) {
 	assertContents(t, r.contents, "_ _ _")
 }
 
+// y runs the body on the text between matches. Nothing separates the fields in
+// the output because p adds nothing: sam prints "abc" here too.
 func TestYSamExample(t *testing.T) {
-	// From spec: c/AAA/ y/A/ c/-/ → -A-A-A-
-	// Actually this is: take "AAAA", replace whole thing with "AAA",
-	// then within "AAA" find between-A gaps and replace with "-"
-	// Simpler: on "AAAA", y/A/ c/-/ replaces between-A text with "-"
-	// Between matches of "A" in "AAAA": "" between each A → insert "-"
-	// Result: -A-A-A-A- ... no wait.
-	// y/A/ runs body for text BETWEEN matches of A.
-	// In "AAAA": matches are at 0,1,2,3. Between: ""(before 0),"","",""(after 3).
-	// All empty strings. Each gets replaced by "-". So: -A-A-A-A-
-	// Actually let me just test y/separator/ works
 	r := runCmd(t, "a,b,c", dot(0, 5), `y/,/ p`)
 	assertNoError(t, r.err)
-	// Should print each field: "a", "b", "c", each followed by a newline.
-	assertOutput(t, r.output, "a\nb\nc\n")
+	assertOutput(t, r.output, "abc")
 }
 
 // ---- Group ------------------------------------------------------------------
@@ -305,7 +299,7 @@ func TestGroupResetsDotBetweenCommands(t *testing.T) {
 	assertNoError(t, r.err)
 	// The addressed p prints "world"; the bare p that follows prints the
 	// group's address, "hello", not the "world" the search left behind.
-	assertOutput(t, r.output, "world\nhello\n")
+	assertOutput(t, r.output, "worldhello")
 }
 
 // Changes still have to arrive in order. Sam refuses a group whose commands log
@@ -601,7 +595,7 @@ func TestXFile(t *testing.T) {
 
 	// X/foo/ p — print contents of files matching "foo"
 	assertNoError(t, s.ExecString(`X/foo/ ,p`))
-	assertOutput(t, out.String(), "hello\n")
+	assertOutput(t, out.String(), "hello")
 }
 
 // ---- Error handling ---------------------------------------------------------
@@ -923,7 +917,8 @@ func TestXOverLinesIncludesAnUnterminatedLastLine(t *testing.T) {
 	s.AddFile(f)
 
 	assertNoError(t, s.ExecString(",x p"))
-	if got := out.String(); got != "one\ntwo\nthree\n" {
+	// p adds nothing, so the last line arrives without a newline of its own.
+	if got := out.String(); got != "one\ntwo\nthree" {
 		t.Errorf("x p printed %q, want all three lines", got)
 	}
 }
@@ -1225,6 +1220,35 @@ func TestYEmitsEmptyGaps(t *testing.T) {
 			r := runCmd(t, tt.in, dot(0, len([]rune(tt.in))), tt.cmd)
 			assertNoError(t, r.err)
 			assertContents(t, r.contents, tt.want)
+		})
+	}
+}
+
+// The x loop's null-match rule, pinned independently of the differential
+// harness, which is skipped when sam is not installed. A null match abutting
+// the end of the previous match is skipped so a pattern that can match nothing
+// neither stalls nor doubles up; one at the very start is not, because there is
+// no previous match for it to abut. Every expectation was read off sam.
+func TestXNullMatchRule(t *testing.T) {
+	tests := []struct {
+		in, cmd, want string
+	}{
+		// x* never matches anything, so every position yields a null match.
+		{"ab", `,x/x*/ =#`, "#0\n#1\n#2\n"},
+		// a* matches "a" at 0, then null at 2 — but not at 1, which abuts it.
+		{"ab", `,x/a*/ =#`, "#0,#1\n#2\n"},
+		{"aab", `,x/a*/ =#`, "#0,#2\n#3\n"},
+		// Positions are codepoints: é is two bytes, and the loop must step by
+		// characters or it splits one.
+		{"éxé", `,x/x*/ =#`, "#0\n#1,#2\n#3\n"},
+		{"éxé", `,x/é/ =#`, "#0,#1\n#2,#3\n"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.in+" "+tt.cmd, func(t *testing.T) {
+			r := runCmd(t, tt.in, dot(0, len([]rune(tt.in))), tt.cmd)
+			assertNoError(t, r.err)
+			// = prints the file name, and runCmd's file has none.
+			assertOutput(t, r.output, tt.want)
 		})
 	}
 }

@@ -70,7 +70,7 @@ func TestKAndMarkAddress(t *testing.T) {
 	f.SetDot(dot(6, 11)) // "world"
 	// Print via the mark address.
 	assertNoError(t, s.ExecString("'p"))
-	assertOutput(t, out.String(), "hello\n")
+	assertOutput(t, out.String(), "hello")
 }
 
 // ---- Shell commands: <, >, | ----------------------------------------------
@@ -142,7 +142,7 @@ func TestGuardInsideBraceGroup(t *testing.T) {
 	// g inside a brace group.
 	r := runCmd(t, "hello world", dot(0, 11), "{ g/world/ p }")
 	assertNoError(t, r.err)
-	assertOutput(t, r.output, "hello world\n")
+	assertOutput(t, r.output, "hello world")
 }
 
 // ---- Parser errors: unclosed brace -----------------------------------------
@@ -191,7 +191,7 @@ func TestEmptyPatternReuse(t *testing.T) {
 	out.Reset()
 	// Second command reuses the pattern; reset dot to whole file explicitly.
 	assertNoError(t, s.ExecString(",x// p"))
-	assertOutput(t, out.String(), "foo\nfoo\nfoo\n")
+	assertOutput(t, out.String(), "foofoofoo")
 }
 
 // ---- Backward-search ?re? as an address ------------------------------------
@@ -201,7 +201,7 @@ func TestBackwardSearchAddress(t *testing.T) {
 	// should be found. dot at end → last "foo" in the buffer.
 	r := runCmd(t, "foo bar foo baz", dot(15, 15), "?foo?p")
 	assertNoError(t, r.err)
-	assertOutput(t, r.output, "foo\n")
+	assertOutput(t, r.output, "foo")
 }
 
 // ---- s/re/repl\nmore/ with a literal newline in the replacement ------------
@@ -228,7 +228,7 @@ func TestCharAddressCountsCodepointsNotBytes(t *testing.T) {
 	// four bytes ("caf\xc3").
 	r := runCmd(t, "café bar", dot(0, 0), "#0,#4 p")
 	assertNoError(t, r.err)
-	assertOutput(t, r.output, "café\n")
+	assertOutput(t, r.output, "café")
 }
 
 func TestCharAddressReportOnNonASCII(t *testing.T) {

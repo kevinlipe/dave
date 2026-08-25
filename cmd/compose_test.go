@@ -45,7 +45,7 @@ func TestCompose_XLines_YPrint(t *testing.T) {
 	assertNoError(t, r.err)
 	// Fields per line: {a, b, c\n} then {d, e\n}. The last field of each
 	// line includes the trailing newline because y splits between matches.
-	assertOutput(t, r.output, "a\nb\nc\nd\ne\n")
+	assertOutput(t, r.output, "abc\nde\n")
 }
 
 // ---- g and v nested inside x inside a range address -------------------------
@@ -142,6 +142,7 @@ func TestCompose_DollarIsLineAnchored(t *testing.T) {
 	r := runCmd(t, composeContent, dot(0, 0), `,x/thing$/ p`)
 	assertNoError(t, r.err)
 	// "this is a thing" ends in "thing"; "another thing here" doesn't.
-	// x iterates matches of "thing$"; only one such match exists.
-	assertOutput(t, r.output, "thing\n")
+	// x iterates matches of "thing$"; only one such match exists. p prints the
+	// match and nothing more.
+	assertOutput(t, r.output, "thing")
 }

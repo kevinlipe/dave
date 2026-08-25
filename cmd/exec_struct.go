@@ -4,6 +4,7 @@ import (
 	"dave/buffer"
 	"dave/file"
 	dregs "dave/regexp"
+	"unicode/utf8"
 )
 
 // execGuard implements g (wantMatch=true) and v (wantMatch=false):
@@ -29,102 +30,96 @@ func (s *Session) execGuard(f *file.File, dot buffer.Range, pat string, body []*
 	return nil
 }
 
-// execX implements the x command.
-//
-// All match positions are computed against the ORIGINAL buffer content.
-// Null matches adjacent to non-null matches are skipped (Sam paper §4.1).
+// execX and execY are sam's one loop, with the x/y flag.
 func (s *Session) execX(f *file.File, dot buffer.Range, pat string, body []*Command, ctx *execCtx) error {
+	return s.looper(f, dot, pat, body, true, ctx)
+}
+
+func (s *Session) execY(f *file.File, dot buffer.Range, pat string, body []*Command, ctx *execCtx) error {
+	return s.looper(f, dot, pat, body, false, ctx)
+}
+
+// looper runs body over the matches of pat in r (x) or over the text between
+// them (y). It is a port of sam's looper (sam/xec.c), not a reimplementation.
+//
+// The obvious formulation — find every match, then derive the ranges from them
+// — is what dave had, and it was wrong at both ends in opposite directions: it
+// dropped the empty gap between two adjacent matches, and invented one past the
+// last match when that match ended at the end of the range. The null-match skip
+// and the gap bookkeeping are one interlocking rule here, not two, and reading
+// them off the C is the only way to keep them in step.
+//
+// Positions resolve against the original text throughout. Dave applies a
+// command's changes when it commits, and sam's buffer is likewise untouched
+// while the loop runs, so a search never sees a half-edited buffer.
+func (s *Session) looper(f *file.File, r buffer.Range, pat string, body []*Command, isX bool, ctx *execCtx) error {
 	re, err := dregs.Compile(pat)
 	if err != nil {
 		return err
 	}
+	full := f.String()
+	text := full[runeToByteOff(full, r.Start):runeToByteOff(full, r.End)]
+	rc := runeCounter{s: text}
 
-	// Snapshot the text at the region of interest (original coords).
-	fullStr := f.String()
-	dotByteStart := runeToByteOff(fullStr, dot.Start)
-	dotByteEnd := runeToByteOff(fullStr, dot.End)
-	dotText := fullStr[dotByteStart:dotByteEnd]
-
-	allMatches := re.FindForwardAll(dotText, 0, len(dotText))
-	if allMatches == nil {
-		return nil
+	// Byte offsets within text; r.Start converts to file coordinates. op is the
+	// end of the previous match, and -1 for x so that a null match at the very
+	// start is not mistaken for one abutting a previous match.
+	op := 0
+	if isX {
+		op = -1
 	}
-
-	// Convert to rune-Range values in file space, applying null-match filter.
-	type matchRng struct{ r buffer.Range }
-	var matches []matchRng
-	prevEnd := -1
-	rc := runeCounter{s: dotText}
-	for _, m := range allMatches {
-		lo := dot.Start + rc.at(m[0])
-		hi := dot.Start + rc.at(m[1])
-		isNull := lo == hi
-		// Skip null match if it abuts the end of the previous match.
-		if isNull && lo == prevEnd {
-			continue
-		}
-		matches = append(matches, matchRng{buffer.Range{Start: lo, End: hi}})
-		prevEnd = hi
+	setDot := func(lo, hi int) {
+		f.SetDot(buffer.Range{Start: r.Start + rc.at(lo), End: r.Start + rc.at(hi)})
 	}
 
 	ctx.nest++
-	for _, m := range matches {
-		f.SetDot(m.r)
+	defer func() { ctx.nest-- }()
+	for p := 0; p <= len(text); {
+		mlo, mhi := re.FindForward(text, p, len(text))
+		if mlo < 0 {
+			// y still runs once on the text after the last match; x is done.
+			if isX || op > len(text) {
+				break
+			}
+			setDot(op, len(text))
+			p = len(text) + 1
+		} else {
+			if mlo == mhi {
+				// A null match abutting the previous match is skipped, so a
+				// pattern that can match nothing does not stall or double up.
+				if mlo == op {
+					p = nextRune(text, p)
+					continue
+				}
+				p = nextRune(text, mhi)
+			} else {
+				p = mhi
+			}
+			if isX {
+				setDot(mlo, mhi)
+			} else {
+				setDot(op, mlo)
+			}
+			op = mhi
+		}
 		for _, cmd := range body {
 			if err := s.execCmd(cmd, f, ctx); err != nil {
-				ctx.nest--
 				return err
 			}
 		}
 	}
-	ctx.nest--
 	return nil
 }
 
-// execY implements the y command: run body for text BETWEEN matches.
-func (s *Session) execY(f *file.File, dot buffer.Range, pat string, body []*Command, ctx *execCtx) error {
-	re, err := dregs.Compile(pat)
-	if err != nil {
-		return err
+// nextRune returns the byte offset one codepoint past i, and one past the end
+// of s when there is nothing left — sam advances by a character here, and a
+// byte step would split a multi-byte one.
+func nextRune(s string, i int) int {
+	if i >= len(s) {
+		return i + 1
 	}
-
-	fullStr := f.String()
-	dotByteStart := runeToByteOff(fullStr, dot.Start)
-	dotByteEnd := runeToByteOff(fullStr, dot.End)
-	dotText := fullStr[dotByteStart:dotByteEnd]
-
-	allMatches := re.FindForwardAll(dotText, 0, len(dotText))
-
-	// Every gap, including the empty ones: before a match at the very start,
-	// between two adjacent matches, and after a match at the very end. Sam's
-	// looper emits one range per iteration whether or not it is null, so
-	// `,y/a/` over "aabb" gives #0, #1 and #2,#4 — three gaps for two matches.
-	// Skipping the empty ones loses the position between adjacent matches,
-	// which is exactly where a y loop is usually asked to insert something.
-	betweens := make([]buffer.Range, 0, len(allMatches)+1)
-	prev := 0
-	rc := runeCounter{s: dotText}
-	for _, m := range allMatches {
-		betweens = append(betweens, buffer.Range{
-			Start: dot.Start + rc.at(prev),
-			End:   dot.Start + rc.at(m[0]),
-		})
-		prev = m[1]
-	}
-	betweens = append(betweens, buffer.Range{Start: dot.Start + rc.at(prev), End: dot.End})
-
-	ctx.nest++
-	for _, r := range betweens {
-		f.SetDot(r)
-		for _, cmd := range body {
-			if err := s.execCmd(cmd, f, ctx); err != nil {
-				ctx.nest--
-				return err
-			}
-		}
-	}
-	ctx.nest--
-	return nil
+	_, w := utf8.DecodeRuneInString(s[i:])
+	return i + w
 }
 
 // execXFile runs the body in every file whose menu line matches. With no
