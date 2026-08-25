@@ -208,11 +208,26 @@ the write path no longer uses it at all.
   `AppendOutput` and its keyboard handling. The differences are smaller
   than they look: no olivetti is just `wordWrap=false`, which `Pane`
   already turns into `margin = 0`; append-only is not a `Pane` concern
-  at all. The two that need real work are the palette — `Pane`
+  at all. The one that needs real work is the palette — `Pane`
   hardcodes `pal.Text`, `pal.Background`, `pal.BodySelection*` and
-  `pal.Scrollbar` at about eight sites and would need those as roles
-  chosen at construction — and the fact that `Pane` is built on a
-  `*file.File` while `CmdWindow` holds a bare buffer.
+  `pal.Scrollbar` at about eight sites, and those would have to become
+  roles chosen at construction.
+- **Merge the view, not the model.** `Pane` is built on a `*file.File`
+  while `CmdWindow` holds a bare buffer, and it is tempting to close
+  that gap too. Sam did: `Tstartcmdfile` runs `cmd = newfile()`
+  (`sam/mesg.c:230`), so sam's command window is a real `File` with a
+  tag in the file list, its output arrives by `loginsert`
+  (`mesg.c:582`), and cuts in it journal through `logdelete` and bump
+  `seq` exactly like a document. Sam pays for that with **19 explicit
+  `f == cmd` exclusions** across `sam.c`, `file.c`, `rasp.c`, `xec.c`,
+  `address.c` and `multi.c` — every place "the command window is a
+  file" is a lie that has to be corrected: it is skipped by undo
+  (`sam.c:454`), by `X` (`xec.c:523`), by the dirty/save scan, by
+  multi-file operations. Sam earns that back because it is two
+  processes: making `cmd` a file means the host/terminal sync protocol
+  covers it for free. Dave is one process and has no such protocol, so
+  the model half of the trade buys much less here. The duplication that
+  actually hurts is in the view, and that half can be merged on its own.
 - **Not urgent:** the performance argument for it is gone, since the
   divergence it caused is now fixed on both sides. What is left is
   avoiding future divergence, which is real but not pressing. **Do not
@@ -221,6 +236,21 @@ the write path no longer uses it at all.
   uncovered, and the 13 places in `input/input.go` and `main.go` that
   branch on cmdwin-versus-pane are each a chance to get it subtly wrong
   in a way only hand-testing the GUI would find.
+- **On undo, dave already does what sam does.** A command window should
+  not be undoable: pressing Enter *runs* the command, and undoing the
+  text of it does not unrun it — that takes `u`, typed in the same
+  window, so the command window is the instrument of undo rather than a
+  subject of it. Getting an earlier command back needs no history
+  either, since every command is still sitting in the buffer as text and
+  any line can be re-executed by putting the cursor on it.
+  Sam agrees, and suppresses the transaction at the edit: `fileupdate`
+  sets `notrans = TRUE` for `cmd` and skips the dot/mark bookkeeping
+  undo would replay (`sam/file.c:408`), with `sam.c:454` skipping it
+  again at the undo step. The `loginsert` that carries cmd-window output
+  is transport, not history — in two processes, entering the log is how
+  a change reaches samterm at all. Dave is one process and has no such
+  pipeline, so it has nothing to suppress. Nothing to copy here; keep
+  the behaviour.
 
 ## Known limitations
 
