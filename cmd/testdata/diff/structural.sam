@@ -1,0 +1,6 @@
+,x/e/ =#
+,y/e/ =#
+,g/four/ =#
+,v/four/ =#
+,x p
+,x/.*\n/ g/four/ =#

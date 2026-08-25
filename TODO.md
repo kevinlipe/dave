@@ -299,6 +299,13 @@ reports an unknown command.
 file name as `$%` and dot as `$%dot` before exec, so a shell command can
 address the file it was run from. Dave sets neither.
 
+### A blank line is not the `\n` command
+
+Sam reads an empty line as the `\n` command: it prints the line after dot
+and moves there, so three blank lines walk down the file. Dave's REPL
+skips empty input entirely. Found by the differential harness, which was
+diffing its own scaffolding until the scripts stopped ending in one.
+
 ### Minor
 
 **`e`/`r` accept a name with no blank before it.** `efoo` reads `foo`

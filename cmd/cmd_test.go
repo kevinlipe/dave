@@ -1200,3 +1200,31 @@ func TestEditMissingFileIsAnError(t *testing.T) {
 	assertError(t, err)
 	assertContents(t, f.String(), "important\n")
 }
+
+// y runs its body on every gap between matches, including the empty ones: before
+// a match at the very start, between two adjacent matches, and after a match at
+// the very end. Sam's looper emits one range per iteration whether or not it is
+// null. The empty gap between adjacent matches is exactly where a y loop is
+// usually asked to insert something, so skipping it is not a rounding error.
+// Each expectation below was confirmed against sam.
+func TestYEmitsEmptyGaps(t *testing.T) {
+	tests := []struct {
+		name, in, cmd, want string
+	}{
+		// One match filling the whole range: an empty gap on each side.
+		{"both ends empty", "ab", `,y/ab/ c/-/`, "-ab-"},
+		// Adjacent matches, with an empty gap between them.
+		{"between adjacent", "aabb", `,y/a/ c/-/`, "-a-a-"},
+		// Non-empty gaps are unaffected.
+		{"ordinary gaps", "xaby", `,y/ab/ c/-/`, "-ab-"},
+		// No match at all: the whole range is one gap.
+		{"no match", "abc", `,y/zzz/ c/-/`, "-"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := runCmd(t, tt.in, dot(0, len([]rune(tt.in))), tt.cmd)
+			assertNoError(t, r.err)
+			assertContents(t, r.contents, tt.want)
+		})
+	}
+}

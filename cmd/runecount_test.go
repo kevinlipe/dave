@@ -97,13 +97,15 @@ func TestSubstNthOverMultibyteText(t *testing.T) {
 }
 
 func TestYOverMultibyteText(t *testing.T) {
-	// y runs the body on the text BETWEEN matches.
+	// y runs the body on the text BETWEEN matches — every between, including
+	// the empty ones before a leading match and after a trailing one, which is
+	// why the result is bracketed by dashes. Confirmed against sam.
 	r := runCmd(t, "é1é22é333é", dot(0, 10), `y/é/ c/-/`)
 	if r.err != nil {
 		t.Fatalf("y over multibyte: %v", r.err)
 	}
-	if r.contents != "é-é-é-é" {
-		t.Errorf("contents = %q, want %q", r.contents, "é-é-é-é")
+	if r.contents != "-é-é-é-é-" {
+		t.Errorf("contents = %q, want %q", r.contents, "-é-é-é-é-")
 	}
 }
 

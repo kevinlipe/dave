@@ -95,21 +95,23 @@ func (s *Session) execY(f *file.File, dot buffer.Range, pat string, body []*Comm
 
 	allMatches := re.FindForwardAll(dotText, 0, len(dotText))
 
-	var betweens []buffer.Range
+	// Every gap, including the empty ones: before a match at the very start,
+	// between two adjacent matches, and after a match at the very end. Sam's
+	// looper emits one range per iteration whether or not it is null, so
+	// `,y/a/` over "aabb" gives #0, #1 and #2,#4 — three gaps for two matches.
+	// Skipping the empty ones loses the position between adjacent matches,
+	// which is exactly where a y loop is usually asked to insert something.
+	betweens := make([]buffer.Range, 0, len(allMatches)+1)
 	prev := 0
 	rc := runeCounter{s: dotText}
 	for _, m := range allMatches {
-		if m[0] > prev {
-			lo := dot.Start + rc.at(prev)
-			hi := dot.Start + rc.at(m[0])
-			betweens = append(betweens, buffer.Range{Start: lo, End: hi})
-		}
+		betweens = append(betweens, buffer.Range{
+			Start: dot.Start + rc.at(prev),
+			End:   dot.Start + rc.at(m[0]),
+		})
 		prev = m[1]
 	}
-	if prev < len(dotText) {
-		lo := dot.Start + rc.at(prev)
-		betweens = append(betweens, buffer.Range{Start: lo, End: dot.End})
-	}
+	betweens = append(betweens, buffer.Range{Start: dot.Start + rc.at(prev), End: dot.End})
 
 	ctx.nest++
 	for _, r := range betweens {

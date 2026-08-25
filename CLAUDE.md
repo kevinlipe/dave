@@ -90,6 +90,15 @@ fails. This has twice caught tests that passed for the wrong reason — a bound
 that was actually enforced by a later short read, and a pinned bug asserting the
 wrong value. Passing on the first run is not evidence.
 
+**A differential harness runs dave against the real sam.** `make difftest`
+feeds the scripts in `cmd/testdata/diff/` to plan9port's `sam -d` and to dave's
+engine and compares what each wrote. It is the cheapest way to find a
+divergence nobody thought to look for — every bug this project has fixed lived
+at a composition point that hand-written tests missed. `go test` skips it when
+sam is absent; `make difftest` fails loudly instead. The oracle is plan9port
+and the reference is 9front, so a diff is a candidate to settle against the
+9front source, not a verdict.
+
 **Golden files are regenerated deliberately**, and the diff gets read:
 
     go test ./cmd/  -run TestCharacterize     -update

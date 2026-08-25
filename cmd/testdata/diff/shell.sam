@@ -1,0 +1,5 @@
+1|tr a-z A-Z
+,p
+2>wc -l
+1<echo replaced
+,p

@@ -37,7 +37,7 @@ SDL2_STATIC_LDFLAGS = \
 	-lversion -luuid -lsetupapi \
 	-static-libgcc
 
-.PHONY: all sdave static test check clean install
+.PHONY: all sdave static test difftest check clean install
 
 all:
 	go build -v -o $(BINARY) .
@@ -51,6 +51,15 @@ static:
 
 test:
 	go test ./...
+
+# The differential harness: run scripts through the real sam and through dave
+# and compare. Needs plan9port's sam on PATH; `go test` skips it silently when
+# it is missing, which this target refuses to do quietly.
+difftest:
+	@command -v sam >/dev/null || { \
+		echo "difftest: no sam on PATH -- install plan9port to run the oracle"; \
+		exit 1; }
+	go test ./cmd/ -run TestDifferential -v
 
 check: all test
 
