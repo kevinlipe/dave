@@ -131,7 +131,8 @@ func (h *Handler) HandleKey(ev *sdl.KeyboardEvent, winW, winH int32) error {
 			h.typeEsc = -1
 		}
 		err := h.cmdWin.HandleKey(ev, h.session)
-		if sym == sdl.K_BACKSPACE || sym == sdl.K_DELETE {
+		switch sym {
+		case sdl.K_BACKSPACE, sdl.K_DELETE, sdl.K_u, sdl.K_w:
 			h.clampTypedRun(h.cmdWin.Dot().Start)
 		}
 		return err
@@ -156,6 +157,24 @@ func (h *Handler) HandleKey(ev *sdl.KeyboardEvent, winW, winH int32) error {
 
 	case sdl.K_DELETE:
 		deleteForward(h.session, f)
+		h.clampTypedRun(f.Dot().Start)
+		p.EnsureVisible(f.Dot().Start)
+
+	// ctrl-U and ctrl-W, sam's and every Unix line discipline's. A plain u or w
+	// is left alone here and arrives as text input instead.
+	case sdl.K_u:
+		if !ctrl {
+			break
+		}
+		deleteBack(h.session, f, LineStartBound)
+		h.clampTypedRun(f.Dot().Start)
+		p.EnsureVisible(f.Dot().Start)
+
+	case sdl.K_w:
+		if !ctrl {
+			break
+		}
+		deleteBack(h.session, f, WordBackBound)
 		h.clampTypedRun(f.Dot().Start)
 		p.EnsureVisible(f.Dot().Start)
 

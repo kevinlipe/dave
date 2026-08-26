@@ -26,6 +26,10 @@ Two keys are worth knowing:
 - **Ctrl-K** cycles keyboard focus: command window, first pane, second pane, and
   back round.
 
+**Ctrl-U** deletes back to the start of the line and **Ctrl-W** deletes the word
+behind the cursor, as they do in Sam and at a shell prompt. Both work in the
+command window too.
+
 `doc/sam-differences.md` has the full key table against Sam's, along with
 everything else the window does differently.
 

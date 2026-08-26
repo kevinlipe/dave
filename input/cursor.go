@@ -140,6 +140,86 @@ func deleteBackward(sess *cmd.Session, f *file.File) {
 	}
 }
 
+// LineStartBound returns the position ctrl-U deletes back to from pos, following
+// samterm's ctlu (main.c). The character behind the cursor is looked at first:
+// if it is a newline, that newline alone goes, joining this line to the one
+// above. Otherwise everything back to the start of the line goes.
+//
+// samterm bounds the scan at the window's origin, because its half of the
+// editor holds only the text on screen. Dave has the whole file and bounds it
+// at 0.
+func LineStartBound(buf *buffer.Buffer, pos int) int {
+	if pos <= 0 {
+		return 0
+	}
+	p := pos - 1
+	if buf.RuneAt(p) == '\n' {
+		return p
+	}
+	for p > 0 && buf.RuneAt(p-1) != '\n' {
+		p--
+	}
+	return p
+}
+
+// WordBackBound returns the position ctrl-W deletes back to from pos, following
+// samterm's ctlw (main.c). A newline immediately behind the cursor goes on its
+// own, as with ctrl-U. Otherwise the run of non-word characters behind the
+// cursor goes and then the word behind that, and neither scan crosses a
+// newline — ctrl-W at the start of an indented line stops at the indent rather
+// than eating the line above.
+//
+// What counts as a word is dave's, not sam's. Sam's alnum() is everything
+// except the control characters, 0x7F–0xA0 and ASCII punctuation, so `±` and
+// `«` are word characters to it. Dave uses buffer.IsWordRune, which is what
+// ctrl-arrow word motion and double-click already use; being consistent inside
+// dave matters more here than reproducing sam's table.
+func WordBackBound(buf *buffer.Buffer, pos int) int {
+	if pos <= 0 {
+		return 0
+	}
+	p := pos - 1
+	if buf.RuneAt(p) == '\n' {
+		return p
+	}
+	for p >= 0 && !isWordChar(buf, p) {
+		if buf.RuneAt(p) == '\n' {
+			return p + 1
+		}
+		p--
+	}
+	if p < 0 {
+		return 0
+	}
+	for p > 0 && isWordChar(buf, p-1) {
+		p--
+	}
+	return p
+}
+
+// deleteBack removes the text between bound(dot) and dot — or the selection, if
+// there is one, which is what samterm does with any key over a selection
+// (main.c type(), the `a != l->p1` branch cuts and returns). One ApplyEdit, so
+// it is one undo step and does not join the typing run: canJoin only joins a
+// single inserted rune.
+func deleteBack(sess *cmd.Session, f *file.File, bound func(*buffer.Buffer, int) int) {
+	if err := f.EnsureLoaded(); err != nil {
+		return
+	}
+	dot := f.Dot()
+	if dot.Start != dot.End {
+		sess.ApplyEdit(f, dot.Start, dot.End-dot.Start, "")
+		f.SetDot(buffer.Range{Start: dot.Start, End: dot.Start})
+		return
+	}
+	start := bound(f.Buffer(), dot.Start)
+	if start >= dot.Start {
+		return
+	}
+	sess.ApplyEdit(f, start, dot.Start-start, "")
+	f.SetDot(buffer.Range{Start: start, End: start})
+}
+
 func deleteForward(sess *cmd.Session, f *file.File) {
 	if err := f.EnsureLoaded(); err != nil {
 		return

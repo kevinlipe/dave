@@ -127,6 +127,7 @@ func (cw *CmdWindow) HandleKey(ev *sdl.KeyboardEvent, sess *cmd.Session) error {
 		return nil
 	}
 	sym := ev.Keysym.Sym
+	ctrl := ev.Keysym.Mod&sdl.KMOD_CTRL != 0
 	switch sym {
 	case sdl.K_RETURN, sdl.K_KP_ENTER:
 		if err := cw.execute(sess); err != nil {
@@ -145,8 +146,35 @@ func (cw *CmdWindow) HandleKey(ev *sdl.KeyboardEvent, sess *cmd.Session) error {
 	case sdl.K_END:
 		n := cw.buf.Len()
 		cw.dot = buffer.Range{Start: n, End: n}
+	// ctrl-U and ctrl-W work here too: sam's command window is a Text like any
+	// other, and its keys are the same ones.
+	case sdl.K_u:
+		if ctrl {
+			cw.deleteBackTo(LineStartBound)
+		}
+	case sdl.K_w:
+		if ctrl {
+			cw.deleteBackTo(WordBackBound)
+		}
 	}
 	return nil
+}
+
+// deleteBackTo removes the text between bound(dot) and dot, or the selection if
+// there is one — the command window's half of input.deleteBack. Its buffer
+// holds the output log above the line being typed, and nothing stops a deletion
+// running up into it, which is how backspace has always behaved here.
+func (cw *CmdWindow) deleteBackTo(bound func(*buffer.Buffer, int) int) {
+	if cw.dot.Start != cw.dot.End {
+		cw.deleteSelection()
+		return
+	}
+	start := bound(cw.buf, cw.dot.Start)
+	if start >= cw.dot.Start {
+		return
+	}
+	cw.buf.Delete(start, cw.dot.Start-start)
+	cw.dot = buffer.Range{Start: start, End: start}
 }
 
 // HandleText inserts printable text at the cursor.

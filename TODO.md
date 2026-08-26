@@ -300,17 +300,14 @@ neither of. Escape has been brought in line with sam — it selects the
 run just typed — and the rescue file is a decision not to, recorded
 there with the reasoning.
 
-Two entries in that table read as omissions rather than decisions, and
-are what is left open here:
+One entry in that table is left open. **Autoindent**, 9front's samterm
+`-a`, and **tabs as spaces**, its `-i`. Dave has `tab_width` for display
+only: a typed tab is a tab in the buffer, and Enter starts a line at
+column zero. Both would be config keys rather than flags, given dave has
+a config file and sam does not.
 
-- **ctrl-U and ctrl-W**, delete to line start and delete word back. In
-  both sam trees and in every Unix line discipline; dave has neither.
-- **Autoindent**, 9front's `-a`, and **tabs as spaces**, its `-i`. Dave
-  has `tab_width` for display only. Both are natural config keys rather
-  than flags, given dave has a config file and sam does not.
-
-Neither should start before the `CmdWindow`/`Pane` merge above: they
-land in the code that merge is going to move.
+It should not start before the `CmdWindow`/`Pane` merge above: it lands
+in the code that merge is going to move.
 
 ### Not looked at
 

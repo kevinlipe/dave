@@ -154,7 +154,7 @@ Samterm's arrows and Home/End move the *window* and Dave's move *dot*.
 | Home / End | Scroll to the start / end of the file | Move dot to the start / end of the line; Ctrl for the file |
 | ← / → | Move dot one character | Move dot one character; Shift extends, Ctrl moves by word |
 | Ctrl-A / Ctrl-E | Move dot to the start / end of the line | — (Home and End) |
-| Ctrl-U / Ctrl-W | Delete to the line start / delete the word back | — |
+| Ctrl-U / Ctrl-W | Delete to the line start / delete the word back | The same |
 | Ctrl-B | Jump to the command window | — (Ctrl-K) |
 | Ctrl-G | Cycle a file's windows | — (a file has one pane) |
 | Ctrl-K | — | Cycle focus: command window → pane → pane |
@@ -170,8 +170,14 @@ a click, Home, End, or a second Escape ends it. Dave used to bind Escape to
 "focus the command window" and had nothing like this; Ctrl-K does the focus job
 better, since it goes both ways.
 
-Ctrl-U and Ctrl-W are simply absent, and that is the one entry in this table
-that reads more like an omission than a decision.
+Ctrl-U and Ctrl-W follow Sam's rules, including the two that are easy to miss.
+A cursor sitting immediately after a newline deletes just that newline, joining
+the line to the one above; and otherwise neither scan crosses a newline, so
+Ctrl-W at the start of an indented line stops at the indent. What counts as a
+word is Dave's own, though: Sam's `alnum()` is everything except the control
+characters, `0x7F`–`0xA0` and ASCII punctuation, so `±` and `«` are word
+characters to it, while Dave uses the same letters-digits-underscore rule that
+Ctrl-arrow motion and double-click already use.
 
 Autoindent and tabs-as-spaces are 9front's `-a` and `-i` flags to samterm, and
 they are not implemented at all. Dave's `tab_width` affects display only: a
@@ -202,7 +208,9 @@ Shift with button 3 also opens the edit menu, for a two-button mouse.
 The chords — button 1 held, then 2 to cut and 3 to paste — are 9front's. They
 exist in plan9port's source but are compiled out, with the comment `it causes
 deadlocks`, so the Sam that runs on the platforms Dave targets does not have
-them either. Dave does not implement them.
+them either. Dave follows plan9port here and has no chords: the button-2 menu
+and the keyboard both reach cut and paste, and a gesture that depends on
+holding one button while clicking another is worth less than it costs.
 
 ### The snarf buffer is the system clipboard
 
