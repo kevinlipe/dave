@@ -18,15 +18,10 @@ import (
 )
 
 func main() {
-	args := os.Args[1:]
-	headless := false
-	var files []string
-	for _, a := range args {
-		if a == "-d" {
-			headless = true
-		} else {
-			files = append(files, a)
-		}
+	headless, files, err := parseArgs(os.Args[1:])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "dave: %v\n", err)
+		usage()
 	}
 
 	cfg, err := config.Load()
@@ -45,6 +40,14 @@ func main() {
 	for _, name := range files {
 		f := file.NewNamed(name)
 		s.AddFile(f)
+	}
+	// Sam's startup ends `else if(!downloaded) newfile()`: given no file
+	// arguments and no terminal to hand the window to, it opens one empty
+	// nameless buffer, which is what makes `sam -d` on its own a scratch pad.
+	// The condition is the interesting half — sam does not do it when it is
+	// downloaded, so the window still opens with nothing in it.
+	if len(files) == 0 && headless {
+		s.AddFile(file.New())
 	}
 	// The first file in the list is the current one, as in sam
 	// (`current(file.filepptr[0])`). The list is kept in name order, so this is
@@ -72,6 +75,43 @@ func main() {
 		fmt.Fprintln(os.Stderr, "dave:", err)
 		os.Exit(1)
 	}
+}
+
+// usage prints the invocation line and exits, as sam's usage() does.
+func usage() {
+	fmt.Fprintln(os.Stderr, "usage: dave [-d] [file ...]")
+	os.Exit(1)
+}
+
+// parseArgs splits the command line into flags and file names the way sam's
+// ARGBEGIN does. Flags come first and the scan stops at the first argument that
+// is not one, so a name after that is a name whatever it looks like: `dave f -d`
+// opens two files, one of them called `-d`, exactly as sam would. A lone `-` is
+// a file name; `--` ends the flags and is not a file.
+//
+// Dave's only flag is -d. An unrecognised one is an error and not a file name,
+// which is the whole point of doing this properly: the old loop compared each
+// argument against the literal "-d" and took everything else as a file, so
+// `dave -x` opened a buffer called `-x` that `w` would have written.
+func parseArgs(args []string) (headless bool, files []string, err error) {
+	i := 0
+	for ; i < len(args); i++ {
+		a := args[i]
+		if len(a) < 2 || a[0] != '-' {
+			break
+		}
+		if a == "--" {
+			i++
+			break
+		}
+		for _, c := range a[1:] {
+			if c != 'd' {
+				return false, nil, fmt.Errorf("unknown flag %c", c)
+			}
+			headless = true
+		}
+	}
+	return headless, args[i:], nil
 }
 
 // runGUI opens the SDL window and runs the main event loop.
