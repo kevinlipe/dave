@@ -30,6 +30,14 @@ type Handler struct {
 	doubleTimer  uint32
 	lastClickPos int
 	lastClickCP  int
+
+	// typeEsc is samterm's typeesc: where the run typed since the last Escape
+	// began, so Escape can select it. -1 is "no run open". typeEscPane records
+	// where it was typed, indexed like activePane — samterm's is one global
+	// because its Escape always acts on the current window, and dave has to
+	// notice that focus moved instead.
+	typeEsc     int
+	typeEscPane int
 }
 
 // NewHandler creates an input handler wired to the given session and UI.
@@ -41,6 +49,7 @@ func NewHandler(sess *cmd.Session, cmdWin *CmdWindow, face render.Face, pal rend
 		pal:             pal,
 		activePane:      -1, // start with command window focused
 		currentFilePane: -1, // no file pane selected yet
+		typeEsc:         -1, // nothing typed yet
 	}
 }
 
@@ -97,9 +106,13 @@ func (h *Handler) HandleKey(ev *sdl.KeyboardEvent, winW, winH int32) error {
 	ctrl := mod&sdl.KMOD_CTRL != 0
 	shift := mod&sdl.KMOD_SHIFT != 0
 
-	// Escape: focus command window.
+	// Escape selects the run typed since the last Escape, as samterm does
+	// (main.c type(), `if(c==ESC && typeesc>=0)`): type, press Escape, and what
+	// you typed is dot and ready for a command. Dave used to bind it to "focus
+	// the command window", which ctrl-K below already does — and does better,
+	// since it goes both ways.
 	if sym == sdl.K_ESCAPE {
-		h.activePane = -1
+		h.selectTypedRun()
 		return nil
 	}
 
@@ -110,7 +123,18 @@ func (h *Handler) HandleKey(ev *sdl.KeyboardEvent, winW, winH int32) error {
 	}
 
 	if h.activePane < 0 {
-		return h.cmdWin.HandleKey(ev, h.session)
+		// The command window types too — samterm treats it as one more Text —
+		// so the run bookkeeping applies there as well. Enter runs the command
+		// and clears the input line, which leaves no run to select.
+		switch sym {
+		case sdl.K_RETURN, sdl.K_KP_ENTER, sdl.K_HOME, sdl.K_END:
+			h.typeEsc = -1
+		}
+		err := h.cmdWin.HandleKey(ev, h.session)
+		if sym == sdl.K_BACKSPACE || sym == sdl.K_DELETE {
+			h.clampTypedRun(h.cmdWin.Dot().Start)
+		}
+		return err
 	}
 
 	p := h.ActivePane()
@@ -121,18 +145,22 @@ func (h *Handler) HandleKey(ev *sdl.KeyboardEvent, winW, winH int32) error {
 
 	switch sym {
 	case sdl.K_RETURN, sdl.K_KP_ENTER:
+		h.openTypedRun(f.Dot())
 		insertText(h.session, f, "\n")
 		p.EnsureVisible(f.Dot().Start)
 
 	case sdl.K_BACKSPACE:
 		deleteBackward(h.session, f)
+		h.clampTypedRun(f.Dot().Start)
 		p.EnsureVisible(f.Dot().Start)
 
 	case sdl.K_DELETE:
 		deleteForward(h.session, f)
+		h.clampTypedRun(f.Dot().Start)
 		p.EnsureVisible(f.Dot().Start)
 
 	case sdl.K_TAB:
+		h.openTypedRun(f.Dot())
 		insertText(h.session, f, "\t")
 		p.EnsureVisible(f.Dot().Start)
 
@@ -158,7 +186,11 @@ func (h *Handler) HandleKey(ev *sdl.KeyboardEvent, winW, winH int32) error {
 	case sdl.K_DOWN:
 		moveDotVisualLine(f, p, +1, shift, winH)
 
+	// Home and End do the job samterm gives ctrl-A and ctrl-E, and samterm
+	// flushes the typed run on those two — unlike the arrows and the page
+	// keys, which flush the undo run but leave typeesc alone.
 	case sdl.K_HOME:
+		h.typeEsc = -1
 		if ctrl {
 			moveDotAbsolute(f, 0, shift)
 		} else {
@@ -167,6 +199,7 @@ func (h *Handler) HandleKey(ev *sdl.KeyboardEvent, winW, winH int32) error {
 		p.EnsureVisible(f.Dot().Start)
 
 	case sdl.K_END:
+		h.typeEsc = -1
 		if ctrl {
 			moveDotAbsolute(f, f.Len(), shift)
 		} else {
@@ -188,6 +221,7 @@ func (h *Handler) HandleKey(ev *sdl.KeyboardEvent, winW, winH int32) error {
 // HandleText processes an SDL_TEXTINPUT event (printable character input).
 func (h *Handler) HandleText(ev *sdl.TextInputEvent) {
 	if h.activePane < 0 {
+		h.openTypedRun(h.cmdWin.Dot())
 		h.cmdWin.HandleText(ev)
 		return
 	}
@@ -195,8 +229,58 @@ func (h *Handler) HandleText(ev *sdl.TextInputEvent) {
 	if p == nil || p.File == nil {
 		return
 	}
+	h.openTypedRun(p.File.Dot())
 	insertText(h.session, p.File, ev.GetText())
 	p.EnsureVisible(p.File.Dot().Start)
+}
+
+// openTypedRun records where a run of typing began, if one is not open here
+// already. samterm keeps typeesc from the first character until something
+// flushes it, which is what lets Escape reach back over many keystrokes.
+// Typing over a selection starts a fresh run: samterm flushes before it cuts
+// (main.c type(), the `a != l->p1` branch).
+func (h *Handler) openTypedRun(dot buffer.Range) {
+	if dot.Start != dot.End || h.typeEsc < 0 || h.typeEscPane != h.activePane {
+		h.typeEsc, h.typeEscPane = dot.Start, h.activePane
+	}
+}
+
+// clampTypedRun pulls the run's start back when a deletion has passed it, so
+// Escape cannot select text that is no longer there. samterm does the same
+// after a backspace, ctrl-U or ctrl-W (`if(typeesc >= l->p0) typeesc = l->p0`).
+func (h *Handler) clampTypedRun(pos int) {
+	if h.typeEsc > pos {
+		h.typeEsc = pos
+	}
+}
+
+// selectTypedRun is Escape: dot becomes the text typed since the last Escape,
+// and the run ends. With no run open it does nothing, which is samterm's
+// behaviour too — its Escape is guarded by `typeesc >= 0`.
+func (h *Handler) selectTypedRun() {
+	if h.typeEsc < 0 || h.typeEscPane != h.activePane {
+		return
+	}
+	start := h.typeEsc
+	h.typeEsc = -1
+
+	if h.activePane < 0 {
+		h.cmdWin.ExtendDrag(start, h.cmdWin.Dot().Start)
+		return
+	}
+	p := h.ActivePane()
+	if p == nil || p.File == nil {
+		return
+	}
+	f := p.File
+	end := f.Dot().Start
+	if end > f.Len() {
+		end = f.Len()
+	}
+	if start > end {
+		start = end
+	}
+	f.SetDot(buffer.Range{Start: start, End: end})
 }
 
 // --- Mouse -------------------------------------------------------------------
@@ -206,6 +290,9 @@ func (h *Handler) HandleText(ev *sdl.TextInputEvent) {
 // cmdRect is the command window's bounding rect.
 func (h *Handler) HandleMouseDown(ev *sdl.MouseButtonEvent, cmdRect sdl.Rect, paneRects []sdl.Rect) {
 	x, y := ev.X, ev.Y
+	// Any button ends the typed run, as samterm does before it looks at what
+	// the button meant (`if(mousep->buttons) flushtyping(1)`).
+	h.typeEsc = -1
 
 	switch ev.Button {
 	case sdl.BUTTON_LEFT:
