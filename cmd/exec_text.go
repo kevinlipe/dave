@@ -81,13 +81,13 @@ func (s *Session) execEqual(f *file.File, dot buffer.Range, flag string) error {
 	// The name as given. 9front's printposn prefixes the working directory when
 	// the name is relative; dave does not — see doc/sam-differences.md.
 	if name := f.Name(); name != "" {
-		s.printf("%s:", name)
+		s.dprint("%s:", name)
 	}
 	if flag == "#" {
 		if dot.IsNull() {
-			s.printf("#%d\n", dot.Start)
+			s.dprint("#%d\n", dot.Start)
 		} else {
-			s.printf("#%d,#%d\n", dot.Start, dot.End)
+			s.dprint("#%d,#%d\n", dot.Start, dot.End)
 		}
 		return nil
 	}
@@ -104,9 +104,9 @@ func (s *Session) execEqual(f *file.File, dot buffer.Range, flag string) error {
 	}
 	line2 := buf.LineNumber(endPos)
 	if dot.IsNull() {
-		s.printf("%d\n", line1)
+		s.dprint("%d\n", line1)
 	} else {
-		s.printf("%d,%d\n", line1, line2)
+		s.dprint("%d,%d\n", line1, line2)
 	}
 	return nil
 }

@@ -56,14 +56,14 @@ func main() {
 
 	// Process each input file, or stdin if none given.
 	if len(args) == 0 {
-		if err := processReader(os.Stdout, os.Stdin, script, *suppress); err != nil {
+		if err := processReader(os.Stdout, os.Stderr, os.Stdin, script, *suppress); err != nil {
 			fmt.Fprintf(os.Stderr, "sdave: %v\n", err)
 			os.Exit(1)
 		}
 		return
 	}
 	for _, name := range args {
-		if err := processFile(os.Stdout, name, script, *suppress); err != nil {
+		if err := processFile(os.Stdout, os.Stderr, name, script, *suppress); err != nil {
 			fmt.Fprintf(os.Stderr, "sdave: %s: %v\n", name, err)
 			os.Exit(1)
 		}
@@ -71,18 +71,18 @@ func main() {
 }
 
 // processFile loads name from disk, runs script against it, and writes the
-// result to w unless suppress is true.
-func processFile(w io.Writer, name, script string, suppress bool) error {
+// result to w unless suppress is true. Diagnostics go to diag.
+func processFile(w, diag io.Writer, name, script string, suppress bool) error {
 	f := file.NewNamed(name)
 	if err := f.EnsureLoaded(); err != nil {
 		return err
 	}
-	return process(w, f, script, suppress)
+	return process(w, diag, f, script, suppress)
 }
 
 // processReader reads all of r into a fresh buffer, runs script against it,
 // and writes the result to w unless suppress is true.
-func processReader(w io.Writer, r io.Reader, script string, suppress bool) error {
+func processReader(w, diag io.Writer, r io.Reader, script string, suppress bool) error {
 	data, err := io.ReadAll(r)
 	if err != nil {
 		return fmt.Errorf("reading stdin: %w", err)
@@ -90,18 +90,26 @@ func processReader(w io.Writer, r io.Reader, script string, suppress bool) error
 	f := file.New()
 	content := f.DecodeContent(string(data))
 	f.Buffer().Insert(0, content)
-	return process(w, f, script, suppress)
+	return process(w, diag, f, script, suppress)
 }
 
 // process runs script against f in a fresh session, then writes the buffer
-// to w unless suppress is true.
+// to w unless suppress is true. What the script prints with p joins it there;
+// everything else — menu lines, `=`, `n`, warnings — goes to diag.
 //
-// The destination is a parameter rather than os.Stdout so the whole pipeline
-// is testable; cmd.NewSession already takes a writer for the same reason.
+// That split is the whole of what `ssam` is. Sam already writes on two streams
+// in -d mode, display() on fd 1 and dprint on fd 2, and ssam's contribution is
+// `>[2]/dev/null` around it. sdave keeps the streams apart the same way but
+// sends the second to standard error rather than dropping it, so a warning the
+// script provoked is still there to read.
+//
+// Both destinations are parameters rather than the os files so the whole
+// pipeline is testable; cmd.NewSession already takes a writer for the same
+// reason.
 //
 // Like ssam, the initial dot is set to the whole file so that commands like
 // s/re/repl/ work without an explicit address.
-func process(w io.Writer, f *file.File, script string, suppress bool) error {
+func process(w, diag io.Writer, f *file.File, script string, suppress bool) error {
 	// Set dot to the whole file before running the script.
 	f.SetDot(buffer.Range{Start: 0, End: f.Len()})
 
@@ -110,10 +118,7 @@ func process(w io.Writer, f *file.File, script string, suppress bool) error {
 	// streams out in gap segments, and a CRLF file a line at a time.
 	bw := bufio.NewWriter(w)
 	s := cmd.NewSession(bw)
-	// The one stream is the pipeline, so the file announcements sam prints
-	// when it reads a file stay off it: ssam gets the same effect by sending
-	// sam's terminal output to /dev/null.
-	s.Announce = false
+	s.Diag = diag
 	s.AddFile(f)
 	err := s.ExecString(script)
 	if err == nil && !suppress {

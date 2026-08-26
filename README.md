@@ -87,6 +87,13 @@ sdave -n ',x/TODO/ p' *.go             # print just the matches
 sdave 'y/[a-zA-Z]+/ c/\n/'             # one word per line
 ```
 
+Standard output carries the text and nothing else: the buffer, and whatever
+`p` printed. Menu lines, `=`, `n`, the `!` that marks a finished shell command
+and every warning go to standard error, so a script can report as it works
+without corrupting the pipeline. `dave -d` splits the two the same way, which
+is what `sam -d` does — `ssam` is a shell script that discards the second
+stream, where `sdave` leaves it for you to read or redirect.
+
 ## License
 
 0BSD. See `LICENSE` in the repo.

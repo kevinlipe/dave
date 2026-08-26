@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -22,7 +23,7 @@ func run(t *testing.T, script, content string, suppress bool) (out, buf string, 
 	var w strings.Builder
 	f := file.New()
 	f.Buffer().Insert(0, content)
-	err = process(&w, f, script, suppress)
+	err = process(&w, io.Discard, f, script, suppress)
 	return w.String(), f.String(), err
 }
 
@@ -40,14 +41,19 @@ func write(t *testing.T, name, content string) string {
 
 // The initial dot is the whole file, which is what lets an unaddressed
 // s/re/repl/ work at all — the ssam behaviour the comment on process promises.
+//
+// Read off the diagnostic stream rather than through run: `=` is one of the
+// commands sam prints with dprint, so it never reaches the data stream.
 func TestProcessSetsDotToWholeFile(t *testing.T) {
-	// "=" reports dot as a line range; over a 3-line file that is 1,3.
-	out, _, err := run(t, "=", "a\nb\nc\n", true)
-	if err != nil {
+	f := file.New()
+	f.Buffer().Insert(0, "a\nb\nc\n")
+	var w, diag strings.Builder
+	if err := process(&w, &diag, f, "=", true); err != nil {
 		t.Fatalf("process: %v", err)
 	}
-	if out != "1,3\n" {
-		t.Errorf("dot at start = %q, want %q (the whole file)", out, "1,3\n")
+	// "=" reports dot as a line range; over a 3-line file that is 1,3.
+	if diag.String() != "1,3\n" {
+		t.Errorf("dot at start = %q, want %q (the whole file)", diag.String(), "1,3\n")
 	}
 }
 
@@ -161,7 +167,7 @@ func TestProcessReader(t *testing.T) {
 		{"x\r\ny\r\n", "s/x/X/", "X\r\ny\r\n", "CRLF on stdin round trips"},
 	} {
 		var w strings.Builder
-		if err := processReader(&w, strings.NewReader(c.in), c.script, false); err != nil {
+		if err := processReader(&w, io.Discard, strings.NewReader(c.in), c.script, false); err != nil {
 			t.Errorf("%s: %v", c.what, err)
 			continue
 		}
@@ -176,7 +182,7 @@ func TestProcessReader(t *testing.T) {
 func TestProcessFileReadsFromDiskAndWritesToTheWriter(t *testing.T) {
 	p := write(t, "in.txt", "the quick fox\n")
 	var w strings.Builder
-	if err := processFile(&w, p, "s/quick/slow/", false); err != nil {
+	if err := processFile(&w, io.Discard, p, "s/quick/slow/", false); err != nil {
 		t.Fatalf("processFile: %v", err)
 	}
 	if want := "the slow fox\n"; w.String() != want {
@@ -192,22 +198,31 @@ func TestProcessFileReadsFromDiskAndWritesToTheWriter(t *testing.T) {
 	}
 }
 
-// Nothing but the text may reach sdave's stream. Sam announces every file it
-// reads with a menu line — on the terminal, which is the stream `ssam` sends to
-// /dev/null — and sdave has one writer, so the announcement has to be turned
-// off rather than merely routed elsewhere. `B` is the case the startup path
-// does not cover: it reads a second file part-way through the script.
-func TestProcessAnnouncesNothing(t *testing.T) {
+// Nothing but the text may reach sdave's data stream. Sam announces every file
+// it reads with a menu line, prints `=` and `n` and its warnings, and all of
+// that goes to fd 2 — the stream `ssam` sends to /dev/null. sdave keeps the
+// same split and sends the second one to diag, so a script that prints a menu
+// line, a position and a warning still leaves the pipeline holding only text.
+//
+// `B` is the case the startup path does not cover: it reads a second file
+// part-way through the script, and announces it.
+func TestProcessSplitsTheTwoStreams(t *testing.T) {
 	other := write(t, "other.txt", "second\n")
 	p := write(t, "in.txt", "first\n")
-	var w strings.Builder
-	if err := processFile(&w, p, "B "+other+"\n,p", false); err != nil {
+	var w, diag strings.Builder
+	script := "B " + other + "\n,p\n,=#\nn"
+	if err := processFile(&w, &diag, p, script, false); err != nil {
 		t.Fatalf("processFile: %v", err)
 	}
 	// ,p prints the file B made current; the dump at the end is still the file
 	// sdave was given, which is the one it edits.
 	if want := "second\nfirst\n"; w.String() != want {
-		t.Errorf("wrote %q, want %q — a menu line has leaked into the stream", w.String(), want)
+		t.Errorf("data stream = %q, want %q", w.String(), want)
+	}
+	for _, want := range []string{p, other, "#0,#7"} {
+		if !strings.Contains(diag.String(), want) {
+			t.Errorf("diagnostic stream = %q, want it to mention %q", diag.String(), want)
+		}
 	}
 }
 
@@ -224,7 +239,7 @@ func TestProcessFileAppendsPerFile(t *testing.T) {
 		if err := os.WriteFile(p, []byte(f.content), 0o644); err != nil {
 			t.Fatalf("writing %s: %v", p, err)
 		}
-		if err := processFile(&w, p, "s/^/> /", false); err != nil {
+		if err := processFile(&w, io.Discard, p, "s/^/> /", false); err != nil {
 			t.Fatalf("processFile %s: %v", f.name, err)
 		}
 	}
@@ -238,7 +253,7 @@ func TestProcessFileAppendsPerFile(t *testing.T) {
 func TestProcessFileMissingFileIsEmptyNotAnError(t *testing.T) {
 	var w strings.Builder
 	missing := filepath.Join(t.TempDir(), "nope.txt")
-	if err := processFile(&w, missing, "", false); err != nil {
+	if err := processFile(&w, io.Discard, missing, "", false); err != nil {
 		t.Errorf("processFile on a missing file: %v, want no error", err)
 	}
 	if w.String() != "" {
@@ -255,7 +270,7 @@ func TestProcessFileReportsUnreadableFiles(t *testing.T) {
 		t.Fatalf("chmod: %v", err)
 	}
 	var w strings.Builder
-	err := processFile(&w, p, "", false)
+	err := processFile(&w, io.Discard, p, "", false)
 	if err == nil {
 		t.Fatal("processFile on an unreadable file succeeded, want an error")
 	}
@@ -271,7 +286,7 @@ func TestProcessFileReportsUnreadableFiles(t *testing.T) {
 func TestProcessFilePreservesCRLFLineEndings(t *testing.T) {
 	p := write(t, "crlf.txt", "a\r\nb\r\n")
 	var w strings.Builder
-	if err := processFile(&w, p, "s/a/A/", false); err != nil {
+	if err := processFile(&w, io.Discard, p, "s/a/A/", false); err != nil {
 		t.Fatalf("processFile: %v", err)
 	}
 	if got, want := w.String(), "A\r\nb\r\n"; got != want {
@@ -283,7 +298,7 @@ func TestProcessFilePreservesCRLFLineEndings(t *testing.T) {
 func TestProcessFileLeavesLFAlone(t *testing.T) {
 	p := write(t, "lf.txt", "a\nb\n")
 	var w strings.Builder
-	if err := processFile(&w, p, "s/a/A/", false); err != nil {
+	if err := processFile(&w, io.Discard, p, "s/a/A/", false); err != nil {
 		t.Fatalf("processFile: %v", err)
 	}
 	if got, want := w.String(), "A\nb\n"; got != want {

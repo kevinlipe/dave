@@ -36,6 +36,12 @@ func main() {
 	}
 
 	s := cmd.NewSession(os.Stdout)
+	// Sam's two streams: display() writes the text a command produced on fd 1,
+	// dprint writes menu lines, `=`, `n` and the warnings on fd 2. -d is the
+	// mode where that is visible, and it is what lets `sdave` — and a shell
+	// pipeline around `dave -d` — take stdout as data. runGUI puts both in the
+	// command window instead, further down.
+	s.Diag = os.Stderr
 	for _, name := range files {
 		f := file.NewNamed(name)
 		s.AddFile(f)

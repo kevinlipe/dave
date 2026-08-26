@@ -19,8 +19,22 @@ import (
 type Session struct {
 	Files   []*file.File
 	Current *file.File
-	Output  io.Writer // where p, =, n, etc. write their output
 	Undo    *UndoLog
+
+	// Sam writes on two streams and dave keeps them apart. Output carries the
+	// text a command produces — p, and the structural commands that print
+	// through it — which is sam's display() and goes to fd 1. Diag carries
+	// everything else: menu lines, `=`, `n`, the `!` acknowledgement and every
+	// warning, all of which sam prints with dprint, which goes to fd 2.
+	//
+	// The split is what makes a stream editor possible over the same engine:
+	// sdave sends Diag to stderr and Output to the pipeline, which is what
+	// `ssam` gets by running `sam -d ... >[2]/dev/null`. In the window the
+	// distinction collapses — sam's termwrite puts both in the command window
+	// when it is downloaded — so the GUI points both at the same writer, and
+	// so does a caller that leaves Diag nil.
+	Output io.Writer
+	Diag   io.Writer
 
 	// OpenRequest is set by the B command to signal the GUI to open this file
 	// in a pane when no pane is currently open. The GUI clears it after handling.
@@ -40,13 +54,6 @@ type Session struct {
 	inFileLoop bool
 	newCurrent bool
 
-	// Announce says whether a file read from disk is reported with its menu
-	// line, as sam's load() does. sdave clears it: sam prints that on the
-	// terminal, which is the stream `ssam` sends to /dev/null, and sdave has
-	// only the one writer — anything it prints lands in the pipeline. See
-	// TODO.md, "dave merges sam's two output streams".
-	Announce bool
-
 	// lastShell is the most recent shell command text, shared by <, >, | and !.
 	// An empty argument reruns it, as sam does with plan9cmd.
 	lastShell string
@@ -57,7 +64,7 @@ func NewSession(out io.Writer) *Session {
 	if out == nil {
 		out = os.Stdout
 	}
-	return &Session{Output: out, Undo: newUndoLog(), Announce: true}
+	return &Session{Output: out, Diag: out, Undo: newUndoLog()}
 }
 
 // AddFile adds f to the session's file list and makes it current.
@@ -78,7 +85,7 @@ func (s *Session) sortFiles(added *file.File) {
 	if added != nil {
 		for _, f := range s.Files {
 			if f != added && f.Name() != "" && f.Name() == added.Name() {
-				s.printf("?warning: duplicate file name %s\n", added.Name())
+				s.dprint("?warning: duplicate file name %s\n", added.Name())
 				break
 			}
 		}
@@ -148,17 +155,12 @@ func (s *Session) reportLoad(f *file.File) bool {
 	if f == nil {
 		return false
 	}
-	// Both flags are consumed either way: they say what the last read did, and
-	// a report that is not printed still happened.
-	loaded, nulls := f.JustLoaded(), f.TookNulls()
-	if !s.Announce {
-		return loaded
-	}
+	loaded := f.JustLoaded()
 	if loaded {
-		s.printf("%s\n", f.MenuLine(f == s.Current, false))
+		s.dprint("%s\n", f.MenuLine(f == s.Current, false))
 	}
-	if nulls {
-		s.printf("?warning: null characters elided\n")
+	if f.TookNulls() {
+		s.dprint("?warning: null characters elided\n")
 	}
 	return loaded
 }
@@ -175,9 +177,28 @@ func (s *Session) reportLoads() {
 	}
 }
 
-// printf writes a formatted string to the session output.
+// printf writes text a command produced to the session output — sam's
+// display(), which writes on fd 1. Only p and the structural commands that
+// print through it reach here.
 func (s *Session) printf(format string, args ...any) {
 	fmt.Fprintf(s.Output, format, args...)
+}
+
+// dprint writes to the session's diagnostic stream, and carries sam's name for
+// it: everything sam prints with dprint rather than through display(), which is
+// fd 2 when it is not downloaded. A session left without a Diag writer sends it
+// to Output, which is what the window wants.
+func (s *Session) dprint(format string, args ...any) {
+	fmt.Fprintf(s.diag(), format, args...)
+}
+
+// diag is the diagnostic stream, falling back to Output for a session that was
+// built without one.
+func (s *Session) diag() io.Writer {
+	if s.Diag == nil {
+		return s.Output
+	}
+	return s.Diag
 }
 
 // ---- Command execution context ----------------------------------------------
@@ -354,7 +375,7 @@ func (s *Session) tryQuit(force bool) error {
 	for i, f := range modified {
 		names[i] = f.Name()
 	}
-	fmt.Fprintf(s.Output, "changed files: %s\n", strings.Join(names, ", "))
+	s.dprint("changed files: %s\n", strings.Join(names, ", "))
 	s.quitPending = true
 	return nil
 }

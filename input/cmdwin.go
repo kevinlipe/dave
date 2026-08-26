@@ -286,11 +286,14 @@ func (cw *CmdWindow) execute(sess *cmd.Session) error {
 		return nil
 	}
 
+	// Both streams land in the command window, which is what sam does once it
+	// is downloaded: termwrite puts dprint's output there too, so there is
+	// nowhere for a diagnostic to go but the window.
 	var sb strings.Builder
-	origOut := sess.Output
-	sess.Output = &sb
+	origOut, origDiag := sess.Output, sess.Diag
+	sess.Output, sess.Diag = &sb, &sb
 	err := sess.ExecString(cmdText)
-	sess.Output = origOut
+	sess.Output, sess.Diag = origOut, origDiag
 
 	output := sb.String()
 	if err != nil && err != cmd.ErrQuit {

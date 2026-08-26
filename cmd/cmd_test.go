@@ -556,6 +556,55 @@ func TestMissingBodyRunsTheDefaultCommand(t *testing.T) {
 	}
 }
 
+// ---- the two output streams --------------------------------------------------
+
+// Sam writes on two streams and dave keeps them apart. display() puts the text
+// a command produced on fd 1 — p, and the structural commands that print
+// through it — and everything else goes through dprint to fd 2: menu lines,
+// `=`, `n`, the `!` after a shell command, and the warnings. The split is load
+// bearing for sdave, whose fd 1 is the pipeline, and it is what lets `dave -d`
+// be used from a shell the way `sam -d` can.
+//
+// Checked here rather than in sdave because the classification lives in this
+// package: a new command that prints has to choose a stream, and choosing the
+// wrong one is invisible in the window, where both land in the same place.
+func TestDiagnosticsGoToTheDiagnosticStream(t *testing.T) {
+	var out, diag strings.Builder
+	s := NewSession(&out)
+	s.Diag = &diag
+	f := file.NewNamed("f.txt")
+	f.Buffer().Insert(0, "alpha\nbeta\n")
+	s.AddFile(f)
+
+	assertNoError(t, s.ExecString("1p\n1=\n1=#\nn\n!true\nf"))
+	if want := "alpha\n"; out.String() != want {
+		t.Errorf("data stream = %q, want %q — only p prints there", out.String(), want)
+	}
+	for _, want := range []string{"f.txt:1,1\n", "f.txt:#0,#6\n", "!\n", " -. f.txt\n"} {
+		if !strings.Contains(diag.String(), want) {
+			t.Errorf("diagnostic stream = %q, want it to contain %q", diag.String(), want)
+		}
+	}
+}
+
+// A session built without a diagnostic writer sends both to Output. That is the
+// window's case — sam's termwrite puts dprint's output in the command window
+// once it is downloaded, so there is nowhere else for it to go — and it is what
+// keeps every test that only looks at Output honest.
+func TestDiagFallsBackToOutput(t *testing.T) {
+	var out strings.Builder
+	s := NewSession(&out)
+	s.Diag = nil
+	f := file.NewNamed("f.txt")
+	f.Buffer().Insert(0, "alpha\n")
+	s.AddFile(f)
+
+	assertNoError(t, s.ExecString("1p\n1="))
+	if want := "alpha\nf.txt:1,1\n"; out.String() != want {
+		t.Errorf("merged stream = %q, want %q", out.String(), want)
+	}
+}
+
 // ---- Quit -------------------------------------------------------------------
 
 func TestQuitClean(t *testing.T) {

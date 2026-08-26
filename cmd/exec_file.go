@@ -14,7 +14,7 @@ import (
 func (s *Session) execN() error {
 	for _, f := range s.Files {
 		ml := f.MenuLine(f == s.Current, false)
-		s.printf("%s\n", ml)
+		s.dprint("%s\n", ml)
 	}
 	return nil
 }
@@ -50,10 +50,10 @@ func (s *Session) execB(arg string, ctx *execCtx) error {
 // reportCurrent prints the file's menu line, as sam does when b or B changes
 // the current file at top level.
 func (s *Session) reportCurrent(f *file.File, ctx *execCtx) {
-	if ctx == nil || ctx.nest > 0 || !s.Announce {
+	if ctx == nil || ctx.nest > 0 {
 		return
 	}
-	s.printf("%s\n", f.MenuLine(f == s.Current, false))
+	s.dprint("%s\n", f.MenuLine(f == s.Current, false))
 }
 
 func (s *Session) execBig(arg string, ctx *execCtx) error {
@@ -124,7 +124,7 @@ func (s *Session) execE(f *file.File, name string, ctx *execCtx) error {
 	}
 	newContent := f.DecodeContent(string(data))
 	if f.TookNulls() {
-		s.printf("?warning: null characters elided\n")
+		s.dprint("?warning: null characters elided\n")
 	}
 	oldLen := f.Len()
 	// Replace all old content with new content via transcript.
@@ -148,7 +148,7 @@ func (s *Session) execE(f *file.File, name string, ctx *execCtx) error {
 	f.SetDot(buffer.Range{})
 	// Sam reports e with the menu line and no count: edit() passes -1 to
 	// closeio for e, which suppresses the count, then calls filename(f).
-	s.printf("%s\n", f.MenuLine(f == s.Current, false))
+	s.dprint("%s\n", f.MenuLine(f == s.Current, false))
 	return nil
 }
 
@@ -168,7 +168,7 @@ func (s *Session) execR(f *file.File, dot buffer.Range, name string, ctx *execCt
 	f.SetDot(buffer.Range{Start: dot.Start, End: dot.Start + n})
 	// Just the count: sam's readio prints nothing, and closeio prints #n. The
 	// name belongs to w, whose writef prints it before creating the file.
-	s.printf("#%d\n", n)
+	s.dprint("#%d\n", n)
 	return nil
 }
 
@@ -194,7 +194,7 @@ func (s *Session) execW(f *file.File, dot buffer.Range, name string, ctx *execCt
 	if name == f.Name() && f.WriteStale() {
 		// A warning, not an error: sam prints it and returns without writing,
 		// leaving a loop that reaches other files to carry on.
-		s.printf("?warning: write might change good version of %s\n", name)
+		s.dprint("?warning: write might change good version of %s\n", name)
 		return nil
 	}
 	// The addressed range streams straight out of the buffer; WriteRange
@@ -210,14 +210,14 @@ func (s *Session) execW(f *file.File, dot buffer.Range, name string, ctx *execCt
 		f.MarkClean()
 		f.NoteWritten()
 	}
-	s.printf("%s: ", name)
+	s.dprint("%s: ", name)
 	if isNew {
-		s.printf("(new file) ")
+		s.dprint("(new file) ")
 	}
 	if dot.Len() > 0 && f.Buffer().RuneAt(dot.End-1) != '\n' {
-		s.printf("?warning: last char not newline\n")
+		s.dprint("?warning: last char not newline\n")
 	}
-	s.printf("#%d\n", dot.Len())
+	s.dprint("#%d\n", dot.Len())
 	return nil
 }
 
@@ -231,7 +231,7 @@ func (s *Session) execF(f *file.File, name string, ctx *execCtx) error {
 		f.SetName(name)
 		s.sortFiles(f)
 	}
-	s.printf("%s\n", f.MenuLine(f == s.Current, false))
+	s.dprint("%s\n", f.MenuLine(f == s.Current, false))
 	return nil
 }
 
@@ -259,7 +259,7 @@ func (s *Session) execCd(arg string) error {
 	if err := os.Chdir(dir); err != nil {
 		return fmt.Errorf("cd: %w", err)
 	}
-	s.printf("!\n")
+	s.dprint("!\n")
 
 	now, err := os.Getwd()
 	if err != nil {
