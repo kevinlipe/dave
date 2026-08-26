@@ -83,31 +83,36 @@ func (s *Session) execEqual(f *file.File, dot buffer.Range, flag string) error {
 	if name := f.Name(); name != "" {
 		s.dprint("%s:", name)
 	}
-	if flag == "#" {
-		if dot.IsNull() {
-			s.dprint("#%d\n", dot.Start)
-		} else {
-			s.dprint("#%d,#%d\n", dot.Start, dot.End)
+	// Sam's printposn prints both halves for a bare `=` — the line range, then
+	// "; ", then the character range — and only the second half for `=#`. Each
+	// half names its second number only when it differs from the first, so a
+	// one-line dot is `1; #0,#6` and not `1,1; #0,#6`.
+	if flag != "#" {
+		// The line-start table answers both of these without copying the file
+		// or scanning it, which matters because = is often the body of an x
+		// loop and so runs once per match.
+		buf := f.Buffer()
+		line1 := buf.LineNumber(dot.Start)
+		// For the end, use dot.End-1 so that a selection ending at a line
+		// boundary reports the last included line, not the next one. Sam gets
+		// there by counting newlines and then backing off when the range ends
+		// on one (`if(… filereadc(f, addr.r.p2-1)=='\n') --l2`).
+		endPos := dot.End
+		if endPos > dot.Start {
+			endPos--
 		}
-		return nil
+		line2 := buf.LineNumber(endPos)
+		s.dprint("%d", line1)
+		if line2 != line1 {
+			s.dprint(",%d", line2)
+		}
+		s.dprint("; ")
 	}
-	// The line-start table answers both of these without copying the file or
-	// scanning it, which matters because = is often the body of an x loop and
-	// so runs once per match.
-	buf := f.Buffer()
-	line1 := buf.LineNumber(dot.Start)
-	// For the end, use dot.End-1 so that a selection ending at a line boundary
-	// reports the last included line, not the next one.
-	endPos := dot.End
-	if endPos > dot.Start {
-		endPos--
+	s.dprint("#%d", dot.Start)
+	if dot.End != dot.Start {
+		s.dprint(",#%d", dot.End)
 	}
-	line2 := buf.LineNumber(endPos)
-	if dot.IsNull() {
-		s.dprint("%d\n", line1)
-	} else {
-		s.dprint("%d,%d\n", line1, line2)
-	}
+	s.dprint("\n")
 	return nil
 }
 

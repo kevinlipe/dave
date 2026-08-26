@@ -397,7 +397,7 @@ exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[4,7) ou
 === "="
   op="=" addr=false dest=false
   addr-> none
-exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[4,7) out="1,1\n" err=<nil>
+exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[4,7) out="1; #4,#7\n" err=<nil>
 
 === "=#"
   op="=" addr=false dest=false flag="#"
@@ -407,7 +407,7 @@ exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[4,7) ou
 === "1,2="
   op="=" addr=true dest=false
   addr-> [0,28)
-exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[4,7) out="1,2\n" err=<nil>
+exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[4,7) out="1,2; #0,#28\n" err=<nil>
 
 === "1,2=#"
   op="=" addr=true dest=false flag="#"

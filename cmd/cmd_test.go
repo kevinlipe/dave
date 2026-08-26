@@ -104,10 +104,24 @@ func TestPrint(t *testing.T) {
 
 // ---- Equal ------------------------------------------------------------------
 
+// A bare = reports both ranges, as sam's printposn does: the line range, then
+// "; ", then the character range. Each half names its second number only when it
+// differs from the first, so a dot on one line is "1" and not "1,1". Dave used
+// to print the line half alone and to print it as a pair whenever dot was not
+// null, which is two mistakes in one line of output.
 func TestEqual(t *testing.T) {
 	r := runCmd(t, "hello\nworld\n", dot(0, 6), "=")
 	assertNoError(t, r.err)
-	assertOutput(t, r.output, "1,1\n")
+	assertOutput(t, r.output, "1; #0,#6\n")
+
+	// Two lines, and a null dot, to exercise both "second number differs" arms.
+	r = runCmd(t, "hello\nworld\n", dot(0, 12), "=")
+	assertNoError(t, r.err)
+	assertOutput(t, r.output, "1,2; #0,#12\n")
+
+	r = runCmd(t, "hello\nworld\n", dot(3, 3), "=")
+	assertNoError(t, r.err)
+	assertOutput(t, r.output, "1; #3\n")
 }
 
 func TestEqualChar(t *testing.T) {
@@ -580,7 +594,7 @@ func TestDiagnosticsGoToTheDiagnosticStream(t *testing.T) {
 	if want := "alpha\n"; out.String() != want {
 		t.Errorf("data stream = %q, want %q — only p prints there", out.String(), want)
 	}
-	for _, want := range []string{"f.txt:1,1\n", "f.txt:#0,#6\n", "!\n", " -. f.txt\n"} {
+	for _, want := range []string{"f.txt:1; #0,#6\n", "f.txt:#0,#6\n", "!\n", " -. f.txt\n"} {
 		if !strings.Contains(diag.String(), want) {
 			t.Errorf("diagnostic stream = %q, want it to contain %q", diag.String(), want)
 		}
@@ -600,7 +614,7 @@ func TestDiagFallsBackToOutput(t *testing.T) {
 	s.AddFile(f)
 
 	assertNoError(t, s.ExecString("1p\n1="))
-	if want := "alpha\nf.txt:1,1\n"; out.String() != want {
+	if want := "alpha\nf.txt:1; #0,#6\n"; out.String() != want {
 		t.Errorf("merged stream = %q, want %q", out.String(), want)
 	}
 }

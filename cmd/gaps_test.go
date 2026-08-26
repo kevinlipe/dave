@@ -215,11 +215,12 @@ func TestSubstReplacementWithNewline(t *testing.T) {
 // ---- Non-ASCII through = and #n addresses ----------------------------------
 
 func TestEqualOnNonASCIILines(t *testing.T) {
-	// "café" is 4 runes / 5 bytes. Line 1 spans runes [0, 5) including \n.
-	// dot on line 1 → = should print "1,1".
+	// "café" is 4 runes / 5 bytes. Line 1 spans runes [0, 5) including \n, so
+	// = reports line 1 and the character range in codepoints — #0,#5, not the
+	// #0,#6 that counting bytes would give.
 	r := runCmd(t, "café\nnaïve\n", dot(0, 5), "=")
 	assertNoError(t, r.err)
-	assertOutput(t, r.output, "1,1\n")
+	assertOutput(t, r.output, "1; #0,#5\n")
 }
 
 func TestCharAddressCountsCodepointsNotBytes(t *testing.T) {

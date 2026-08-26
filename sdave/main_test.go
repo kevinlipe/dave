@@ -51,9 +51,10 @@ func TestProcessSetsDotToWholeFile(t *testing.T) {
 	if err := process(&w, &diag, f, "=", true); err != nil {
 		t.Fatalf("process: %v", err)
 	}
-	// "=" reports dot as a line range; over a 3-line file that is 1,3.
-	if diag.String() != "1,3\n" {
-		t.Errorf("dot at start = %q, want %q (the whole file)", diag.String(), "1,3\n")
+	// "=" reports the line range, then the character range; over a 3-line file
+	// of six characters that is the whole of both.
+	if want := "1,3; #0,#6\n"; diag.String() != want {
+		t.Errorf("dot at start = %q, want %q (the whole file)", diag.String(), want)
 	}
 }
 

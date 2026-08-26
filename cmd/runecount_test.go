@@ -129,14 +129,16 @@ func TestEqualsLineNumbersOverMultibyteText(t *testing.T) {
 		dotStr string
 		want   string
 	}{
-		// A line address selects the whole line, which is not a null dot,
-		// so = reports it as a range.
-		{"1", "1,1\n"},
-		{"2", "2,2\n"},
-		{"3", "3,3\n"},
-		{"1,3", "1,3\n"},
+		// A line address selects the whole line. The line half names one
+		// number because the range starts and ends on the same line; the
+		// character half is in codepoints, which is what this test is for —
+		// "héllo\n" is 6 runes and 7 bytes.
+		{"1", "1; #0,#6\n"},
+		{"2", "2; #6,#12\n"},
+		{"3", "3; #12,#20\n"},
+		{"1,3", "1,3; #0,#20\n"},
 		// $ is null at end of file; the trailing newline starts a 5th line.
-		{"$", "5\n"},
+		{"$", "5; #27\n"},
 	} {
 		r := runCmd(t, content, dot(0, 0), c.dotStr+"=")
 		if r.err != nil {
@@ -154,7 +156,7 @@ func TestEqualsAsLoopBody(t *testing.T) {
 	if r.err != nil {
 		t.Fatalf("x with = body: %v", r.err)
 	}
-	if want := "1,1\n2,2\n3,3\n"; r.output != want {
+	if want := "1; #0,#1\n2; #2,#3\n3; #4,#5\n"; r.output != want {
 		t.Errorf("output = %q, want %q", r.output, want)
 	}
 }
