@@ -8,6 +8,27 @@ Dave uses Sam's command language and structural regular expressions. If you know
 
 The command window at the top accepts Sam commands. Right-click opens the buffer menu. Middle-click (or Shift+right-click) opens the editing menu (Cut, Paste, Snarf, Look, Send, Undo). These use the system clipboard. "Snarf" is Plan 9 terminology for copy (copy without deleting, like Ctrl+C elsewhere).
 
+## Keys
+
+The arrow keys, Home, End and the page keys move the cursor and drag the view
+along behind them, which is the "keyboard-friendly" part — Sam's move the view
+and leave the cursor where it was. Ctrl with the arrows moves by word, Ctrl with
+Home and End goes to the ends of the file, and Shift with any of them extends
+the selection.
+
+Two keys are worth knowing:
+
+- **Escape** selects what you just typed. Type a word, press Escape, and it is
+  the selection — ready for `>`, `|`, or any command addressed to dot. The run
+  reaches back as far as the typing does; a click, Home, End or a second Escape
+  ends it. This is Sam's behaviour, and it is the fastest way to hand a command
+  something you did not select with the mouse.
+- **Ctrl-K** cycles keyboard focus: command window, first pane, second pane, and
+  back round.
+
+`doc/sam-differences.md` has the full key table against Sam's, along with
+everything else the window does differently.
+
 ## Building
 
 ```

@@ -285,144 +285,37 @@ the structural commands, the shell redirections, the `e`/`r` I/O paths,
 `{}` groups, the file list, the read and write paths, and which of sam's
 two output streams each command prints on.
 
-What follows is the next ring out, where the command language was never
-the thing in question: what happens when the process dies, what happens
-before the first command is read, and the window layer. Each was
-reproduced against both editors.
+The startup findings from that ring — an unrecognised flag becoming a
+file name, and `dave -d` with no arguments having no buffer — are fixed;
+see the git log. What is left is the window layer.
 
-### Nothing rescues modified buffers when dave exits without `q`
+### The window layer has been compared once, and mostly settled
 
-Sam's `rescue()` (sam/sam.c) writes `$HOME/sam.save`: an executable
-shell script, one `samsave` heredoc per dirty buffer, which restores
-them when run. It fires on four paths — SIGHUP, an internal panic, a
-read error on the command stream, and EOF on the command stream while
-downloaded, which is what happens when samterm goes away. Reproduced:
+Every difference between dave's window and samterm is now written out in
+`doc/sam-differences.md` under "The window": panes against samterm's
+tiling window system, the key table, the mouse and its menus, the snarf
+buffer against the system clipboard, the command window being a view
+rather than a file, and word wrap and the config file, which sam has
+neither of. Escape has been brought in line with sam — it selects the
+run just typed — and the rescue file is a decision not to, recorded
+there with the reasoning.
 
-    HOME=$d sam -d f1   # change line 1, then SIGHUP
-    $ cat $d/sam.save
-    #!/bin/sh
-    /home/kevin/src/plan9/bin/samsave 'f1' $* <<'---f1'
-    CHANGED
-    beta
+Two entries in that table read as omissions rather than decisions, and
+are what is left open here:
 
-    ---f1
-
-Dave writes nothing on any of them. The same edit under `dave -d` is
-gone after a SIGHUP, and the window has a second route to the same
-place: `main.go`'s `sdl.QuitEvent` calls `win.Win.Hide()` and returns,
-never reaching `tryQuit`, so closing the window discards every modified
-file without a word. `q` warns; the close button does not.
-
-The two are one fix — something to run when dave is going down whether
-or not it wanted to — which is why they are one entry. Note that the
-format need not be sam's: `samsave` is a plan9port script, and dave has
-no equivalent, so a rescue file that dave itself can read back is the
-more likely shape.
-
-This is the data-loss path the last sweep did not reach.
-
-### An unknown flag becomes a file name
-
-`dave -d -x` opens a buffer called `-x`. Sam prints `sam: unknown flag
-x` and the usage line, and exits. Dave's argument loop in `main.go`
-tests each argument against the literal `-d` and treats everything else
-as a file, so a typo silently becomes a buffer that `w` would happily
-write.
-
-The same loop scans every argument rather than stopping at the first
-non-flag, which sam's ARGBEGIN does. `sam -d f1 -d` opens two files, one
-of them named `-d`; `dave -d f1 -d` is headless. `--` ends sam's flags
-and is a file name to dave.
-
-Sam's other flags are `-t samterm`, `-s name`, `-r machine` and `-R`,
-all of them about the sam/samterm split and remote editing, and 9front
-adds `-a` and `-i`, which it passes through to samterm (below). None of
-the first four have anything to attach to in a single-process editor;
-they are declined, not missing.
-
-### `dave -d` with no file arguments has no buffer at all
-
-Sam ends its startup with `else if(!downloaded) newfile()`: with no file
-arguments and no terminal to download to, it makes one empty nameless
-buffer, so `sam -d` on its own is a scratch pad. Its menu line is
-`` -. `` with nothing after it, and `w` there is `?no file name`.
-
-Dave leaves `s.Files` empty, so every command answers `? no current
-file`. `dave -d` alone does nothing at all.
-
-The condition is worth keeping: sam does *not* create the buffer when
-downloaded, so the window starting empty — which dave already does — is
-right, and only the headless path is wrong.
-
-### The append-only check has nothing to check on
-
-Closed, not open. Sam refuses to write a file that is append-only and
-non-empty (`Eappend`, sam/io.c), reading the bit from the directory
-entry. It is a Plan 9 file mode, `DMAPPEND`; plan9port's `unix.c` stubs
-`statfile` to set `*appendonly = 0` unconditionally, so the oracle
-itself can never raise it. Linux's nearest equivalent is the ext-family
-`chattr +a` attribute behind an ioctl, and Windows has nothing. Dave
-declining to implement it costs nothing and matches the tree it runs
-against.
-
-### samterm has now been compared, once
-
-The window layer is deliberately a different design and the README says
-so — "a more keyboard-friendly interface". What follows is not a list of
-bugs; it is the first record of what that sentence actually covers, so
-the deliberate half can be told from the accidental half.
-
-Deliberate, and now written down. In samterm the arrow keys and
-Home/End **scroll** and do not move dot: Up and Down move the window by
-a third of a screen (shift-Up by one line), Home and End jump to the
-start and end of the file, PageUp and PageDown move a screen. Dot moves
-with Left and Right, which are asymmetric — Left collapses dot to
-`p0-1`, Right to `p1+1` — and with ctrl-A and ctrl-E for the ends of the
-line. Dave binds all of them to dot motion instead and scrolls only as
-far as it takes to keep dot visible. This is the whole of what
-"keyboard-friendly" means and it belongs in `doc/sam-differences.md`,
-where none of it currently appears.
-
-Escape is the one that collides. In samterm Escape selects the text
-typed since the last Escape (`typeesc..a`, samterm/main.c type()) —
-type, press Escape, and the run is selected and ready for a command.
-Dave binds Escape to "focus the command window". Both are defensible;
-what is not defensible is that the same key does two different things
-and nothing says which dave chose or why.
-
-Missing rather than replaced, as far as anyone has decided:
-
-- **ctrl-U** and **ctrl-W**, delete to line start and delete word back.
-  In both trees, and in every Unix line discipline. Dave has neither.
-  The clearest omission of the lot.
-- **ctrl-B**, jump to the command window with the cursor at its end, and
-  **ctrl-G**, cycle to the next window showing the same file. 9front
-  only. Dave has Escape and ctrl-K, which overlap ctrl-B without
-  covering it; ctrl-G has nothing to do in a two-pane window.
-- **The mouse chords** — button 1 held, then 2 cuts and 3 pastes. Live
-  in 9front, and compiled out in plan9port: `#define chording 0 /* code
-  here for reference but it causes deadlocks */`. So dave lacking them
-  matches the tree it runs against, and this is a decision to make
-  rather than a gap to close.
-- **`-a` autoindent** and **`-i` spacesindent**, 9front's two samterm
-  flags. Autoindent copies the leading blanks of the current line after
-  a newline, and not in the command window; spacesindent turns a typed
-  tab into spaces to the next tab stop. Dave has `tab_width` for display
-  only and inserts a literal tab. Both are natural config keys rather
+- **ctrl-U and ctrl-W**, delete to line start and delete word back. In
+  both sam trees and in every Unix line discipline; dave has neither.
+- **Autoindent**, 9front's `-a`, and **tabs as spaces**, its `-i`. Dave
+  has `tab_width` for display only. Both are natural config keys rather
   than flags, given dave has a config file and sam does not.
 
-Precedent for dave's own additions, since it is easy to assume sam is
-frozen: plan9port's samterm binds Cmd-X, Cmd-C and Cmd-V to cut, copy
-and paste for the Mac (`#define CUT (Kcmd+'x')`), which is the same move
-dave made in reaching for the system clipboard.
-
-None of this is scoped, and none of it should start before the
-`CmdWindow`/`Pane` merge above — several of these land in the code that
-merge is going to move.
+Neither should start before the `CmdWindow`/`Pane` merge above: they
+land in the code that merge is going to move.
 
 ### Not looked at
 
-Nothing systematic remains in sam itself. In samterm: everything above
-the key and mouse bindings — the window system, the scroll bar, the
-`Tsnarf`/`Tcut`/`Tpaste` protocol between the halves, and what dave's
-system-clipboard integration replaced it with.
+Nothing systematic remains. What has never been read closely in samterm
+is the drawing layer under the bindings — the frame library, the scroll
+bar's exact geometry, and the `Tsnarf`/`Tcut`/`Tpaste` protocol between
+the two halves, which dave replaced with the system clipboard rather
+than reimplemented. None of it is behaviour a user could name.
