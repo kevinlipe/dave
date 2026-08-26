@@ -65,6 +65,8 @@ To close a file (remove it from the session), right-click and choose **close**, 
 
 `~/.config/dave/config` on Linux, `%APPDATA%\dave\config` on Windows. If it doesn't exist at launch, `dave` creates it with every setting commented out at its default. An unrecognised key is an error, and a config that fails to load is abandoned for the defaults — so a typo costs the whole file.
 
+`tab_width` is 4, where Sam's tab stop is 8; set it to 8 if you want Sam's. It changes how wide a tab is drawn and nothing else — a typed tab is a tab in the buffer, and Enter starts a line at column zero. Dave has no autoindent and no tabs-as-spaces, deliberately; `doc/sam-differences.md` has the reasoning.
+
 ## Invocation
 
 ```

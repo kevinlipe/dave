@@ -159,8 +159,8 @@ Samterm's arrows and Home/End move the *window* and Dave's move *dot*.
 | Ctrl-G | Cycle a file's windows | — (a file has one pane) |
 | Ctrl-K | — | Cycle focus: command window → pane → pane |
 | Escape | Select the run just typed | The same |
-| Tab | A tab, or spaces to the next stop under `-i` | A tab |
-| Enter | A newline, plus the indent of the line above under `-a` | A newline |
+| Tab | A tab, or spaces to the next stop under `-i` | A tab, always |
+| Enter | A newline, plus the indent of the line above under `-a` | A newline, always |
 
 Escape is worth spelling out, because it is the one binding that carries real
 editing behaviour rather than navigation. Type something, press Escape, and what
@@ -179,9 +179,38 @@ characters, `0x7F`–`0xA0` and ASCII punctuation, so `±` and `«` are word
 characters to it, while Dave uses the same letters-digits-underscore rule that
 Ctrl-arrow motion and double-click already use.
 
-Autoindent and tabs-as-spaces are 9front's `-a` and `-i` flags to samterm, and
-they are not implemented at all. Dave's `tab_width` affects display only: a
-typed tab is a tab in the buffer.
+### Tab stops, and no autoindent
+
+Three decisions, grouped because they are the same question asked three ways:
+what should Dave do about indentation? The answer is nothing beyond showing it.
+
+**`tab_width` is 4, and Sam's is 8.** Both Sam trees set `maxtab = 8` and let
+`$tabstop` override it; Dave defaults to 4 and takes `tab_width` from the config
+file. This is a choice and not an oversight — 4 reads better in the wrapped,
+centred column Dave is built around, where 8 columns of indent eats a
+noticeable share of a 80-character measure. Set `tab_width = 8` if you want
+Sam's. The stop is elastic in both: a tab advances to the next multiple rather
+than emitting a fixed run of spaces. Sam sizes it as `maxtab` times the width of
+`0` and Dave as `tab_width` space widths, which is the same thing in a monospace
+font and differs in a proportional one — which Dave supports and Sam does not.
+
+**No autoindent.** 9front's samterm takes `-a`, which copies the leading blanks
+of the current line after every typed newline (and not in the command window).
+plan9port has no such flag. Dave does not do it: Enter starts a line at column
+zero.
+
+**No tabs-as-spaces.** 9front also takes `-i`, which turns a typed tab into
+spaces up to the next stop. plan9port has no such flag either. A typed tab in
+Dave is a tab in the buffer, and the only thing `tab_width` changes is how wide
+it looks.
+
+The two flags are 9front's alone, so declining them leaves Dave matching the
+tree it actually runs against. They are also editor-for-code features in an
+editor whose distinguishing work is prose, and 9front's `-i` in particular
+computes its column by counting characters from the line start rather than
+display columns, so it lands wrong on any line already indented with tabs. If
+either arrives later it will be a config key, since Dave has a config file and
+Sam does not — but that is not planned.
 
 ### Mouse
 

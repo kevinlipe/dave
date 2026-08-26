@@ -277,19 +277,17 @@ they differ the call is made case by case and recorded in
 harness compares against.
 
 Accepted differences are documented for users in
-`doc/sam-differences.md`. What follows is open.
+`doc/sam-differences.md`.
 
-Nothing is open in the command language, the file list or disk I/O.
-Audited: undo and redo and everything they touch, regexps, addresses,
-the structural commands, the shell redirections, the `e`/`r` I/O paths,
-`{}` groups, the file list, the read and write paths, and which of sam's
-two output streams each command prints on.
+Nothing is open. Audited against the C: undo and redo and everything
+they touch, regexps, addresses, the structural commands, the shell
+redirections, the `e`/`r` I/O paths, `{}` groups, the file list, the read
+and write paths, which of sam's two output streams each command prints
+on, the command line, and — since the pass below — the window layer. The
+findings each sweep produced were fixed or recorded as decisions; the git
+log has them.
 
-The startup findings from that ring — an unrecognised flag becoming a
-file name, and `dave -d` with no arguments having no buffer — are fixed;
-see the git log. What is left is the window layer.
-
-### The window layer has been compared once, and mostly settled
+### ~~The window layer has never been compared to samterm~~ — settled
 
 Every difference between dave's window and samterm is now written out in
 `doc/sam-differences.md` under "The window": panes against samterm's
@@ -300,14 +298,10 @@ neither of. Escape has been brought in line with sam — it selects the
 run just typed — and the rescue file is a decision not to, recorded
 there with the reasoning.
 
-One entry in that table is left open. **Autoindent**, 9front's samterm
-`-a`, and **tabs as spaces**, its `-i`. Dave has `tab_width` for display
-only: a typed tab is a tab in the buffer, and Enter starts a line at
-column zero. Both would be config keys rather than flags, given dave has
-a config file and sam does not.
-
-It should not start before the `CmdWindow`/`Pane` merge above: it lands
-in the code that merge is going to move.
+Nothing is left open. The last two candidates — autoindent and
+tabs-as-spaces, 9front's samterm `-a` and `-i` — are declined, and the
+tab width staying at 4 where sam's is 8 is a decision rather than an
+oversight; all three are written up under "Tab stops, and no autoindent".
 
 ### Not looked at
 
