@@ -119,7 +119,9 @@ For multi-line text in `a`, `i`, `c`, the command may be followed by a newline a
 | `g/re/cmd` | If the range contains a match of *re*, run *cmd* (dot unchanged). |
 | `v/re/cmd` | If the range does not contain a match of *re*, run *cmd* (dot unchanged). |
 
-`x` with an immediately following space uses `.*\n` as the pattern (match each line). So `,x g/Emacs/p` prints all lines containing `Emacs`.
+`x` with an immediately following space uses `.*\n` as the pattern (match each line). So `,x g/Emacs/p` prints all lines containing `Emacs`. `y`, `g` and `v` have no such form: a space after them is followed by the pattern's delimiter, as Sam has it.
+
+With nothing after the pattern, the command is `p`, so `,x/Emacs/` prints every match. The command has to be on the same line — one on the next line is the next command, not the body.
 
 Changes within an `x` loop are computed against the file's state before any changes in that command, then applied in sequence. A single `u` undoes the entire `x` command.
 
@@ -130,7 +132,9 @@ Changes within an `x` loop are computed against the file's state before any chan
 | `X/re/cmd` | For each file whose menu line matches *re*, make it current and run *cmd*. |
 | `Y/re/cmd` | For each file whose menu line does not match *re*, make it current and run *cmd*. |
 
-After an `X` or `Y` loop, the current file is whichever one was visited last (matching Sam). If you need to run a command in another file without disturbing the current selection, save it explicitly with `b` before and after.
+`X` with an immediately following space runs *cmd* in every file: `X ,x/foo/d`. `Y` has no such form — `Y ,p` reads the comma as the pattern's delimiter — and with nothing after the pattern the command is `f`, which prints the file's menu line. So `X/\.go$/` lists the open Go files.
+
+After an `X` or `Y` loop the file that was current before it is current again, unless the body made another one current — `X/\.go$/ b other.txt` leaves `other.txt` current. Loops do not nest: an `X` or `Y` inside one is an error.
 
 ### Display Commands
 

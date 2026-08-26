@@ -192,6 +192,25 @@ func TestProcessFileReadsFromDiskAndWritesToTheWriter(t *testing.T) {
 	}
 }
 
+// Nothing but the text may reach sdave's stream. Sam announces every file it
+// reads with a menu line — on the terminal, which is the stream `ssam` sends to
+// /dev/null — and sdave has one writer, so the announcement has to be turned
+// off rather than merely routed elsewhere. `B` is the case the startup path
+// does not cover: it reads a second file part-way through the script.
+func TestProcessAnnouncesNothing(t *testing.T) {
+	other := write(t, "other.txt", "second\n")
+	p := write(t, "in.txt", "first\n")
+	var w strings.Builder
+	if err := processFile(&w, p, "B "+other+"\n,p", false); err != nil {
+		t.Fatalf("processFile: %v", err)
+	}
+	// ,p prints the file B made current; the dump at the end is still the file
+	// sdave was given, which is the one it edits.
+	if want := "second\nfirst\n"; w.String() != want {
+		t.Errorf("wrote %q, want %q — a menu line has leaked into the stream", w.String(), want)
+	}
+}
+
 // Several files run through one writer append to it, one after another, each
 // in its own session.
 func TestProcessFileAppendsPerFile(t *testing.T) {

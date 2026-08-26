@@ -151,6 +151,12 @@ func (s *Session) fileLoop(want func(ml string) bool, body []*Command, ctx *exec
 		if !want(f.MenuLine(f == s.Current, false)) {
 			continue
 		}
+		// Sam's cmdexec reads the file before it calls current(f), so the menu
+		// line announcing the read still marks the file the loop came from.
+		if err := f.EnsureLoaded(); err != nil {
+			return err
+		}
+		s.reportLoad(f)
 		s.Current = f
 		for _, cmd := range body {
 			if err := s.execCmd(cmd, f, ctx); err != nil {
@@ -165,7 +171,7 @@ func (s *Session) fileLoop(want func(ml string) bool, body []*Command, ctx *exec
 }
 
 // execXFile runs the body in every file whose menu line matches. With no
-// pattern at all — `X p` — it runs in every file, as sam does.
+// pattern at all — `X ,p` — it runs in every file, as sam does.
 func (s *Session) execXFile(pat string, all bool, body []*Command, ctx *execCtx) error {
 	want, err := fileMatcher(pat, all, true)
 	if err != nil {
@@ -174,8 +180,9 @@ func (s *Session) execXFile(pat string, all bool, body []*Command, ctx *execCtx)
 	return s.fileLoop(want, body, ctx)
 }
 
-// execYFile is execXFile with the match inverted — except with no pattern,
-// where sam runs the body in every file for Y as well.
+// execYFile is execXFile with the match inverted. It has no no-pattern case:
+// `Y ` reads the blank's successor as a delimiter, so the parser never sets
+// AllFiles for it.
 func (s *Session) execYFile(pat string, all bool, body []*Command, ctx *execCtx) error {
 	want, err := fileMatcher(pat, all, false)
 	if err != nil {

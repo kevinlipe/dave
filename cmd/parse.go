@@ -22,9 +22,9 @@ type Command struct {
 	Pat2 string   // second regexp (s command: replacement)
 	Flag string   // modifier flag (s command: 'g' or digit)
 	N    int      // numeric arg (u command)
-	// AllFiles is set when X or Y is given no pattern, which sam reads as
-	// "every file" for both of them (sam/xec.c filelooper: cp->re==0 runs the
-	// body regardless of XY).
+	// AllFiles is set when X is given no pattern, which sam reads as "every
+	// file" (sam/xec.c filelooper: cp->re==0 runs the body regardless of XY).
+	// Only X can be: `Y ` takes the next character as a delimiter.
 	AllFiles bool
 	Body     []*Command // x/y/g/v/X/Y body; { } group
 	Dest     *addr.Addr // m/t command destination
@@ -219,6 +219,7 @@ type cmdSpec struct {
 	pat    bool   // a delimited regexp follows
 	spPat  string // if a space stands in for the delimiter, use this pattern
 	body   bool   // a body command follows
+	defCmd byte   // the body command to use when the line ends without one
 	group  bool   // a { } group follows
 	count  bool   // an optional signed count follows
 	allPat bool   // a blank stands in for the pattern, meaning every file
@@ -237,13 +238,17 @@ var cmdtab = []cmdSpec{
 	{ops: "\n"},
 	{ops: "=", parse: parseEqualsFlag},
 	{ops: "s", parse: parseSubst},
-	// x and friends accept a space in place of the delimiter, standing for
-	// "every line". X and Y do not. The second branch picks up a final line
-	// with no trailing newline, which sam reaches because it loops with
-	// lineaddr rather than with a pattern (linelooper, sam/xec.c).
-	{ops: "x", pat: true, spPat: `.*\n|.+`, body: true},
-	{ops: "ygv", pat: true, body: true},
-	{ops: "XY", pat: true, allPat: true, body: true},
+	// Only x and X accept a blank in place of the delimiter — for x it stands
+	// for "every line", for X for "every file". y, Y, g and v do not: sam's
+	// test is `ct->cmdc!='x' && ct->cmdc!='X'` (sam/cmd.c parsecmd), and both
+	// trees have it, so `Y ,p` reads the comma as a delimiter and means
+	// Y/p/ with the default body. x's second branch picks up a final line with
+	// no trailing newline, which sam reaches because it loops with lineaddr
+	// rather than with a pattern (linelooper, sam/xec.c).
+	{ops: "x", pat: true, spPat: `.*\n|.+`, body: true, defCmd: 'p'},
+	{ops: "ygv", pat: true, body: true, defCmd: 'p'},
+	{ops: "X", pat: true, allPat: true, body: true, defCmd: 'f'},
+	{ops: "Y", pat: true, body: true, defCmd: 'f'},
 	{ops: "{", group: true},
 	{ops: "u", count: true},
 	{ops: "mt", dest: true},
@@ -312,7 +317,7 @@ func (p *cmdParser) parseArgs(spec *cmdSpec, cmd *Command) error {
 		}
 	}
 	if spec.body {
-		body, err := p.parseBody()
+		body, err := p.parseBody(spec.defCmd)
 		if err != nil {
 			return err
 		}
@@ -440,12 +445,23 @@ func (p *cmdParser) readLine() string {
 	return line
 }
 
-// parseBody parses the body command after an x/y/g/v/X/Y pattern.
-// Returns an error if no body command is present — structural commands
-// require one (the parser already accepts `x/re/{}` for an explicit empty
-// group; a truly-missing body is a user error, not a silent no-op).
-func (p *cmdParser) parseBody() ([]*Command, error) {
-	p.skipNL()
+// parseBody parses the body command after an x/y/g/v/X/Y pattern. A line that
+// ends there gets the command's default body instead — p for x, y, g and v, f
+// for X and Y (sam/cmd.c parsecmd, the ct->defcmd branch). Sam decides that
+// with skipbl, which does not cross a newline, so a command on the next line is
+// the next command and not this one's body.
+func (p *cmdParser) parseBody(defCmd byte) ([]*Command, error) {
+	p.skipWS()
+	if c := p.peek(); c == 0 || c == '\n' || c == '\r' {
+		body := &Command{Op: defCmd}
+		if spec := lookupCmd(defCmd); spec != nil && spec.rest {
+			// f takes the rest of the line, and reaches this with none of it:
+			// a rename to an empty name, which is how sam's f_cmd with a null
+			// ctext reports the file rather than renaming it.
+			body.Args = []string{""}
+		}
+		return []*Command{body}, nil
+	}
 	cmd, err := p.parseOne()
 	if err != nil {
 		return nil, err

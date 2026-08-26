@@ -50,7 +50,7 @@ func (s *Session) execB(arg string, ctx *execCtx) error {
 // reportCurrent prints the file's menu line, as sam does when b or B changes
 // the current file at top level.
 func (s *Session) reportCurrent(f *file.File, ctx *execCtx) {
-	if ctx == nil || ctx.nest > 0 {
+	if ctx == nil || ctx.nest > 0 || !s.Announce {
 		return
 	}
 	s.printf("%s\n", f.MenuLine(f == s.Current, false))

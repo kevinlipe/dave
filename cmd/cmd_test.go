@@ -532,10 +532,28 @@ func TestELeavesFileUnmodified(t *testing.T) {
 	}
 }
 
-func TestParseBodyMissingBodyIsError(t *testing.T) {
-	// A structural command with no body was silently a no-op; now it errors.
-	r := runCmd(t, "hello", dot(0, 5), "x/foo/")
-	assertError(t, r.err)
+// A structural command whose line ends after the pattern runs sam's default
+// body — p for x, y, g and v (sam/cmd.c parsecmd, ct->defcmd). Sam decides that
+// with skipbl, which stops at a newline, so a command on the next line is the
+// next command and not the body of this one: `x/l/` then `d` prints the matches
+// and then deletes dot, it does not delete the matches.
+func TestMissingBodyRunsTheDefaultCommand(t *testing.T) {
+	for _, src := range []string{"x/l/", "g/hello/", "x/l/\np"} {
+		r := runCmd(t, "hello", dot(0, 5), src)
+		assertNoError(t, r.err)
+		if r.output == "" {
+			t.Errorf("%q printed nothing; the default body is p", src)
+		}
+	}
+	// The discriminator: as the body, d would delete both matches and leave
+	// "heo". As a command of its own it deletes dot, which x left on the last
+	// match, and leaves "helo".
+	r := runCmd(t, "hello", dot(0, 5), "x/l/\nd")
+	assertNoError(t, r.err)
+	assertContents(t, r.contents, "helo")
+	if r.output != "ll" {
+		t.Errorf("x/l/ printed %q, want both matches from the default p", r.output)
+	}
 }
 
 // ---- Quit -------------------------------------------------------------------
@@ -973,17 +991,18 @@ func TestSubstReplacementSyntax(t *testing.T) {
 // ---- the blank pattern form --------------------------------------------------
 
 // A blank straight after the command stands in for the pattern, but only where
-// sam allows it: x (every line) and X/Y (every file). For y, g and v sam
-// requires a real pattern (sam/cmd.c, the ct->cmdc!='x' && ct->cmdc!='X' test),
-// and taking the blank as a delimiter instead silently scans the rest of the
-// line looking for its twin.
+// sam allows it: x (every line) and X (every file). For y, Y, g and v sam
+// requires a real pattern — its test names x and X and nothing else
+// (sam/cmd.c, `ct->cmdc!='x' && ct->cmdc!='X'`, in both trees) — and takes the
+// blank's successor as the delimiter instead, which here is a letter and so
+// refused by okdelim.
 func TestBlankPatternFormOnlyWhereSamAllowsIt(t *testing.T) {
-	for _, src := range []string{"y p", "g p", "v p"} {
+	for _, src := range []string{"y p", "g p", "v p", "Y p"} {
 		if _, _, err := ParseCommand(src, 0); err == nil {
 			t.Errorf("%q: expected an error, got none", src)
 		}
 	}
-	for _, src := range []string{"x p", "X p", "Y p"} {
+	for _, src := range []string{"x p", "X p"} {
 		if _, _, err := ParseCommand(src, 0); err != nil {
 			t.Errorf("%q: unexpected error: %v", src, err)
 		}
@@ -1017,25 +1036,44 @@ func TestMissingPatternIsReported(t *testing.T) {
 	}
 }
 
-// X and Y with no pattern run the body in every file — for Y too, which is not
-// the inversion you might expect (sam/xec.c filelooper: cp->re==0 runs the body
-// regardless of XY).
-func TestXYWithNoPatternVisitEveryFile(t *testing.T) {
-	for _, op := range []string{"X", "Y"} {
-		t.Run(op, func(t *testing.T) {
-			var out strings.Builder
-			s := NewSession(&out)
-			for _, name := range []string{"a.txt", "b.log"} {
-				f := file.NewNamed(name)
-				f.Buffer().Insert(0, name+"\n")
-				f.SetDot(dot(0, len([]rune(name))+1))
-				s.AddFile(f)
-			}
-			assertNoError(t, s.ExecString(op+" ,p"))
-			if got := out.String(); got != "a.txt\nb.log\n" {
-				t.Errorf("%s ,p printed %q, want both files", op, got)
-			}
-		})
+// X with no pattern runs the body in every file (sam/xec.c filelooper:
+// cp->re==0 runs the body regardless of XY). Y has no such form, because the
+// parser never gives it one: `Y ,p` is Y with the delimiter `,`, so the pattern
+// is `p` and the body is the default f, and the files it visits are the ones
+// whose menu line does *not* contain a p. Reading it as "every file" is the
+// tempting mistake — sam's re==0 branch would do that, but nothing reaches it.
+func TestXWithNoPatternVisitsEveryFile(t *testing.T) {
+	newSess := func() *Session {
+		var out strings.Builder
+		s := NewSession(&out)
+		for _, name := range []string{"a.txt", "b.log"} {
+			f := file.NewNamed(name)
+			f.Buffer().Insert(0, name+"\n")
+			f.SetDot(dot(0, len([]rune(name))+1))
+			s.AddFile(f)
+		}
+		return s
+	}
+	s := newSess()
+	assertNoError(t, s.ExecString("X ,p"))
+	if got := s.Output.(*strings.Builder).String(); got != "a.txt\nb.log\n" {
+		t.Errorf("X ,p printed %q, want both files", got)
+	}
+
+	// Neither name holds a p, so Y/p/ matches both and prints their menu lines.
+	s = newSess()
+	assertNoError(t, s.ExecString("Y ,p"))
+	if got := s.Output.(*strings.Builder).String(); got != " -. a.txt\n -. b.log\n" {
+		t.Errorf("Y ,p printed %q, want the menu line of each file", got)
+	}
+
+	// And with a p in the name it matches neither.
+	s = newSess()
+	s.Files[0].SetName("a.php")
+	s.Files[1].SetName("b.tmp")
+	assertNoError(t, s.ExecString("Y ,p"))
+	if got := s.Output.(*strings.Builder).String(); got != "" {
+		t.Errorf("Y ,p printed %q, want nothing", got)
 	}
 }
 

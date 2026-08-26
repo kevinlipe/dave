@@ -279,10 +279,39 @@ harness compares against.
 Accepted differences are documented for users in
 `doc/sam-differences.md`. What follows is open.
 
-Nothing is open in the command language, the file list or disk I/O.
 Audited: undo and redo and everything they touch, regexps, addresses,
 the structural commands, the shell redirections, the `e`/`r` I/O paths,
 `{}` groups, the file list, and the read and write paths.
+
+### dave merges sam's two output streams
+
+- **Where:** `cmd/session.go` — `Session.Output` is the only destination, and
+  `printf` is every command's way to it.
+- **What sam does:** in `-d` mode only `p` — and the text the structural
+  commands print through it — goes to stdout. Menu lines, `=`, `n`, the `!`
+  acknowledgement, and every warning go to the terminal, which is fd 2:
+
+      $ sam -d f1 </dev/null 2>/dev/null      # prints nothing
+      $ printf '1p\n=\nn\nq\nq\n' | sam -d f1 1>/dev/null
+       -. f1
+      1; #0,#6
+       -. f1
+
+  That split is what makes `ssam` clean: it runs `sam -d ... >[2]/dev/null`,
+  so only the buffer reaches the next command in the pipeline.
+- **Why it matters:** `sdave` writes one stream and it is the pipeline. `=`
+  and `n` in an `sdave` script land in the text. `Session.Announce` closes
+  the case that a plain `sdave` invocation hits — the file it reads at
+  startup, and any file a script reads after — but it is a patch over the
+  missing distinction, not the distinction.
+- **Fix:** a second writer on `Session` for the terminal stream, defaulting
+  to `Output`. `sdave` points it at `io.Discard`, the `-d` REPL at stderr, and
+  the GUI at the command window along with the other. The work is classifying
+  the `printf` call sites, which is most of what the entry costs; the
+  differential harness merges both streams already, so it keeps working
+  either way.
+- **Found by:** the multi-file differential cases, which merge the two
+  streams with `CombinedOutput` and so never saw the difference.
 
 ### Not looked at
 

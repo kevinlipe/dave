@@ -40,6 +40,13 @@ type Session struct {
 	inFileLoop bool
 	newCurrent bool
 
+	// Announce says whether a file read from disk is reported with its menu
+	// line, as sam's load() does. sdave clears it: sam prints that on the
+	// terminal, which is the stream `ssam` sends to /dev/null, and sdave has
+	// only the one writer — anything it prints lands in the pipeline. See
+	// TODO.md, "dave merges sam's two output streams".
+	Announce bool
+
 	// lastShell is the most recent shell command text, shared by <, >, | and !.
 	// An empty argument reruns it, as sam does with plan9cmd.
 	lastShell string
@@ -50,7 +57,7 @@ func NewSession(out io.Writer) *Session {
 	if out == nil {
 		out = os.Stdout
 	}
-	return &Session{Output: out, Undo: newUndoLog()}
+	return &Session{Output: out, Undo: newUndoLog(), Announce: true}
 }
 
 // AddFile adds f to the session's file list and makes it current.
@@ -141,11 +148,16 @@ func (s *Session) reportLoad(f *file.File) bool {
 	if f == nil {
 		return false
 	}
-	loaded := f.JustLoaded()
+	// Both flags are consumed either way: they say what the last read did, and
+	// a report that is not printed still happened.
+	loaded, nulls := f.JustLoaded(), f.TookNulls()
+	if !s.Announce {
+		return loaded
+	}
 	if loaded {
 		s.printf("%s\n", f.MenuLine(f == s.Current, false))
 	}
-	if f.TookNulls() {
+	if nulls {
 		s.printf("?warning: null characters elided\n")
 	}
 	return loaded

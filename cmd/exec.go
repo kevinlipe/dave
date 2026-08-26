@@ -85,14 +85,18 @@ func (s *Session) execCmd(cmd *Command, f *file.File, ctx *execCtx) error {
 		var err error
 		var af *file.File
 		dot, af, err = s.evalAddr(cmd.Addr, f)
+		// A `"pat"` address reads the file it selects, and sam announces that
+		// read from inside the address evaluation (sam/address.c, case '"'):
+		// before current(f) makes it current, so the menu line marks the file
+		// being left, and before a later part of the address can fail and
+		// abandon the command.
+		s.reportLoads()
 		if err != nil {
 			return err
 		}
 		if af != f {
 			f, s.Current = af, af
 		}
-		// A "pat" address can read a file to select it.
-		s.reportLoads()
 	}
 
 	switch cmd.Op {

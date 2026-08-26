@@ -110,6 +110,10 @@ func process(w io.Writer, f *file.File, script string, suppress bool) error {
 	// streams out in gap segments, and a CRLF file a line at a time.
 	bw := bufio.NewWriter(w)
 	s := cmd.NewSession(bw)
+	// The one stream is the pipeline, so the file announcements sam prints
+	// when it reads a file stay off it: ssam gets the same effect by sending
+	// sam's terminal output to /dev/null.
+	s.Announce = false
 	s.AddFile(f)
 	err := s.ExecString(script)
 	if err == nil && !suppress {

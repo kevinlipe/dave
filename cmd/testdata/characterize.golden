@@ -526,7 +526,10 @@ exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[4,7) ou
 exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[4,7) out="two" err=<nil>
 
 === "x/o/"
-parse error: missing body command
+  op="x" addr=false dest=false pat="o"
+    op="p" addr=false dest=false
+  addr-> none
+exec: contents="one two three\nfour five six\nséven eight\nnine\n" dot=[6,7) out="o" err=<nil>
 
 === ",x/o/ c/0/"
   op="x" addr=true dest=false pat="o"
