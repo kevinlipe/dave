@@ -13,6 +13,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/veandco/go-sdl2/sdl"
 )
@@ -538,38 +540,34 @@ func applyMenuResult(res menu.Result, sess *cmd.Session, panes []*pane.Pane, han
 // lookForward searches buf for the first occurrence of needle at or after
 // start (codepoint offset), wrapping around to 0 if not found. Returns the
 // start and end codepoint offsets of the match, or (-1, -1) if not found.
-func lookForward(buf interface {
-	String() string
-	Len() int
-}, needle string, start int) (int, int) {
-	runes := []rune(buf.String())
-	n := len(runes)
-	needleRunes := []rune(needle)
-	nLen := len(needleRunes)
-	if nLen == 0 || nLen > n {
+//
+// The needle is literal text, so this is strings.Index over the flattened
+// buffer rather than a regexp. It used to be a hand-written character-by-
+// character scan over a []rune copy of the file -- a second copy at four
+// bytes a codepoint, and a search that could not use any of the skipping
+// strings.Index does. Codepoint offsets are then counted from whichever end
+// of the search the match came from, so finding the next occurrence of the
+// word under the cursor costs the distance to it and not the file.
+func lookForward(buf *buffer.Buffer, needle string, start int) (int, int) {
+	if needle == "" {
 		return -1, -1
 	}
-	// Search from start to end of buffer, then wrap from 0 to start.
-	for _, from := range []int{start, 0} {
-		limit := n - nLen + 1
-		if from == 0 {
-			// Wrap: only search up to original start to avoid re-matching.
-			if limit > start {
-				limit = start
-			}
-		}
-		for i := from; i < limit; i++ {
-			match := true
-			for j := 0; j < nLen; j++ {
-				if runes[i+j] != needleRunes[j] {
-					match = false
-					break
-				}
-			}
-			if match {
-				return i, i + nLen
-			}
-		}
+	s := buf.String()
+	from := buf.ByteOffset(start)
+	if i := strings.Index(s[from:], needle); i >= 0 {
+		lo := start + utf8.RuneCountInString(s[from:from+i])
+		return lo, lo + utf8.RuneCountInString(needle)
+	}
+	// Wrap. A match starting before start counts even if it runs past it, so
+	// the prefix searched extends a needle's length beyond where the first
+	// search began, less the one byte that would repeat a match found there.
+	end := from + len(needle) - 1
+	if end > len(s) {
+		end = len(s)
+	}
+	if i := strings.Index(s[:end], needle); i >= 0 {
+		lo := utf8.RuneCountInString(s[:i])
+		return lo, lo + utf8.RuneCountInString(needle)
 	}
 	return -1, -1
 }
