@@ -3,7 +3,7 @@ package render
 import "github.com/veandco/go-sdl2/sdl"
 
 // Face is the interface over TTF font rendering backends.
-// All text drawing in Dave goes through this interface so that the
+// All text drawing in dave goes through this interface so that the
 // rendering backend can be swapped without changing callers.
 type Face interface {
 	// Height returns the line height in pixels (advance from one baseline to the next).

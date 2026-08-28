@@ -1,17 +1,17 @@
 # dave
 
-A text editor named after Sam & Dave, the Stax Records legends. Dave is a spiritual successor to [Rob Pike's `sam` editor](http://sam.cat-v.org), reimagined for daily use on Linux and Windows, with first-class soft word wrap for prose editing.
+A text editor named after Sam & Dave, the Stax Records legends, and a spiritual successor to [Rob Pike's `sam` editor](http://sam.cat-v.org), reimagined for daily use on Linux and Windows, with first-class soft word wrap for prose editing.
 
 ## What it is
 
-Dave uses Sam's command language and structural regular expressions. If you know `sam`, you know Dave. The main additions are word wrap, a more keyboard-friendly interface, and a config file.
+dave uses sam's command language and structural regular expressions. If you know `sam`, you know dave. The main additions are word wrap, a more keyboard-friendly interface, and a config file.
 
-The command window at the top accepts Sam commands. Right-click opens the buffer menu. Middle-click (or Shift+right-click) opens the editing menu (Cut, Paste, Snarf, Look, Send, Undo). These use the system clipboard. "Snarf" is Plan 9 terminology for copy (copy without deleting, like Ctrl+C elsewhere).
+The command window at the top accepts sam commands. Right-click opens the buffer menu. Middle-click (or Shift+right-click) opens the editing menu (Cut, Paste, Snarf, Look, Send, Undo). These use the system clipboard. "Snarf" is Plan 9 terminology for copy (copy without deleting, like Ctrl+C elsewhere).
 
 ## Keys
 
 The arrow keys, Home, End and the page keys move the cursor and drag the view
-along behind them, which is the "keyboard-friendly" part — Sam's move the view
+along behind them, which is the "keyboard-friendly" part — sam's move the view
 and leave the cursor where it was. Ctrl with the arrows moves by word, Ctrl with
 Home and End goes to the ends of the file, and Shift with any of them extends
 the selection.
@@ -21,16 +21,16 @@ Two keys are worth knowing:
 - **Escape** selects what you just typed. Type a word, press Escape, and it is
   the selection — ready for `>`, `|`, or any command addressed to dot. The run
   reaches back as far as the typing does; a click, Home, End or a second Escape
-  ends it. This is Sam's behaviour, and it is the fastest way to hand a command
+  ends it. This is sam's behaviour, and it is the fastest way to hand a command
   something you did not select with the mouse.
 - **Ctrl-K** cycles keyboard focus: command window, first pane, second pane, and
   back round.
 
 **Ctrl-U** deletes back to the start of the line and **Ctrl-W** deletes the word
-behind the cursor, as they do in Sam and at a shell prompt. Both work in the
+behind the cursor, as they do in sam and at a shell prompt. Both work in the
 command window too.
 
-`doc/sam-differences.md` has the full key table against Sam's, along with
+`doc/sam-differences.md` has the full key table against sam's, along with
 everything else the window does differently.
 
 ## Building
@@ -48,14 +48,14 @@ Requires Go and SDL2. The binary embeds Go Mono as a fallback font; no fonts nee
 
 ## Fonts
 
-Dave supports two font rendering modes. Set `font_mode` in the config file:
+dave supports two font rendering modes. Set `font_mode` in the config file:
 
 - **TTF** (default) — any TrueType or OpenType font installed on the system, rendered via Go's `x/image` stack. Set `font` to the family name (e.g. `Consolas`, `JetBrains Mono`). Falls back to an embedded Go Mono if the named font isn't found.
 - **Plan 9 bitmap fonts** — the original bitmap fonts from Plan 9/inferno, rendered without antialiasing at their native size. Set `font_mode = plan9` and point `plan9_font` at a Plan 9 font file. Pairs especially well with low-DPI displays, but works nicely everywhere. `plan9_scale` draws them larger — `plan9_scale = 1.15`, say, when a 9-point font is a little small at native resolution. A bitmap glyph has no larger size to draw from, so scaling filters it and softens the edges; leave it at `1.0` for the crisp original.
 
 ## Window management
 
-Sam manages its own windows, dividing the display into a column of resizable frames. Dave does not. Each Dave window shows one or two panes at a time. Right-clicking opens the buffer menu: **new**, **pane** (or **kill pane**), **close** and **write**, then a `~~dave~~` divider and below it the open files. Selecting a file opens it in the current pane.
+sam manages its own windows, dividing the display into a column of resizable frames. dave does not. Each dave window shows one or two panes at a time. Right-clicking opens the buffer menu: **new**, **pane** (or **kill pane**), **close** and **write**, then a `~~dave~~` divider and below it the open files. Selecting a file opens it in the current pane.
 
 To view two files side by side, right-click and choose **pane** from the buffer menu. This splits the window vertically; the new pane opens showing the current file. To remove a pane, right-click and choose **kill pane**.
 
@@ -65,7 +65,7 @@ To close a file (remove it from the session), right-click and choose **close**, 
 
 `~/.config/dave/config` on Linux, `%APPDATA%\dave\config` on Windows. If it doesn't exist at launch, `dave` creates it with every setting commented out at its default. An unrecognised key is an error, and a config that fails to load is abandoned for the defaults — so a typo costs the whole file.
 
-`tab_width` is 4, where Sam's tab stop is 8; set it to 8 if you want Sam's. It changes how wide a tab is drawn and nothing else — a typed tab is a tab in the buffer, and Enter starts a line at column zero. Dave has no autoindent and no tabs-as-spaces, deliberately; `doc/sam-differences.md` has the reasoning.
+`tab_width` is 4, where sam's tab stop is 8; set it to 8 if you want sam's. It changes how wide a tab is drawn and nothing else — a typed tab is a tab in the buffer, and Enter starts a line at column zero. dave has no autoindent and no tabs-as-spaces, deliberately; `doc/sam-differences.md` has the reasoning.
 
 ## Invocation
 
@@ -77,6 +77,14 @@ dave -d [file ...]  # headless REPL mode, no GUI
 ## Command language (brief)
 
 Addresses: `0` start, `$` end, `.` dot, `n` line, `#n` char offset, `/re/` next match, `a1,a2` range, `,` whole file.
+
+Patterns are sam's, with one addition: **`@` matches any character, newline
+included**, where `.` stops at a newline. It is what lets a pattern span lines —
+`,x/<p>@*<\/p>/` selects a `<p>` element however many lines it runs to. sam reads
+`@` as an ordinary character, so no pattern written for sam changes meaning under
+dave; inside a class, `[a@]`, it is still the literal `@`. There is no other
+difference, and no Perl shorthand: `\n` is the only escape, `[[:digit:]]` is a
+class of six characters, and `a{2,3}` is literal text.
 
 | Command | Effect |
 |---|---|
@@ -94,11 +102,11 @@ Addresses: `0` start, `$` end, `.` dot, `n` line, `#n` char offset, `/re/` next 
 | `q` | quit (twice to force) |
 | `< cmd` `> cmd` `\| cmd` | shell in / out / pipe |
 
-See the [Sam paper](https://doc.cat-v.org/plan_9/4th_edition/papers/sam/) for the full reference; Dave's command language is intended to be identical. `doc/command-ref.md` is the complete reference as Dave implements it, and `doc/sam-differences.md` records the handful of places Dave deliberately differs.
+See the [sam paper](https://doc.cat-v.org/plan_9/4th_edition/papers/sam/) for the full reference; apart from `@`, dave's command language is intended to be identical. `doc/command-ref.md` is the complete reference as dave implements it, and `doc/sam-differences.md` records the handful of places dave deliberately differs.
 
 ## sdave
 
-`sdave` is a companion stream editor (like `ssam` for `sam`). It applies Dave's command language to files or standard input non-interactively.
+`sdave` is a companion stream editor (like `ssam` for `sam`). It applies dave's command language to files or standard input non-interactively.
 
 ```
 sdave [-n] [-e script] [-f scriptfile] [file ...]

@@ -22,7 +22,6 @@ import (
 func Wrap(buf *buffer.Buffer, face render.Face, paneWidthPx int32, wordWrap bool, marginChars, tabWidth int) Layout {
 	lineH := int32(face.Height())
 
-	// Compute wrap width and centering offset.
 	// Use average lowercase width rather than 'M' so that proportional fonts
 	// (e.g. lucidasans) get a realistic character width and don't blow past
 	// paneWidthPx before olivetti mode can kick in.
@@ -51,7 +50,6 @@ func Wrap(buf *buffer.Buffer, face render.Face, paneWidthPx int32, wordWrap bool
 		marginLeft = 0
 	}
 
-	// Read the entire buffer once and work on the rune slice.
 	runes := []rune(buf.String())
 	n := len(runes)
 

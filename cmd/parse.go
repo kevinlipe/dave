@@ -161,7 +161,7 @@ func (p *cmdParser) parseOne() (*Command, error) {
 	p.skipWS()
 	if p.pos >= len(p.input) || p.peek() == '\n' || p.peek() == '\r' {
 		if addrNode != nil {
-			// Bare address with no command — print (like Sam).
+			// Bare address with no command — print (like sam).
 			return &Command{Addr: addrNode, Op: 'p'}, nil
 		}
 		return nil, nil
@@ -186,7 +186,7 @@ func (p *cmdParser) parseOne() (*Command, error) {
 	return cmd, nil
 }
 
-// OpCd is the cd command. Sam spells it as two characters and reads it with a
+// OpCd is the cd command. sam spells it as two characters and reads it with a
 // peek after 'c' — "the sleazy two-character case", as cmd.c puts it — so it
 // needs an opcode of its own that no letter collides with. It has to reach the
 // tables as one byte: string(rune(OpCd)) would encode it as two in UTF-8 and
@@ -194,14 +194,14 @@ func (p *cmdParser) parseOne() (*Command, error) {
 const OpCd = 0x80 | 'c'
 
 // noAddrCmds are the commands that take no address, so an address on one is an
-// error rather than something silently ignored. Sam calls this defaddr aNo and
+// error rather than something silently ignored. sam calls this defaddr aNo and
 // raises Enoaddr (`if(ct->defaddr==aNo && cmd.addr) error(Enoaddr)`,
 // sam/cmd.c:427). It is a property of the command rather than of how its
 // arguments parse, so it lives here and not in cmdtab, whose rows deliberately
 // group commands that share an argument shape but not an address rule — d and q
 // parse alike and address differently.
 //
-// Sam's list is `b B D e f n q u X Y !` plus `cd`; dave has no `cd`. Everything
+// sam's list is `b B D e f n q u X Y !` plus `cd`; dave has no `cd`. Everything
 // absent here takes an address: `r` and the shell redirections default to dot,
 // `w` to the whole file.
 var noAddrCmds = "bBDefnquXY!" + string([]byte{OpCd})
@@ -334,7 +334,7 @@ func (p *cmdParser) parseArgs(spec *cmdSpec, cmd *Command) error {
 		cmd.N = p.parseCount(true)
 	}
 	if spec.rest {
-		// Sam's getname wants a blank between the command and its argument:
+		// sam's getname wants a blank between the command and its argument:
 		// `efoo` is Eblank, not a request to read "foo". It applies to the
 		// commands that go through getname, not to the shell redirections,
 		// where the rest of the line is the command text.
@@ -447,7 +447,7 @@ func (p *cmdParser) readLine() string {
 
 // parseBody parses the body command after an x/y/g/v/X/Y pattern. A line that
 // ends there gets the command's default body instead — p for x, y, g and v, f
-// for X and Y (sam/cmd.c parsecmd, the ct->defcmd branch). Sam decides that
+// for X and Y (sam/cmd.c parsecmd, the ct->defcmd branch). sam decides that
 // with skipbl, which does not cross a newline, so a command on the next line is
 // the next command and not this one's body.
 func (p *cmdParser) parseBody(defCmd byte) ([]*Command, error) {

@@ -146,7 +146,7 @@ func deleteBackward(sess *cmd.Session, f *file.File) {
 // above. Otherwise everything back to the start of the line goes.
 //
 // samterm bounds the scan at the window's origin, because its half of the
-// editor holds only the text on screen. Dave has the whole file and bounds it
+// editor holds only the text on screen. dave has the whole file and bounds it
 // at 0.
 func LineStartBound(buf *buffer.Buffer, pos int) int {
 	if pos <= 0 {
@@ -169,9 +169,9 @@ func LineStartBound(buf *buffer.Buffer, pos int) int {
 // newline — ctrl-W at the start of an indented line stops at the indent rather
 // than eating the line above.
 //
-// What counts as a word is dave's, not sam's. Sam's alnum() is everything
+// What counts as a word is dave's, not sam's. sam's alnum() is everything
 // except the control characters, 0x7F–0xA0 and ASCII punctuation, so `±` and
-// `«` are word characters to it. Dave uses buffer.IsWordRune, which is what
+// `«` are word characters to it. dave uses buffer.IsWordRune, which is what
 // ctrl-arrow word motion and double-click already use; being consistent inside
 // dave matters more here than reproducing sam's table.
 func WordBackBound(buf *buffer.Buffer, pos int) int {

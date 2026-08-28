@@ -2,8 +2,8 @@ package buffer
 
 // Edit tracking.
 //
-// A consumer that keeps something derived from the buffer -- a wrapped
-// layout, say -- needs to know not just that the buffer changed but *where*,
+// A consumer that keeps something derived from the buffer — a wrapped
+// layout, say — needs to know not just that the buffer changed but *where*,
 // so it can rebuild only the affected part. Gen answers the first question;
 // this answers the second.
 //

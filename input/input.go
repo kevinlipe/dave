@@ -1,4 +1,4 @@
-// Package input handles SDL keyboard and mouse events for Dave.
+// Package input handles SDL keyboard and mouse events for dave.
 //
 // Dependency check: input imports cmd for ExecString. cmd imports
 // buffer/file/addr/regexp — none of which import input — so there is no cycle.
@@ -108,7 +108,7 @@ func (h *Handler) HandleKey(ev *sdl.KeyboardEvent, winW, winH int32) error {
 
 	// Escape selects the run typed since the last Escape, as samterm does
 	// (main.c type(), `if(c==ESC && typeesc>=0)`): type, press Escape, and what
-	// you typed is dot and ready for a command. Dave used to bind it to "focus
+	// you typed is dot and ready for a command. dave used to bind it to "focus
 	// the command window", which ctrl-K below already does — and does better,
 	// since it goes both ways.
 	if sym == sdl.K_ESCAPE {

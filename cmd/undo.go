@@ -10,21 +10,21 @@ import (
 // Undo and redo. The reference is 9front (~/src/9front/sys/src/cmd/sam):
 // sam/file.c for the log, sam/xec.c:267 for the signed count on `u`.
 //
-// Sam keeps two logs per file, delta (undo) and epsilon (redo), and every
+// sam keeps two logs per file, delta (undo) and epsilon (redo), and every
 // record carries the sequence number of the command that wrote it. Undo pops
 // delta, applies the records, and pushes their inverses onto epsilon; redo runs
 // the same loop with the two swapped, stopping when the sequence number
 // changes. That last part is what makes one command — not one buffer mutation —
 // one step, and it is the part worth keeping.
 //
-// Dave does not copy the rest of the shape. Sam's undo is per file: `undo()`
+// dave does not copy the rest of the shape. sam's undo is per file: `undo()`
 // reads the sequence number off the *current* file and steps only the files
 // sharing it (sam/sam.c:451), so editing a, editing b and then making a current
 // undoes a's change and leaves b's, and once a's history is spent `u` does
 // nothing at all even though b's is not. That is hard to defend on its own
 // terms, and it reads against the sam paper's own description ("the undo
 // command, u, undoes the last command, no matter how many files were
-// affected"). Dave implements the paper: one timeline across all files, `u`
+// affected"). dave implements the paper: one timeline across all files, `u`
 // steps back along it and `u-n` forward, and the grouping that makes a
 // multi-file command one step is the entry itself rather than a number shared
 // between per-file stacks.
@@ -78,7 +78,7 @@ func newUndoLog() *UndoLog { return &UndoLog{} }
 //
 // The discard is sam's filemark (sam/file.c:590), which clears epsilon on the
 // first logged change of a command: a new edit destroys the redo history, so
-// the history is a line rather than a tree. Sam discards per file, since its
+// the history is a line rather than a tree. sam discards per file, since its
 // stacks are per file; on one timeline the discard is the whole of it, which is
 // what keeps a redo from ever reaching back past a newer edit.
 func (u *UndoLog) record(e histEntry, join bool) {
@@ -169,7 +169,7 @@ func (s *Session) step(isundo bool) (bool, error) {
 	back := histEntry{changes: make([]fileChange, 0, len(e.changes))}
 	for _, c := range e.changes {
 		// Capture the state this change is about to overwrite, so the reverse
-		// direction restores it. Sam reads it live off the file for the same
+		// direction restores it. sam reads it live off the file for the same
 		// reason (fileunsetdot(f, epsilon, f->dot.r) before assigning dot).
 		b := fileChange{
 			f:       c.f,

@@ -134,18 +134,18 @@ support.
   roles chosen at construction.
 - **Merge the view, not the model.** `Pane` is built on a `*file.File`
   while `CmdWindow` holds a bare buffer, and it is tempting to close
-  that gap too. Sam did: `Tstartcmdfile` runs `cmd = newfile()`
+  that gap too. sam did: `Tstartcmdfile` runs `cmd = newfile()`
   (`sam/mesg.c:230`), so sam's command window is a real `File` with a
   tag in the file list, its output arrives by `loginsert`
   (`mesg.c:582`), and cuts in it journal through `logdelete` and bump
-  `seq` exactly like a document. Sam pays for that with **19 explicit
+  `seq` exactly like a document. sam pays for that with **19 explicit
   `f == cmd` exclusions** across `sam.c`, `file.c`, `rasp.c`, `xec.c`,
   `address.c` and `multi.c` — every place "the command window is a
   file" is a lie that has to be corrected: it is skipped by undo
   (`sam.c:454`), by `X` (`xec.c:523`), by the dirty/save scan, by
-  multi-file operations. Sam earns that back because it is two
+  multi-file operations. sam earns that back because it is two
   processes: making `cmd` a file means the host/terminal sync protocol
-  covers it for free. Dave is one process and has no such protocol, so
+  covers it for free. dave is one process and has no such protocol, so
   the model half of the trade buys much less here. The duplication that
   actually hurts is in the view, and that half can be merged on its own.
 - **Not urgent:** the performance argument for it is gone, since the
@@ -163,12 +163,12 @@ support.
   subject of it. Getting an earlier command back needs no history
   either, since every command is still sitting in the buffer as text and
   any line can be re-executed by putting the cursor on it.
-  Sam agrees, and suppresses the transaction at the edit: `fileupdate`
+  sam agrees, and suppresses the transaction at the edit: `fileupdate`
   sets `notrans = TRUE` for `cmd` and skips the dot/mark bookkeeping
   undo would replay (`sam/file.c:408`), with `sam.c:454` skipping it
   again at the undo step. The `loginsert` that carries cmd-window output
   is transport, not history — in two processes, entering the log is how
-  a change reaches samterm at all. Dave is one process and has no such
+  a change reaches samterm at all. dave is one process and has no such
   pipeline, so it has nothing to suppress. Nothing to copy here; keep
   the behaviour.
 
@@ -176,7 +176,7 @@ support.
 
 ### A search scans at about 80 MB/s
 
-Dave runs sam's matcher over the gap buffer a rune at a time. Go's
+dave runs sam's matcher over the gap buffer a rune at a time. Go's
 regexp managed 20 GB/s on a pattern with a literal prefix, because it
 could `memchr` its way along a string.
 

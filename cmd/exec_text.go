@@ -15,7 +15,7 @@ func (s *Session) execDelete(f *file.File, dot buffer.Range, ctx *execCtx) error
 }
 
 func (s *Session) execPrint(f *file.File, dot buffer.Range) error {
-	// Exactly the addressed text, with nothing added. Sam's display writes the
+	// Exactly the addressed text, with nothing added. sam's display writes the
 	// range and stops (sam/xec.c), so printing a range that does not end in a
 	// newline leaves the cursor mid-line — which is the honest report, and what
 	// makes `,x/.../ p` output concatenate the way a script expects.
@@ -83,7 +83,7 @@ func (s *Session) execEqual(f *file.File, dot buffer.Range, flag string) error {
 	if name := f.Name(); name != "" {
 		s.dprint("%s:", name)
 	}
-	// Sam's printposn prints both halves for a bare `=` — the line range, then
+	// sam's printposn prints both halves for a bare `=` — the line range, then
 	// "; ", then the character range — and only the second half for `=#`. Each
 	// half names its second number only when it differs from the first, so a
 	// one-line dot is `1; #0,#6` and not `1,1; #0,#6`.
@@ -94,7 +94,7 @@ func (s *Session) execEqual(f *file.File, dot buffer.Range, flag string) error {
 		buf := f.Buffer()
 		line1 := buf.LineNumber(dot.Start)
 		// For the end, use dot.End-1 so that a selection ending at a line
-		// boundary reports the last included line, not the next one. Sam gets
+		// boundary reports the last included line, not the next one. sam gets
 		// there by counting newlines and then backing off when the range ends
 		// on one (`if(… filereadc(f, addr.r.p2-1)=='\n') --l2`).
 		endPos := dot.End

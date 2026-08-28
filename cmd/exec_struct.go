@@ -48,7 +48,7 @@ func (s *Session) execY(f *file.File, dot buffer.Range, pat string, body []*Comm
 // and the gap bookkeeping are one interlocking rule here, not two, and reading
 // them off the C is the only way to keep them in step.
 //
-// Positions resolve against the original text throughout. Dave applies a
+// Positions resolve against the original text throughout. dave applies a
 // command's changes when it commits, and sam's buffer is likewise untouched
 // while the loop runs, so a search never sees a half-edited buffer.
 func (s *Session) looper(f *file.File, r buffer.Range, pat string, body []*Command, isX bool, ctx *execCtx) error {
@@ -134,7 +134,7 @@ func (s *Session) fileLoop(want func(ml string) bool, body []*Command, ctx *exec
 		if !want(f.MenuLine(f == s.Current, false)) {
 			continue
 		}
-		// Sam's cmdexec reads the file before it calls current(f), so the menu
+		// sam's cmdexec reads the file before it calls current(f), so the menu
 		// line announcing the read still marks the file the loop came from.
 		if err := f.EnsureLoaded(); err != nil {
 			return err

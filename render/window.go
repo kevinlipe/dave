@@ -16,7 +16,8 @@ const (
 	// CmdWinLines is the fixed height of the command window in lines of text.
 	CmdWinLines = 4
 
-	// HeaderPad is vertical padding above and below text in a pane header.
+	// HeaderPad is the vertical padding above and below the command window's
+	// text. Panes have no header bar, so nothing else uses it.
 	HeaderPad int32 = 2
 
 	// PanePad is the horizontal inner padding of a pane's text area.
@@ -145,16 +146,13 @@ func DrawBorder(ren *sdl.Renderer, rect sdl.Rect, w int32) {
 	ren.FillRect(&sdl.Rect{X: rect.X + rect.W - w, Y: rect.Y, W: w, H: rect.H}) // right
 }
 
-// DrawCursor draws an I-beam cursor at pixel position (x, y) with the given
-// line height and color. The cursor is a 2-px vertical bar with 2×3 filled
-// square terminals centered at the top and bottom, matching Sam's cursor appearance.
+// DrawCursor draws an I-beam cursor at pixel position (x, y): a 2px bar the
+// height of a line, with a 4×2 terminal centred on each end, which is the
+// shape samterm draws.
 func DrawCursor(ren *sdl.Renderer, x, y, lineH int32, col sdl.Color) {
 	ren.SetDrawColor(col.R, col.G, col.B, 255)
-	// Vertical bar (2px wide).
 	ren.FillRect(&sdl.Rect{X: x, Y: y, W: 2, H: lineH})
-	// Top square: 3px wide × 2px tall, centered on bar.
 	ren.FillRect(&sdl.Rect{X: x - 1, Y: y, W: 4, H: 2})
-	// Bottom square: 3px wide × 2px tall, centered on bar.
 	ren.FillRect(&sdl.Rect{X: x - 1, Y: y + lineH - 2, W: 4, H: 2})
 }
 

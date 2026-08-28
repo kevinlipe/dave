@@ -5,7 +5,7 @@ package regexp
 //
 // It is an operator-precedence parser over two stacks: operands, each a
 // fragment of the instruction graph with a first and a last instruction, and
-// operators waiting for their arguments. Concatenation is implicit -- an
+// operators waiting for their arguments. Concatenation is implicit — an
 // operand arriving while the last thing seen was also an operand inserts one.
 //
 // The whole of backward matching lives in one line of the CAT case below.

@@ -2,7 +2,7 @@ package regexp
 
 // The program a compiled pattern runs as, ported from sam's regexp.c.
 //
-// Sam's machine is Thompson's construction: a graph of instructions walked by
+// sam's machine is Thompson's construction: a graph of instructions walked by
 // a list of live threads, one step per input rune, with no backtracking. The
 // port keeps sam's structure rather than improving on it, because the point is
 // to be able to read the two side by side when they disagree.
@@ -14,8 +14,8 @@ package regexp
 // fields, with the one overlap that carries meaning kept (see inst.next).
 
 // nsubexp is how many capture groups a match records, group 0 being the whole
-// match. Sam's NSUBEXP is 10, and a pattern may contain more groups than that
-// -- the extra ones are compiled and matched, they simply are not recorded.
+// match. sam's NSUBEXP is 10, and a pattern may contain more groups than that
+// — the extra ones are compiled and matched, they simply are not recorded.
 const nsubexp = 10
 
 type opcode uint8
@@ -74,7 +74,7 @@ type prog struct {
 	start   int
 	classes []class
 
-	// Thread lists, kept here so a search does not allocate. Sam has them as
+	// Thread lists, kept here so a search does not allocate. sam has them as
 	// globals for the same reason; like sam's, they make a program unsafe to
 	// run against itself concurrently, which single-threaded dave never does.
 	tl, nl []thread
@@ -86,7 +86,7 @@ func (p *prog) add(op opcode) int {
 }
 
 // startRune returns the literal rune every match must begin with, and false
-// when there is no such rune. Sam calls this startchar and uses it to skip
+// when there is no such rune. sam calls this startchar and uses it to skip
 // input positions that cannot begin a match; it is the whole of sam's
 // optimiser for the common case of searching for a word.
 func (p *prog) startRune() (rune, bool) {

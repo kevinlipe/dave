@@ -9,7 +9,7 @@ type Border struct {
 	MaxAboveFrac float64 // if > 0: Y <= MaxAboveFrac * totalHeight
 }
 
-// BorderGrabHalf is the half-height of the grab zone (±4px).
+// BorderGrabHalf is the half-height of a border's grab zone.
 const BorderGrabHalf = int32(4)
 
 // Hot returns true if pixel y falls within the grab zone.

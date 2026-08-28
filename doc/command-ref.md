@@ -1,20 +1,20 @@
-# Dave Command Language Reference
+# dave Command Language Reference
 
-Dave's command language is Sam's command language. This is the complete reference.
+dave's command language is sam's command language. This is the complete reference.
 
 ---
 
 ## Regular Expressions
 
-Dave uses Sam's pattern syntax, with one addition:
+dave uses sam's pattern syntax, with one addition:
 
 | Pattern | Meaning |
 |---------|---------|
 | `.`     | Any character except newline |
-| `@`     | Any character including newline (Dave extension) |
+| `@`     | Any character including newline (dave extension) |
 | `\n`    | Newline |
 | `^`     | Start of line (matches at start of text and after every newline) |
-| `$`     | End of line — before a newline. Searching forward it does *not* match at the end of a file with no final newline; searching backward with `?…?` it does, which is Sam's asymmetry and not ours |
+| `$`     | End of line — before a newline. Searching forward it does *not* match at the end of a file with no final newline; searching backward with `?…?` it does, which is sam's asymmetry and not ours |
 | `*`     | Zero or more of preceding |
 | `+`     | One or more of preceding |
 | `?`     | Zero or one of preceding |
@@ -22,16 +22,16 @@ Dave uses Sam's pattern syntax, with one addition:
 | `[^abc]`| Negated character class — never matches a newline |
 | `(re)`  | Grouping / capture |
 
-**`\n` is the only escape.** Every other `\X` is the literal character X, as in Sam: `\.` is a dot, `\*` an asterisk, `\\` a backslash — and `\d` is the letter `d`, `\w` the letter `w`, `\t` the letter `t`. Perl's shorthand classes and anchors (`\d`, `\w`, `\s`, `\b`, `\A`, …) are not available; they would silently select different text from the same pattern in Sam. Use `[0-9]`, `[a-zA-Z]` and the like.
+**`\n` is the only escape.** Every other `\X` is the literal character X, as in sam: `\.` is a dot, `\*` an asterisk, `\\` a backslash — and `\d` is the letter `d`, `\w` the letter `w`, `\t` the letter `t`. Perl's shorthand classes and anchors (`\d`, `\w`, `\s`, `\b`, `\A`, …) are not available; they would silently select different text from the same pattern in sam. Use `[0-9]`, `[a-zA-Z]` and the like.
 
-**A negated class never matches a newline.** `[^ ]+` stops at the end of a line rather than running on to the next, as in Sam. A plain class matches a newline only if it says so: `[\n]` and `[ab\n]` do.
+**A negated class never matches a newline.** `[^ ]+` stops at the end of a line rather than running on to the next, as in sam. A plain class matches a newline only if it says so: `[\n]` and `[ab\n]` do.
 
-**Matching is leftmost-longest.** Among matches starting at the earliest position, the longest wins, so `/foo|foobar/` matches `foobar`. This is Sam's rule, not Perl's — the order of alternatives does not decide the result.
+**Matching is leftmost-longest.** Among matches starting at the earliest position, the longest wins, so `/foo|foobar/` matches `foobar`. This is sam's rule, not Perl's — the order of alternatives does not decide the result.
 
-**Braces are ordinary characters.** `a{2,3}` matches the text `a{2,3}`; there is no counted repetition, as there is none in Sam.
+**Braces are ordinary characters.** `a{2,3}` matches the text `a{2,3}`; there is no counted repetition, as there is none in sam.
 
-**The syntax above is the whole of it.** Dave runs Sam's own matcher, so what
-Sam has no syntax for, Dave has no syntax for either — and reads it the way Sam
+**The syntax above is the whole of it.** dave runs sam's own matcher, so what
+sam has no syntax for, dave has no syntax for either — and reads it the way sam
 does rather than rejecting it. POSIX classes are the one to watch:
 `[[:digit:]]` is a class of the six characters `[`, `:`, `d`, `i`, `g`, `t`
 followed by a literal `]`, so it does not match a digit. Write `[0-9]`.
@@ -132,7 +132,7 @@ For multi-line text in `a`, `i`, `c`, the command may be followed by a newline a
 | `g/re/cmd` | If the range contains a match of *re*, run *cmd* (dot unchanged). |
 | `v/re/cmd` | If the range does not contain a match of *re*, run *cmd* (dot unchanged). |
 
-`x` with an immediately following space uses `.*\n` as the pattern (match each line). So `,x g/Emacs/p` prints all lines containing `Emacs`. `y`, `g` and `v` have no such form: a space after them is followed by the pattern's delimiter, as Sam has it.
+`x` with an immediately following space uses `.*\n` as the pattern (match each line). So `,x g/Emacs/p` prints all lines containing `Emacs`. `y`, `g` and `v` have no such form: a space after them is followed by the pattern's delimiter, as sam has it.
 
 With nothing after the pattern, the command is `p`, so `,x/Emacs/` prints every match. The command has to be on the same line — one on the next line is the next command, not the body.
 
@@ -170,7 +170,7 @@ After an `X` or `Y` loop the file that was current before it is current again, u
 | `f` *file* | Set the current file's associated name to *file*. Print the menu line. |
 | `n`     | Print the menu (list of open files with status marks). |
 
-Every command that takes a *file* argument expands a leading `~` or `~/` to the user's home directory (Dave extension; Sam does not do this). On Windows, home is `%USERPROFILE%` (i.e. `C:\Users\Name`), not `AppData`. `~user` is not supported.
+Every command that takes a *file* argument expands a leading `~` or `~/` to the user's home directory (dave extension; sam does not do this). On Windows, home is `%USERPROFILE%` (i.e. `C:\Users\Name`), not `AppData`. `~user` is not supported.
 
 `D` is the one destructive command that asks. Everything else is guarded by undo instead; `D` cannot be, since dropping a file discards the history that would restore it. The refusal is per round of changes, not per session: edit the file again after a refusal and the next `D` refuses again.
 
@@ -192,7 +192,7 @@ Running off either end of the history is silent: `u100` with three commands to u
 
 **One command is one step.** An `x` loop over a hundred matches comes back with a single `u`, not `u100`, and so does a `{ }` group. A command that spans several files — an `X` loop, say — is also one step: `u` reverses it in every file it touched.
 
-**There is one history, shared by every file.** `u` takes back the last command, whichever file it touched, and the current file does not change which step is next. (Sam is per-file here: it reads the sequence number off the current file, so an edit in another file can be unreachable until you switch to it. Dave follows the sam paper instead — "the undo command, u, undoes the last command, no matter how many files were affected".)
+**There is one history, shared by every file.** `u` takes back the last command, whichever file it touched, and the current file does not change which step is next. (sam is per-file here: it reads the sequence number off the current file, so an edit in another file can be unreachable until you switch to it. dave follows the sam paper instead — "the undo command, u, undoes the last command, no matter how many files were affected".)
 
 **A new edit discards the redo history.** After undoing, anything that changes any file throws away what you could have redone. The history is a line, not a tree.
 

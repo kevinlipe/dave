@@ -1,4 +1,4 @@
-// Package menu implements Dave's popup menus: the right-click buffer menu
+// Package menu implements dave's popup menus: the right-click buffer menu
 // and the shift-right-click editing menu.
 //
 // Menus are rendered as SDL overlays on top of everything else.

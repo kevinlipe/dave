@@ -7,13 +7,13 @@ import (
 
 // The lexer, ported from sam's lex, nextrec and bldcclass.
 //
-// Sam's pattern language is eleven tokens wide: \ * ? + | . ( ) ^ $ and [.
+// sam's pattern language is eleven tokens wide: \ * ? + | . ( ) ^ $ and [.
 // Everything else is a literal, `\X` is the literal X with `\n` the sole
-// escape that means something, and braces are ordinary characters. Dave adds
-// one operator, @, which sam reads as an ordinary character -- so a pattern
+// escape that means something, and braces are ordinary characters. dave adds
+// one operator, @, which sam reads as an ordinary character — so a pattern
 // written for sam means here exactly what it means there.
 
-// Sam's regexp errors, by its wording. A pattern that sam rejects should be
+// sam's regexp errors, by its wording. A pattern that sam rejects should be
 // rejected here, saying the same thing.
 var (
 	errBadClass  = errors.New("malformed `[]'")
@@ -102,7 +102,7 @@ func (l *lexer) next() (lexTok, error) {
 	case '.':
 		return lexTok{kind: lexOperand, op: opAny}, nil
 	case '@':
-		// Dave's one addition. Sam has no such operator and reads @ as an
+		// dave's one addition. sam has no such operator and reads @ as an
 		// ordinary character, so no sam pattern changes meaning here.
 		return lexTok{kind: lexOperand, op: opAnyNL}, nil
 	case '^':
@@ -121,7 +121,7 @@ func (l *lexer) next() (lexTok, error) {
 
 // nextrec reads one character of a class, reporting whether it was escaped.
 //
-// Sam carries that flag in a high bit of the rune (QUOTED) so that an escaped
+// sam carries that flag in a high bit of the rune (QUOTED) so that an escaped
 // `]` or `-` is not read as punctuation. A bool says the same thing without
 // putting a value in a rune that is not one.
 func (l *lexer) nextrec() (rune, bool, error) {
@@ -152,7 +152,7 @@ func (l *lexer) class() (int, opcode, error) {
 	if l.peek() == '^' {
 		l.pos++
 		op = opNClass
-		// Sam seeds a negated class with newline, so [^a] never matches one.
+		// sam seeds a negated class with newline, so [^a] never matches one.
 		c = append(c, runeRange{'\n', '\n'})
 	}
 	for {
@@ -167,7 +167,7 @@ func (l *lexer) class() (int, opcode, error) {
 			return 0, 0, errBadClass
 		}
 		// The lookahead is at the raw pattern, so `a\-z` is three characters
-		// and not a range -- which is how sam reads it too.
+		// and not a range — which is how sam reads it too.
 		if l.peek() == '-' {
 			l.pos++
 			c2, q2, err := l.nextrec()

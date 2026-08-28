@@ -1,4 +1,4 @@
-// sdave — stream dave, a non-interactive stream editor using Dave's command language.
+// sdave — stream dave, a non-interactive stream editor using dave's command language.
 //
 // Usage:
 //
@@ -97,7 +97,7 @@ func processReader(w, diag io.Writer, r io.Reader, script string, suppress bool)
 // to w unless suppress is true. What the script prints with p joins it there;
 // everything else — menu lines, `=`, `n`, warnings — goes to diag.
 //
-// That split is the whole of what `ssam` is. Sam already writes on two streams
+// That split is the whole of what `ssam` is. sam already writes on two streams
 // in -d mode, display() on fd 1 and dprint on fd 2, and ssam's contribution is
 // `>[2]/dev/null` around it. sdave keeps the streams apart the same way but
 // sends the second to standard error rather than dropping it, so a warning the

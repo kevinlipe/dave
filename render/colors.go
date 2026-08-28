@@ -1,5 +1,5 @@
 // Package render implements SDL2 window creation, font rendering, and color
-// management for Dave. It depends on config/ for the color scheme and on
+// management for dave. It depends on config/ for the color scheme and on
 // x/image/font/opentype for TTF rendering (not SDL_ttf).
 package render
 
@@ -9,8 +9,8 @@ import (
 	"github.com/veandco/go-sdl2/sdl"
 )
 
-// Default color scheme (Sam/Plan9 classic appearance). All colors match the
-// values in dave-spec.md. These are the fallbacks; config overrides them.
+// The default colour scheme, sam's classic Plan 9 appearance. These are the
+// fallbacks; config overrides any of them.
 var (
 	ColBackground   = sdl.Color{R: 0xFF, G: 0xFF, B: 0xEA, A: 0xFF} // #FFFFEA
 	ColText         = sdl.Color{R: 0x00, G: 0x00, B: 0x00, A: 0xFF} // #000000
@@ -23,7 +23,7 @@ var (
 	ColCmdwinBorder = sdl.Color{R: 0x88, G: 0x88, B: 0xCC, A: 0xFF} // #8888CC
 	ColCmdwinScroll = sdl.Color{R: 0x88, G: 0x88, B: 0xCC, A: 0xFF} // #8888CC
 
-	// Menu colors (not overridable via config). Sam classic green palette.
+	// Menu colors (not overridable via config). sam classic green palette.
 	ColMenuBG        = sdl.Color{R: 0xEA, G: 0xFF, B: 0xEA, A: 0xFF} // #EAFFEA
 	ColMenuFG        = sdl.Color{R: 0x00, G: 0x00, B: 0x00, A: 0xFF} // #000000
 	ColMenuHilight   = sdl.Color{R: 0x44, G: 0x88, B: 0x44, A: 0xFF} // #448844
@@ -31,7 +31,7 @@ var (
 	ColMenuBorder    = sdl.Color{R: 0x88, G: 0xCC, B: 0x88, A: 0xFF} // #88CC88
 )
 
-// Palette holds the active colors for a Dave session, derived from config.
+// Palette holds the active colors for a dave session, derived from config.
 type Palette struct {
 	Background      sdl.Color
 	Text            sdl.Color

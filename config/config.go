@@ -1,4 +1,4 @@
-// Package config parses Dave's configuration file and provides typed access
+// Package config parses dave's configuration file and provides typed access
 // to all settings. It has no SDL or rendering dependency.
 //
 // Config file location:
@@ -26,7 +26,7 @@ type Color struct {
 	R, G, B uint8
 }
 
-// Colors holds the full Dave color scheme.
+// Colors holds the full dave color scheme.
 type Colors struct {
 	Background      Color // pane/buffer background              #FFFFEA
 	Text            Color // normal text                         #000000
@@ -44,7 +44,7 @@ type Colors struct {
 	CmdwinScroll    Color // command window scrollbar       #8888CC
 }
 
-// Config holds all Dave configuration settings.
+// Config holds all dave configuration settings.
 type Config struct {
 	Font         string  // TTF font name; empty = embedded Go Mono
 	FontSize     float64 // font size in points (default 14)

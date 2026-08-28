@@ -29,7 +29,7 @@ func (s *Session) execB(arg string, ctx *execCtx) error {
 		if f != nil {
 			s.Current = f
 			s.newCurrent = true
-			// Sam's b_cmd reads the file if it has not been read, which
+			// sam's b_cmd reads the file if it has not been read, which
 			// announces it, and otherwise reports the menu line itself — one
 			// line either way.
 			if err := f.EnsureLoaded(); err != nil {
@@ -114,7 +114,7 @@ func (s *Session) execE(f *file.File, name string, ctx *execCtx) error {
 	if name == "" {
 		return fmt.Errorf("e: no filename")
 	}
-	// A file that is not there is an error, not empty content. Sam opens it and
+	// A file that is not there is an error, not empty content. sam opens it and
 	// raises Eopen if it cannot (`error_r(Eopen, genc)`), leaving the buffer
 	// alone; swallowing the case meant a typo in the name emptied the buffer
 	// without a word. New files are made with B, which does not read.
@@ -146,7 +146,7 @@ func (s *Session) execE(f *file.File, name string, ctx *execCtx) error {
 	f.SetName(name)
 	s.sortFiles(f)
 	f.SetDot(buffer.Range{})
-	// Sam reports e with the menu line and no count: edit() passes -1 to
+	// sam reports e with the menu line and no count: edit() passes -1 to
 	// closeio for e, which suppresses the count, then calls filename(f).
 	s.dprint("%s\n", f.MenuLine(f == s.Current, false))
 	return nil
@@ -174,7 +174,7 @@ func (s *Session) execR(f *file.File, dot buffer.Range, name string, ctx *execCt
 
 func (s *Session) execW(f *file.File, dot buffer.Range, name string, ctx *execCtx) error {
 	// Changes are applied at the end of the command, so a w in the same command
-	// that changed the file would write the text as it was before. Sam refuses
+	// that changed the file would write the text as it was before. sam refuses
 	// on the same test — fseq == seq, meaning this command has already logged
 	// something for this file — and raises Ewseq, "can't write while changing"
 	// (sam/xec.c:288). A rename counts, as it does in sam.
@@ -188,7 +188,7 @@ func (s *Session) execW(f *file.File, dot buffer.Range, name string, ctx *execCt
 	if name == "" {
 		return fmt.Errorf("w: no filename")
 	}
-	// Refuse to write over a file that changed since it was read. Sam warns
+	// Refuse to write over a file that changed since it was read. sam warns
 	// and returns without writing, having updated its record, so a second w
 	// goes through (sam/io.c writef).
 	if name == f.Name() && f.WriteStale() {
@@ -236,7 +236,7 @@ func (s *Session) execF(f *file.File, name string, ctx *execCtx) error {
 }
 
 // execCd changes the working directory and rewrites the open files' names so
-// they still point where they did. Sam does the same (sam/sam.c cd): a relative
+// they still point where they did. sam does the same (sam/sam.c cd): a relative
 // name is made absolute against the directory being left, and a name under the
 // new directory is shortened to be relative to it.
 //

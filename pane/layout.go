@@ -1,4 +1,4 @@
-// Package pane implements the pane model for Dave: word-wrap layout,
+// Package pane implements the pane model for dave: word-wrap layout,
 // scroll position, dot rendering, and pane headers.
 //
 // The layout representation is defined here and must be correct before any

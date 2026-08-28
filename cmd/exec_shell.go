@@ -36,12 +36,12 @@ func (s *Session) shellText(arg string) (string, error) {
 
 // runShell runs a shell command, returning its standard output when captured.
 //
-// A non-zero exit is a warning, not a failure. Sam applies whatever the command
+// A non-zero exit is a warning, not a failure. sam applies whatever the command
 // produced and prints `?warning: exit status` (`warn_s(Wbadstatus, retmsg)`,
 // sam/shell.c), so a filter that fails partway still hands back what it managed
 // — dave used to discard the output and roll the command back.
 //
-// The child's two streams go where sam's child's do. Sam only redirects them
+// The child's two streams go where sam's child's do. sam only redirects them
 // when it is downloaded (`if(downloaded)`, sam/shell.c plan9); with `-d` the
 // child simply inherits fd 1 and fd 2, so its standard error reaches the
 // terminal and not the text. Capturing and dropping it left a failing command
@@ -64,7 +64,7 @@ func (s *Session) runShell(shellCmd, stdin string, capture, warn bool) (string, 
 		if !errors.As(err, &ee) {
 			return "", err
 		}
-		// Sam warns for < and | but not for >, which it does not check.
+		// sam warns for < and | but not for >, which it does not check.
 		if warn {
 			s.dprint("?warning: exit status %d\n", ee.ExitCode())
 		}
@@ -140,7 +140,7 @@ func (s *Session) execBang(arg string, ctx *execCtx) error {
 	if err != nil {
 		return fmt.Errorf("!: %w", err)
 	}
-	// Sam does not check the status of ! either; it is not in the list warn_s
+	// sam does not check the status of ! either; it is not in the list warn_s
 	// is called for.
 	if _, err := s.runShell(shellCmd, "", false, false); err != nil {
 		return fmt.Errorf("! %s: %w", shellCmd, err)

@@ -42,7 +42,7 @@ type Buffer struct {
 	// Memo of the previous runeToBytePos answer, used as an extra anchor so
 	// that sequential access is cheap. The pair is in logical coordinates,
 	// which do not shift when the gap moves, so only a content change can
-	// invalidate it -- hence the gen stamp. The zero value is the true
+	// invalidate it — hence the gen stamp. The zero value is the true
 	// statement "rune 0 is at byte 0", so it is safe before anything is set.
 	memoRune int
 	memoByte int
@@ -96,7 +96,7 @@ func (b *Buffer) runeToBytePos(runePos int) int {
 	}
 
 	// Stepping forward one rune from the last answer is not one access pattern
-	// among several -- it is what a scan does, and a scan is what the matcher,
+	// among several — it is what a scan does, and a scan is what the matcher,
 	// the line index and word bounds all are. Answering it here costs one
 	// decode; going through segByteOffset costs the same decode plus the
 	// distance arithmetic a random query needs, across two more calls that are
@@ -329,8 +329,8 @@ func (b *Buffer) ReadAt(pos, n int) string {
 // ReadAt's two runeToBytePos calls are not merely wasted: they leave the memo
 // pinned at the end of the buffer, and the next caller asking about a position
 // near dot then walks in from a fixed point instead of from where it left off.
-// A loop that flattens the buffer and then converts a position -- which is
-// what a regexp address does, once per match -- pays that walk every time.
+// A loop that flattens the buffer and then converts a position — which is
+// what a regexp address does, once per match — pays that walk every time.
 func (b *Buffer) String() string {
 	var s string
 	switch {
@@ -351,7 +351,7 @@ func (b *Buffer) String() string {
 }
 
 // ByteOffset returns the byte offset at which codepoint runePos begins,
-// measured in the buffer's logical content -- that is, the offset that
+// measured in the buffer's logical content — that is, the offset that
 // codepoint has in the string String returns. It panics if runePos is
 // negative; offsets past the end clamp to the end of the content.
 //

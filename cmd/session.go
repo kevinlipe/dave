@@ -1,4 +1,4 @@
-// Package cmd implements Dave's command language parser and executor.
+// Package cmd implements dave's command language parser and executor.
 //
 // The Session type is the top-level object that holds the file list and
 // undo history. Commands are parsed from strings and executed against
@@ -15,13 +15,13 @@ import (
 	"strings"
 )
 
-// Session holds all state for a running Dave session.
+// Session holds all state for a running dave session.
 type Session struct {
 	Files   []*file.File
 	Current *file.File
 	Undo    *UndoLog
 
-	// Sam writes on two streams and dave keeps them apart. Output carries the
+	// sam writes on two streams and dave keeps them apart. Output carries the
 	// text a command produces — p, and the structural commands that print
 	// through it — which is sam's display() and goes to fd 1. Diag carries
 	// everything else: menu lines, `=`, `n`, the `!` acknowledgement and every
@@ -233,7 +233,7 @@ type filePending struct {
 	savedVersion int
 
 	// renamed records that this command changed the file's name, so an entry
-	// gets logged even when no text changed. Sam logs a Filename record from
+	// gets logged even when no text changed. sam logs a Filename record from
 	// getname() for both `e` and `f` (sam/sam.c getname -> logsetname).
 	renamed bool
 
@@ -319,7 +319,7 @@ func (ctx *execCtx) commit() error {
 	}
 	if len(entry.changes) > 0 {
 		// Any change re-arms the quit guard, so a refused q followed by more
-		// editing is refused again. Sam clears quitok the same way, from the
+		// editing is refused again. sam clears quitok the same way, from the
 		// per-command update (sam/file.c:425).
 		ctx.session.quitPending = false
 	}
@@ -339,7 +339,7 @@ func (ctx *execCtx) rollback() {
 // file f, recording it in the undo log. pos is the rune insert position, del
 // is the number of runes to delete before inserting, and text is the new text.
 // A run of ordinary typing coalesces into one undo step, so backing out a word
-// costs one u rather than one per character. Sam gets this from samterm, which
+// costs one u rather than one per character. sam gets this from samterm, which
 // batches a typing run into one message and flushes it on any non-typing key
 // (samterm/main.c flushtyping).
 func (s *Session) ApplyEdit(f *file.File, pos, del int, text string) error {

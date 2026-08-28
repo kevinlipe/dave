@@ -13,7 +13,7 @@ import (
 // resolves many line addresses against one generation pays for the scan
 // once, and a session that never uses a line address never pays at all.
 //
-// Line numbering follows Sam. An empty buffer has one empty line. A
+// Line numbering follows sam. An empty buffer has one empty line. A
 // trailing newline begins a further empty line, so "a\nb\n" has three
 // lines, the third being the empty string at the end of the buffer.
 type lineIndex struct {

@@ -33,7 +33,7 @@ func main() {
 	}
 
 	s := cmd.NewSession(os.Stdout)
-	// Sam's two streams: display() writes the text a command produced on fd 1,
+	// sam's two streams: display() writes the text a command produced on fd 1,
 	// dprint writes menu lines, `=`, `n` and the warnings on fd 2. -d is the
 	// mode where that is visible, and it is what lets `sdave` — and a shell
 	// pipeline around `dave -d` — take stdout as data. runGUI puts both in the
@@ -43,7 +43,7 @@ func main() {
 		f := file.NewNamed(name)
 		s.AddFile(f)
 	}
-	// Sam's startup ends `else if(!downloaded) newfile()`: given no file
+	// sam's startup ends `else if(!downloaded) newfile()`: given no file
 	// arguments and no terminal to hand the window to, it opens one empty
 	// nameless buffer, which is what makes `sam -d` on its own a scratch pad.
 	// The condition is the interesting half — sam does not do it when it is
@@ -59,7 +59,7 @@ func main() {
 	}
 
 	if headless {
-		// Sam's cmdloop loads the current file before its first prompt and
+		// sam's cmdloop loads the current file before its first prompt and
 		// reports it with filename(f). It does this only when not downloaded,
 		// so the window build stays quiet.
 		if f := s.Current; f != nil {
@@ -91,7 +91,7 @@ func usage() {
 // opens two files, one of them called `-d`, exactly as sam would. A lone `-` is
 // a file name; `--` ends the flags and is not a file.
 //
-// Dave's only flag is -d. An unrecognised one is an error and not a file name,
+// dave's only flag is -d. An unrecognised one is an error and not a file name,
 // which is the whole point of doing this properly: the old loop compared each
 // argument against the literal "-d" and took everything else as a file, so
 // `dave -x` opened a buffer called `-x` that `w` would have written.
@@ -136,7 +136,7 @@ func runGUI(cfg *config.Config, sess *cmd.Session) error {
 	}
 
 	// Start with no panes open. Files are in sess.Files but no view is created
-	// until the user picks one from the buffer menu (right-click), exactly as Sam.
+	// until the user picks one from the buffer menu (right-click), exactly as sam.
 	var panes []*pane.Pane
 	handler.SetPanes(panes)
 
@@ -170,7 +170,7 @@ func runGUI(cfg *config.Config, sess *cmd.Session) error {
 		win.Ren.SetDrawColor(pal.Background.R, pal.Background.G, pal.Background.B, 255)
 		win.Ren.Clear()
 
-		// Body area: white when no panes open (matching Sam's startup appearance).
+		// Body area: white when no panes open (matching sam's startup appearance).
 		if len(panes) == 0 {
 			win.Ren.SetDrawColor(255, 255, 255, 255)
 			win.Ren.FillRect(&sdl.Rect{X: 0, Y: cmdRect.H, W: winW, H: winH - cmdRect.H})
@@ -543,7 +543,7 @@ func applyMenuResult(res menu.Result, sess *cmd.Session, panes []*pane.Pane, han
 //
 // The needle is literal text, so this is strings.Index over the flattened
 // buffer rather than a regexp. It used to be a hand-written character-by-
-// character scan over a []rune copy of the file -- a second copy at four
+// character scan over a []rune copy of the file — a second copy at four
 // bytes a codepoint, and a search that could not use any of the skipping
 // strings.Index does. Codepoint offsets are then counted from whichever end
 // of the search the match came from, so finding the next occurrence of the
@@ -605,7 +605,7 @@ func applyConfig(win *render.Window, cfg *config.Config, pal *render.Palette, fa
 
 	// Panes read tab_width and margin live through that pointer, so the cached
 	// layout is now stale. SetFace invalidates too, but only on the path where
-	// the font actually reloaded -- a font that failed to load leaves the old
+	// the font actually reloaded — a font that failed to load leaves the old
 	// face in place, and a reload that changed only tab_width would otherwise
 	// keep the old layout. Invalidating here makes it independent of both.
 	for _, p := range panes {

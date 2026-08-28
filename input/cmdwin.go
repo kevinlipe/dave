@@ -11,7 +11,7 @@ import (
 	"github.com/veandco/go-sdl2/sdl"
 )
 
-// CmdWindow is the always-visible command window at the top of the Dave window.
+// CmdWindow is the always-visible command window at the top of the dave window.
 //
 // It is a single editable text buffer. There is no separate input line or
 // output log — the buffer accumulates all typed text and command output, and
@@ -293,7 +293,7 @@ func (cw *CmdWindow) AppendOutput(text string) {
 }
 
 // execute runs the selected text (if non-null) or the current line (if null cursor)
-// as a Dave command. Output is appended to the end of the buffer.
+// as a dave command. Output is appended to the end of the buffer.
 func (cw *CmdWindow) execute(sess *cmd.Session) error {
 	var cmdText string
 	if cw.dot.Start != cw.dot.End {
@@ -490,8 +490,8 @@ func (cw *CmdWindow) Draw(ren *sdl.Renderer, rect sdl.Rect, face render.Face, pa
 
 	// Only visible lines are drawn. The command window is append-only, so the
 	// buffer holds every line of output for the whole session while four or
-	// five of them are on screen; walking all of them per frame -- and
-	// converting each to runes before asking whether it was visible -- made
+	// five of them are on screen; walking all of them per frame — and
+	// converting each to runes before asking whether it was visible — made
 	// every repaint cost the length of the scrollback.
 	//
 	// Every line is lineH tall, so the first visible one is arithmetic rather

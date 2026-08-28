@@ -19,10 +19,10 @@ func (s *Session) execSubst(f *file.File, dot buffer.Range, pat, repl string, nt
 	}
 	buf := f.Buffer()
 
-	// Sam's loop (s_cmd): walk the matches, count off the first n-1, and stop
+	// sam's loop (s_cmd): walk the matches, count off the first n-1, and stop
 	// after the first substitution unless g was given. Positions are codepoint
 	// offsets into the file, and resolve against the buffer as it was before
-	// the command -- the changes are accumulated and applied when it commits.
+	// the command — the changes are accumulated and applied when it commits.
 	var lastDot buffer.Range
 	matched := false
 	op := -1
@@ -59,7 +59,7 @@ func (s *Session) execSubst(f *file.File, dot buffer.Range, pat, repl string, nt
 		}
 	}
 	if !matched {
-		// Sam reports this only at the top level: inside an x or g loop most
+		// sam reports this only at the top level: inside an x or g loop most
 		// iterations are expected not to match, and erroring would abort the
 		// loop on the first one that does not (`if(!didsub && nest==0)`).
 		if ctx.nest == 0 {

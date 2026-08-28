@@ -1,4 +1,4 @@
-// Package addr implements Sam's address language: parsing and evaluation.
+// Package addr implements sam's address language: parsing and evaluation.
 //
 // An Address identifies a substring (possibly empty) within a file.
 // Evaluation takes a File and returns a Range of codepoint offsets.
@@ -53,7 +53,7 @@ type Addr struct {
 // when the regexp stands alone.
 //
 // This follows sam (address.c), where '?' does not mean "search backwards"
-// outright -- it negates whatever direction the preceding operator set, and
+// outright — it negates whatever direction the preceding operator set, and
 // only falls back to backwards when there was no operator:
 //
 //	case '?':
@@ -64,7 +64,7 @@ type Addr struct {
 //	case '/':
 //
 // So /re/ and +/re/ search forward, ?re? and -/re/ search backward, and the
-// two that surprise people -- +?re? and -?re? -- search backward and forward
+// two that surprise people — +?re? and -?re? — search backward and forward
 // respectively.
 func searchBackward(sign int, kind Kind) bool {
 	if kind == KindBackRe {
@@ -170,7 +170,7 @@ func charRange(total, n int) (buffer.Range, error) {
 // evalRegexp evaluates /pat/ or ?pat? starting from dot.
 //
 // The search runs over the buffer itself; there is no copy of the file and no
-// byte offset anywhere in it. Sam wraps inside its machine, and dave wraps
+// byte offset anywhere in it. sam wraps inside its machine, and dave wraps
 // here instead, where it can be read.
 func evalRegexp(pat string, backward bool, f *file.File) (buffer.Range, error) {
 	re, err := dregs.Compile(pat)
@@ -259,7 +259,7 @@ func evalComma(a *Addr, ec *evalCtx) (buffer.Range, error) {
 }
 
 // evalInFile evaluates `"pat"a2`: the left side selects a file, and a2 is
-// evaluated there, against that file's dot. Sam gets this by continuing its
+// evaluated there, against that file's dot. sam gets this by continuing its
 // address chain with the newly bound file (sam/address.c).
 func evalInFile(a *Addr, ec *evalCtx) (buffer.Range, error) {
 	// The left side is always a file pattern, which evaluates to the selected
@@ -271,7 +271,7 @@ func evalInFile(a *Addr, ec *evalCtx) (buffer.Range, error) {
 	return eval(a.Right, ec)
 }
 
-// joinRange combines the two sides of a ',' or ';'. Sam refuses a range that
+// joinRange combines the two sides of a ',' or ';'. sam refuses a range that
 // runs backwards — Eorder, "addresses out of order" (sam/address.c) — rather
 // than handing an inverted range to whatever command follows.
 func joinRange(r1, r2 buffer.Range) (buffer.Range, error) {
@@ -442,7 +442,7 @@ func (p *parser) skipbl() {
 }
 
 // peekbl is the next character that is not a blank, without consuming
-// anything. Sam reaches the same place by consuming the blanks and ungetting
+// anything. sam reaches the same place by consuming the blanks and ungetting
 // the character; looking past them instead means a failed match leaves the
 // position where it found it, which is what Parse's contract of consuming
 // nothing when there is no address depends on.

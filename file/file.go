@@ -1,4 +1,4 @@
-// Package file implements Dave's file model: a named buffer with a modified
+// Package file implements dave's file model: a named buffer with a modified
 // bit, a dot (current selection), lazy disk loading, and menu line generation.
 //
 // The file list (all open files in a session) is managed externally by the
@@ -16,7 +16,7 @@ import (
 	"time"
 )
 
-// File represents an open file in Dave's buffer list.
+// File represents an open file in dave's buffer list.
 type File struct {
 	buf  *buffer.Buffer
 	name string       // associated filename (may be empty for new buffers)
@@ -29,7 +29,7 @@ type File struct {
 	// later edit issues a fresh higher one, so the comparison holds for any
 	// path through the history. A stored bool cannot: a write changes what
 	// clean means for every point, and a bool recorded before it does not
-	// know. Sam calls these seq and cleanseq (sam/file.c:59).
+	// know. sam calls these seq and cleanseq (sam/file.c:59).
 	version      int
 	cleanVersion int
 	high         int
@@ -38,18 +38,18 @@ type File struct {
 	crlf   bool // true if the file uses CRLF line endings on disk
 
 	// justLoaded is set when EnsureLoaded actually read from disk, for the
-	// caller to report. Sam's load() prints the file's menu line before
+	// caller to report. sam's load() prints the file's menu line before
 	// reading, and it is called on demand — by a command reaching a file that
 	// has not been read, and by a `"pat"` address selecting one.
 	justLoaded bool
 
 	// nulls is set when the last read dropped NUL bytes, for the caller to
-	// report once. Sam elides them and warns "null characters elided"
+	// report once. sam elides them and warns "null characters elided"
 	// (sam/io.c readio); a NUL in the buffer would reach everything downstream.
 	nulls bool
 
 	// diskTime is the file's modification time when it was last read or
-	// written. Sam keeps the same record (plus dev and qid) so a write can tell
+	// written. sam keeps the same record (plus dev and qid) so a write can tell
 	// that the file changed underneath it — see WriteStale.
 	diskTime time.Time
 
@@ -114,9 +114,9 @@ func (f *File) NoteWritten() { f.noteDiskTime() }
 // WriteStale reports whether the file on disk has changed since dave last read
 // or wrote it, and records the new time so that asking again says no.
 //
-// Sam refuses the write in that case and warns "write might change good version
+// sam refuses the write in that case and warns "write might change good version
 // of" (sam/io.c writef), updating its own record as it goes so a second w goes
-// through — the same second chance D and q give. Sam also compares the device
+// through — the same second chance D and q give. sam also compares the device
 // and inode; dave compares the modification time alone, which is portable and
 // catches the case that matters, someone else having written the file.
 func (f *File) WriteStale() bool {
@@ -240,7 +240,7 @@ func (f *File) String() string { return f.buf.String() }
 func (f *File) MenuLine(isCurrent, isInPane bool) string {
 	// Three independent columns, as sam has them
 	// (`dprint("%c%c%c %s\n", " '"[f->mod], "-+"[f->rasp!=0], " ."[f==curfile], …)`).
-	// Dave used to fold "modified" and "has a window" into one column, so a
+	// dave used to fold "modified" and "has a window" into one column, so a
 	// modified file open in a pane reported only that it was modified — and
 	// since X, Y and the "pat" address match against this line, there was no
 	// way to select on having a window either.
@@ -293,7 +293,7 @@ func (f *File) Save() error {
 
 // ExpandPath resolves a leading `~` or `~/` to the user's home directory.
 // Only these two forms are recognized — `~user` is not supported (differs
-// per platform, and Sam doesn't do it either). If the home directory can't
+// per platform, and sam doesn't do it either). If the home directory can't
 // be determined, the path is returned unchanged rather than erroring.
 func ExpandPath(path string) string {
 	if path == "" || path[0] != '~' {

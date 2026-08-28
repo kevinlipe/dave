@@ -6,10 +6,10 @@ package regexp
 // and no backing up: the cost of a search is the input it reads. The forward
 // and backward machines are the same loop over two programs compiled from one
 // source, and they differ only in which way p moves and where a thread's
-// endpoints land -- which is why sam wrote them twice rather than sharing, and
+// endpoints land — which is why sam wrote them twice rather than sharing, and
 // why this port does too.
 //
-// Sam wraps around the end of the file inside these loops. Dave does the wrap
+// sam wraps around the end of the file inside these loops. dave does the wrap
 // where it can be seen, in addr's search, so the machines here take a range
 // and stay inside it.
 
@@ -17,7 +17,7 @@ package regexp
 // how many there are. RuneAt returns -1 outside the text, as sam's filereadc
 // does.
 //
-// *buffer.Buffer satisfies this as it stands, which is the point -- a search
+// *buffer.Buffer satisfies this as it stands, which is the point — a search
 // steps the gap buffer where it lives instead of a flattened copy of it, and
 // its rune/byte memo makes stepping either direction cost O(1).
 type Input interface {
@@ -54,7 +54,7 @@ type thread struct {
 // the one that started earlier wins.
 //
 // Going backwards a thread's start is stored negated, which makes this same
-// comparison prefer the position that is later in the file -- sam's trick, and
+// comparison prefer the position that is later in the file — sam's trick, and
 // the reason one addinst serves both machines.
 func addinst(l *[]thread, pc int, se rangeset) bool {
 	if pc < 0 {
@@ -72,7 +72,7 @@ func addinst(l *[]thread, pc int, se rangeset) bool {
 	return true
 }
 
-// newmatch keeps the leftmost match, and the longest among those -- sam's
+// newmatch keeps the leftmost match, and the longest among those — sam's
 // preference, and the reason Compile has always set Go's Longest.
 func newmatch(sel *rangeset, sp rangeset) {
 	if sel[0].p1 < 0 || sp[0].p1 < sel[0].p1 ||
@@ -115,7 +115,7 @@ func (p *prog) execute(in Input, start, end int) (rangeset, bool) {
 		// range boundary sees the newline that makes it one.
 		c := in.RuneAt(pos)
 		if pos >= end || c < 0 {
-			// Sam lets the loop run one more click past the end so that a $
+			// sam lets the loop run one more click past the end so that a $
 			// or an END still waiting on nothing can fire.
 			past++
 			if past > 1 {
@@ -124,7 +124,7 @@ func (p *prog) execute(in Input, start, end int) (rangeset, bool) {
 		} else if sel[0].p1 > 0 && nnl == 0 {
 			break
 		}
-		// Sam's startchar: a position that cannot begin a match is skipped
+		// sam's startchar: a position that cannot begin a match is skipped
 		// outright while nothing is live.
 		if hasStart && nnl == 0 && c != startchar {
 			continue
@@ -151,7 +151,7 @@ func (p *prog) execute(in Input, start, end int) (rangeset, bool) {
 						}
 					}
 				case opAny:
-					// Sam does not guard this against the end of the input;
+					// sam does not guard this against the end of the input;
 					// the thread it adds there is discarded when the loop
 					// stops, so guarding changes nothing but says more.
 					if c >= 0 && c != '\n' {
@@ -195,7 +195,7 @@ func (p *prog) execute(in Input, start, end int) (rangeset, bool) {
 						continue
 					}
 				case opEOL:
-					// Sam's forward $ matches only before a newline, not at
+					// sam's forward $ matches only before a newline, not at
 					// the end of the input. Its backward one differs; both
 					// are ported as written.
 					if c == '\n' {
