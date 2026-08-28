@@ -53,3 +53,18 @@ func BenchmarkXWithGuardBody(b *testing.B) {
 func BenchmarkXPlainBody(b *testing.B) {
 	benchStructural(b, benchText(400), `,x/[a-z]+/ =`)
 }
+
+// An x loop whose body carries a regexp *address* rather than a regexp
+// command. This is the one that went quadratic: the address flattens the file
+// and converts a position in it, once per match, and both used to cost a pass
+// over everything before the match.
+//
+// Two sizes, because the shape is what matters. Doubling the input should
+// roughly double the time; if it quadruples, the per-match passes are back.
+func BenchmarkXWithRegexpAddrBody400(b *testing.B) {
+	benchStructural(b, benchText(400), `,x/fox/ +/dog/k`)
+}
+
+func BenchmarkXWithRegexpAddrBody800(b *testing.B) {
+	benchStructural(b, benchText(800), `,x/fox/ +/dog/k`)
+}

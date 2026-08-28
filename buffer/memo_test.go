@@ -248,3 +248,71 @@ func TestSegByteOffsetIgnoresOutOfRangeAnchors(t *testing.T) {
 		}
 	}
 }
+
+// String assembles the whole buffer without asking runeToBytePos anything,
+// which keeps the memo pointing wherever the last real question left it.
+//
+// This is a performance property, not a correctness one, so nothing else can
+// catch it: routing String back through ReadAt would still return the right
+// text, while pinning the memo at the end of the buffer. The caller that
+// cares flattens the buffer and then converts a position near dot, once per
+// match of a structural command; with the memo pinned, each of those
+// conversions walks in from a fixed point and the command goes quadratic.
+func TestStringLeavesTheMemoAlone(t *testing.T) {
+	b := NewFromString(strings.Repeat("héllo wörld\n", 100))
+	mid := b.Len() / 2
+
+	// A real question, of the kind a regexp address asks.
+	if got, want := b.ByteOffset(mid), naiveByteOff(b.String(), mid); got != want {
+		t.Fatalf("ByteOffset(%d) = %d, want %d", mid, got, want)
+	}
+	rune0, byte0, gen0 := b.memoRune, b.memoByte, b.memoGen
+	if rune0 != mid {
+		t.Fatalf("memo did not follow ByteOffset: memoRune = %d, want %d", rune0, mid)
+	}
+
+	_ = b.String()
+
+	if b.memoRune != rune0 || b.memoByte != byte0 || b.memoGen != gen0 {
+		t.Fatalf("String moved the memo: (%d,%d,gen %d) -> (%d,%d,gen %d)",
+			rune0, byte0, gen0, b.memoRune, b.memoByte, b.memoGen)
+	}
+}
+
+// String now has three paths -- gap at the front, gap at the back, gap in the
+// middle -- where before it had one. Each must produce what reading the whole
+// buffer through ReadAt produced.
+func TestStringMatchesWholeBufferRead(t *testing.T) {
+	const content = "héllo\nwörld\n☃ and some more text\n"
+	for pos := 0; pos <= len([]rune(content)); pos++ {
+		b := NewFromString(content)
+		// Move the gap to pos: an insert lands it there, and deleting the
+		// inserted rune leaves it there with the content unchanged.
+		b.Insert(pos, "x")
+		b.Delete(pos, 1)
+		if got, want := b.String(), b.ReadAt(0, b.Len()); got != want {
+			t.Fatalf("gap at %d: String = %q, ReadAt whole = %q", pos, got, want)
+		}
+		if got := b.String(); got != content {
+			t.Fatalf("gap at %d: String = %q, want %q", pos, got, content)
+		}
+	}
+}
+
+// The flattened copy String hands out is the size of the file, so an edit has
+// to drop it rather than leave it stamped with an old generation and wait for
+// the next caller to overwrite it. Nothing about the returned text can show
+// this, so it is checked directly.
+func TestEditReleasesTheFlattenedCopy(t *testing.T) {
+	b := NewFromString(strings.Repeat("héllo wörld\n", 100))
+	if b.String() == "" || b.flat == "" {
+		t.Fatal("String did not cache anything")
+	}
+	b.Insert(0, "x")
+	if b.flat != "" || b.flatOK {
+		t.Fatalf("edit left %d bytes of stale flattening pinned", len(b.flat))
+	}
+	if got, want := b.String(), "x"+strings.Repeat("héllo wörld\n", 100); got != want {
+		t.Fatalf("String after edit = %q..., want %q...", got[:12], want[:12])
+	}
+}

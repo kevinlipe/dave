@@ -6,7 +6,10 @@
 // this package.
 package buffer
 
-import "unicode/utf8"
+import (
+	"strings"
+	"unicode/utf8"
+)
 
 const defaultGapSize = 4096
 
@@ -36,6 +39,24 @@ type Buffer struct {
 	edits    []edit
 	editHead int
 
+	// The whole content as one string, cached until the next edit. Several
+	// callers need the buffer flattened -- the regexp engine takes a string,
+	// and word wrap walks runes -- and a command evaluates against one
+	// unchanging state, so a structural command that searches once per match
+	// asked for the same flattening thousands of times over.
+	//
+	// The cost is a second copy of the content resident between edits. That
+	// is a real price on a large file, paid so that repeated whole-buffer
+	// reads are free rather than quadratic.
+	//
+	// Unlike the line table and the memo below, this is not stamped with the
+	// generation. It has to be dropped at the edit regardless -- a stale copy
+	// left stamped would pin the size of the file until someone next asked
+	// for a flattening -- and once it is dropped there, a stamp could never
+	// disagree with the generation to begin with.
+	flat   string
+	flatOK bool
+
 	// Memo of the previous runeToBytePos answer, used as an extra anchor so
 	// that sequential access is cheap. The pair is in logical coordinates,
 	// which do not shift when the gap moves, so only a content change can
@@ -49,6 +70,15 @@ type Buffer struct {
 // Gen returns the current modification generation. Callers can cache this
 // value and compare it later to detect whether the buffer has changed.
 func (b *Buffer) Gen() int { return b.gen }
+
+// bumpGen records that the content changed. Everything else keyed on the
+// generation is invalidated by the stamp alone; the flattened copy is dropped
+// here instead, because leaving it stamped would pin a copy of the whole file
+// until something next asked for a flattening.
+func (b *Buffer) bumpGen() {
+	b.gen++
+	b.flat, b.flatOK = "", false
+}
 
 // New returns an empty Buffer.
 func New() *Buffer {
@@ -245,7 +275,7 @@ func (b *Buffer) Insert(pos int, text string) {
 	bytePos := b.runeToBytePos(pos)
 	before := b.totalRunes
 	b.insert(bytePos, []byte(text))
-	b.gen++
+	b.bumpGen()
 	b.recordEdit(pos, 0, b.totalRunes-before)
 }
 
@@ -258,7 +288,7 @@ func (b *Buffer) Delete(pos, n int) {
 	byteEnd := b.runeToBytePos(pos + n)
 	before := b.totalRunes
 	b.delete(byteStart, byteEnd-byteStart)
-	b.gen++
+	b.bumpGen()
 	b.recordEdit(pos, before-b.totalRunes, 0)
 }
 
@@ -297,8 +327,52 @@ func (b *Buffer) ReadAt(pos, n int) string {
 }
 
 // String returns the entire buffer contents as a string.
+//
+// The result is cached until the buffer changes, so asking repeatedly costs
+// nothing; see the flat field for what that cache is worth and what it costs.
+//
+// It assembles the two segments itself rather than deferring to ReadAt. The
+// endpoints of a whole-buffer read are known without converting anything, so
+// ReadAt's two runeToBytePos calls are not merely wasted: they leave the memo
+// pinned at the end of the buffer, and the next caller asking about a position
+// near dot then walks in from a fixed point instead of from where it left off.
+// A loop that flattens the buffer and then converts a position -- which is
+// what a regexp address does, once per match -- pays that walk every time.
 func (b *Buffer) String() string {
-	return b.ReadAt(0, b.totalRunes)
+	if b.flatOK {
+		return b.flat
+	}
+	var s string
+	switch {
+	case b.gapStart == 0:
+		s = string(b.data[b.gapEnd:])
+	case b.gapEnd == len(b.data):
+		s = string(b.data[:b.gapStart])
+	default:
+		// Builder hands its bytes to the string without the copy that a
+		// string(...) conversion of an assembled slice would make.
+		var sb strings.Builder
+		sb.Grow(b.byteLen())
+		sb.Write(b.data[:b.gapStart])
+		sb.Write(b.data[b.gapEnd:])
+		s = sb.String()
+	}
+	b.flat, b.flatOK = s, true
+	return s
+}
+
+// ByteOffset returns the byte offset at which codepoint runePos begins,
+// measured in the buffer's logical content -- that is, the offset that
+// codepoint has in the string String returns. It panics if runePos is
+// negative; offsets past the end clamp to the end of the content.
+//
+// This is the one place the codepoint-only rule is relaxed, and only for a
+// caller that already holds a flattened copy of the buffer and needs to index
+// into it. Counting the bytes itself costs a pass over everything before
+// runePos; this shares runeToBytePos's fixed points and memo, so walking
+// forward through a file costs the distance between successive questions.
+func (b *Buffer) ByteOffset(runePos int) int {
+	return b.runeToBytePos(runePos)
 }
 
 // RuneAt returns the codepoint at position pos, or -1 if pos is out of range.
