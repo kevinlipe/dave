@@ -39,24 +39,6 @@ type Buffer struct {
 	edits    []edit
 	editHead int
 
-	// The whole content as one string, cached until the next edit. Several
-	// callers need the buffer flattened -- the regexp engine takes a string,
-	// and word wrap walks runes -- and a command evaluates against one
-	// unchanging state, so a structural command that searches once per match
-	// asked for the same flattening thousands of times over.
-	//
-	// The cost is a second copy of the content resident between edits. That
-	// is a real price on a large file, paid so that repeated whole-buffer
-	// reads are free rather than quadratic.
-	//
-	// Unlike the line table and the memo below, this is not stamped with the
-	// generation. It has to be dropped at the edit regardless -- a stale copy
-	// left stamped would pin the size of the file until someone next asked
-	// for a flattening -- and once it is dropped there, a stamp could never
-	// disagree with the generation to begin with.
-	flat   string
-	flatOK bool
-
 	// Memo of the previous runeToBytePos answer, used as an extra anchor so
 	// that sequential access is cheap. The pair is in logical coordinates,
 	// which do not shift when the gap moves, so only a content change can
@@ -70,15 +52,6 @@ type Buffer struct {
 // Gen returns the current modification generation. Callers can cache this
 // value and compare it later to detect whether the buffer has changed.
 func (b *Buffer) Gen() int { return b.gen }
-
-// bumpGen records that the content changed. Everything else keyed on the
-// generation is invalidated by the stamp alone; the flattened copy is dropped
-// here instead, because leaving it stamped would pin a copy of the whole file
-// until something next asked for a flattening.
-func (b *Buffer) bumpGen() {
-	b.gen++
-	b.flat, b.flatOK = "", false
-}
 
 // New returns an empty Buffer.
 func New() *Buffer {
@@ -120,6 +93,29 @@ func (b *Buffer) gapSize() int { return b.gapEnd - b.gapStart }
 func (b *Buffer) runeToBytePos(runePos int) int {
 	if runePos < 0 {
 		panic("buffer: negative rune position")
+	}
+
+	// Stepping forward one rune from the last answer is not one access pattern
+	// among several -- it is what a scan does, and a scan is what the matcher,
+	// the line index and word bounds all are. Answering it here costs one
+	// decode; going through segByteOffset costs the same decode plus the
+	// distance arithmetic a random query needs, across two more calls that are
+	// too big to inline.
+	//
+	// A clamped memo names a byte offset at the end of its segment, where the
+	// decode comes back empty and this falls through to the general path.
+	if b.memoGen == b.gen && runePos == b.memoRune+1 {
+		var seg []byte
+		if b.memoByte < b.gapStart {
+			seg = b.data[b.memoByte:b.gapStart]
+		} else {
+			seg = b.data[b.memoByte+b.gapSize():]
+		}
+		if _, sz := utf8.DecodeRune(seg); sz > 0 {
+			off := b.memoByte + sz
+			b.memoRune, b.memoByte = runePos, off
+			return off
+		}
 	}
 
 	// The memo is only usable within the segment it landed in, since the two
@@ -275,7 +271,7 @@ func (b *Buffer) Insert(pos int, text string) {
 	bytePos := b.runeToBytePos(pos)
 	before := b.totalRunes
 	b.insert(bytePos, []byte(text))
-	b.bumpGen()
+	b.gen++
 	b.recordEdit(pos, 0, b.totalRunes-before)
 }
 
@@ -288,7 +284,7 @@ func (b *Buffer) Delete(pos, n int) {
 	byteEnd := b.runeToBytePos(pos + n)
 	before := b.totalRunes
 	b.delete(byteStart, byteEnd-byteStart)
-	b.bumpGen()
+	b.gen++
 	b.recordEdit(pos, before-b.totalRunes, 0)
 }
 
@@ -328,9 +324,6 @@ func (b *Buffer) ReadAt(pos, n int) string {
 
 // String returns the entire buffer contents as a string.
 //
-// The result is cached until the buffer changes, so asking repeatedly costs
-// nothing; see the flat field for what that cache is worth and what it costs.
-//
 // It assembles the two segments itself rather than deferring to ReadAt. The
 // endpoints of a whole-buffer read are known without converting anything, so
 // ReadAt's two runeToBytePos calls are not merely wasted: they leave the memo
@@ -339,9 +332,6 @@ func (b *Buffer) ReadAt(pos, n int) string {
 // A loop that flattens the buffer and then converts a position -- which is
 // what a regexp address does, once per match -- pays that walk every time.
 func (b *Buffer) String() string {
-	if b.flatOK {
-		return b.flat
-	}
 	var s string
 	switch {
 	case b.gapStart == 0:
@@ -357,7 +347,6 @@ func (b *Buffer) String() string {
 		sb.Write(b.data[b.gapEnd:])
 		s = sb.String()
 	}
-	b.flat, b.flatOK = s, true
 	return s
 }
 

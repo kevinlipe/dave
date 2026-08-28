@@ -5,7 +5,6 @@ import (
 	"dave/file"
 	dregs "dave/regexp"
 	"fmt"
-	"unicode/utf8"
 )
 
 // execGuard implements g (wantMatch=true) and v (wantMatch=false):
@@ -15,8 +14,7 @@ func (s *Session) execGuard(f *file.File, dot buffer.Range, pat string, body []*
 	if err != nil {
 		return err
 	}
-	text := f.Buffer().ReadAt(dot.Start, dot.Len())
-	lo, _ := re.FindForward(text, 0, len(text))
+	lo, _ := re.FindForward(f.Buffer(), dot.Start, dot.End)
 	if (lo != -1) != wantMatch {
 		return nil
 	}
@@ -58,41 +56,37 @@ func (s *Session) looper(f *file.File, r buffer.Range, pat string, body []*Comma
 	if err != nil {
 		return err
 	}
-	full := f.String()
-	text := full[runeToByteOff(full, r.Start):runeToByteOff(full, r.End)]
-	rc := runeCounter{s: text}
+	buf := f.Buffer()
 
-	// Byte offsets within text; r.Start converts to file coordinates. op is the
-	// end of the previous match, and -1 for x so that a null match at the very
-	// start is not mistaken for one abutting a previous match.
-	op := 0
+	// Everything here is a codepoint offset into the file. op is the end of
+	// the previous match, and -1 for x so that a null match at the very start
+	// is not mistaken for one abutting a previous match.
+	op := r.Start
 	if isX {
 		op = -1
 	}
-	setDot := func(lo, hi int) {
-		f.SetDot(buffer.Range{Start: r.Start + rc.at(lo), End: r.Start + rc.at(hi)})
-	}
+	setDot := func(lo, hi int) { f.SetDot(buffer.Range{Start: lo, End: hi}) }
 
 	ctx.nest++
 	defer func() { ctx.nest-- }()
-	for p := 0; p <= len(text); {
-		mlo, mhi := re.FindForward(text, p, len(text))
+	for p := r.Start; p <= r.End; {
+		mlo, mhi := re.FindForward(buf, p, r.End)
 		if mlo < 0 {
 			// y still runs once on the text after the last match; x is done.
-			if isX || op > len(text) {
+			if isX || op > r.End {
 				break
 			}
-			setDot(op, len(text))
-			p = len(text) + 1
+			setDot(op, r.End)
+			p = r.End + 1
 		} else {
 			if mlo == mhi {
 				// A null match abutting the previous match is skipped, so a
 				// pattern that can match nothing does not stall or double up.
 				if mlo == op {
-					p = nextRune(text, p)
+					p++
 					continue
 				}
-				p = nextRune(text, mhi)
+				p = mhi + 1
 			} else {
 				p = mhi
 			}
@@ -110,17 +104,6 @@ func (s *Session) looper(f *file.File, r buffer.Range, pat string, body []*Comma
 		}
 	}
 	return nil
-}
-
-// nextRune returns the byte offset one codepoint past i, and one past the end
-// of s when there is nothing left — sam advances by a character here, and a
-// byte step would split a multi-byte one.
-func nextRune(s string, i int) int {
-	if i >= len(s) {
-		return i + 1
-	}
-	_, w := utf8.DecodeRuneInString(s[i:])
-	return i + w
 }
 
 // fileLoop runs body in each file f selected by want, then puts the current

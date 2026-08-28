@@ -5,7 +5,6 @@ import (
 	"dave/file"
 	dregs "dave/regexp"
 	"fmt"
-	"strings"
 	"unicode/utf8"
 )
 
@@ -18,28 +17,42 @@ func (s *Session) execSubst(f *file.File, dot buffer.Range, pat, repl string, nt
 	if err != nil {
 		return err
 	}
-	text := f.Buffer().ReadAt(dot.Start, dot.Len())
-	repl = samReplacement(repl)
+	buf := f.Buffer()
 
+	// Sam's loop (s_cmd): walk the matches, count off the first n-1, and stop
+	// after the first substitution unless g was given. Positions are codepoint
+	// offsets into the file, and resolve against the buffer as it was before
+	// the command -- the changes are accumulated and applied when it commits.
 	var lastDot buffer.Range
 	matched := false
-	rc := runeCounter{s: text}
-	for _, m := range re.FindForwardAll(text, 0, len(text)) {
+	op := -1
+	for p1 := dot.Start; p1 <= dot.End; {
+		idx := re.FindSubmatchIndex(buf, p1, dot.End)
+		if idx == nil {
+			break
+		}
+		mlo, mhi := idx[0], idx[1]
+		if mlo == mhi {
+			// An empty match where the last one ended would substitute twice
+			// in the same place; step over it instead.
+			if mlo == op {
+				p1++
+				continue
+			}
+			p1 = mhi + 1
+		} else {
+			p1 = mhi
+		}
+		op = mhi
 		if nth > 1 {
 			nth--
 			continue
 		}
-		idx := re.FindSubmatchIndex(text, m[0], len(text))
-		if idx == nil || idx[0] != m[0] {
-			continue
-		}
-		expanded := re.ReplaceExpand(text, repl, idx)
-		mLo, mHi := rc.at(m[0]), rc.at(m[1])
-		pos := dot.Start + mLo
-		if err := ctx.addChange(f, pos, mHi-mLo, expanded); err != nil {
+		expanded := dregs.Expand(buf, repl, idx)
+		if err := ctx.addChange(f, mlo, mhi-mlo, expanded); err != nil {
 			return err
 		}
-		lastDot = buffer.Range{Start: pos, End: pos + utf8.RuneCountInString(expanded)}
+		lastDot = buffer.Range{Start: mlo, End: mlo + utf8.RuneCountInString(expanded)}
 		matched = true
 		if !global {
 			break
@@ -56,38 +69,4 @@ func (s *Session) execSubst(f *file.File, dot buffer.Range, pat, repl string, nt
 	}
 	f.SetDot(lastDot)
 	return nil
-}
-
-// samReplacement turns an s command's replacement into a template for Go's
-// Expand. Sam's rhs takes \1-\9 for the subexpressions and & for the whole
-// match (sam/xec.c:252); every other \X is the literal X, and '$' means
-// nothing, so it has to be escaped on the way into a template that reads it.
-func samReplacement(repl string) string {
-	var b strings.Builder
-	for i := 0; i < len(repl); i++ {
-		c := repl[i]
-		switch {
-		case c == '$':
-			b.WriteString("$$")
-		case c == '&':
-			b.WriteString("${0}")
-		case c == '\\' && i+1 < len(repl):
-			switch n := repl[i+1]; {
-			case n >= '1' && n <= '9':
-				b.WriteString("${")
-				b.WriteByte(n)
-				b.WriteString("}")
-			case n == 'n':
-				b.WriteByte('\n')
-			case n == '$':
-				b.WriteString("$$")
-			default:
-				b.WriteByte(n)
-			}
-			i++
-		default:
-			b.WriteByte(c)
-		}
-	}
-	return b.String()
 }

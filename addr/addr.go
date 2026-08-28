@@ -14,7 +14,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"unicode/utf8"
 )
 
 // Kind identifies the type of an address node. Following sam, the value is
@@ -169,45 +168,39 @@ func charRange(total, n int) (buffer.Range, error) {
 }
 
 // evalRegexp evaluates /pat/ or ?pat? starting from dot.
+//
+// The search runs over the buffer itself; there is no copy of the file and no
+// byte offset anywhere in it. Sam wraps inside its machine, and dave wraps
+// here instead, where it can be read.
 func evalRegexp(pat string, backward bool, f *file.File) (buffer.Range, error) {
 	re, err := dregs.Compile(pat)
 	if err != nil {
 		return buffer.Range{}, err
 	}
-	s := f.String()
+	buf := f.Buffer()
 	dot := f.Dot()
-
-	// Where the search starts, in both coordinate systems: the buffer answers
-	// the byte question from its own index, and the pair then anchors the
-	// conversion back. Everything here is measured from that point rather than
-	// from the start of the file, so the cost is the distance to the match.
-	origin := dot.End
-	if backward {
-		origin = dot.Start
-	}
-	from := f.Buffer().ByteOffset(origin)
-	m := runeMap{s: s, byteP: from, runeP: origin, byteN: len(s), runeN: f.Len()}
+	n := buf.Len()
 
 	if !backward {
-		// Search forward from dot.End, wrapping.
-		lo, hi := re.FindForward(s, from, len(s))
-		if lo == -1 {
-			lo, hi = re.FindForward(s, 0, from)
-			if lo == -1 {
+		// Forward from dot.End, then round to what precedes it.
+		lo, hi := re.FindForward(buf, dot.End, n)
+		if lo < 0 {
+			lo, hi = re.FindForward(buf, 0, dot.End)
+			if lo < 0 {
 				return buffer.Range{}, fmt.Errorf("addr: /%s/ no match", pat)
 			}
 		}
-		return m.rangeAt(lo, hi), nil
+		return buffer.Range{Start: lo, End: hi}, nil
 	}
-	// Search backward from dot.Start, wrapping.
-	lo, hi := re.FindBackward(s, 0, from)
-	if lo == -1 {
-		lo, hi = re.FindBackward(s, from, len(s))
-		if lo == -1 {
+	// Backward from dot.Start, then round to what follows it.
+	lo, hi := re.FindBackward(buf, 0, dot.Start)
+	if lo < 0 {
+		lo, hi = re.FindBackward(buf, dot.Start, n)
+		if lo < 0 {
 			return buffer.Range{}, fmt.Errorf("addr: ?%s? no match", pat)
 		}
 	}
-	return m.rangeAt(lo, hi), nil
+	return buffer.Range{Start: lo, End: hi}, nil
 }
 
 // FindFileByPat finds the unique file whose menu line matches pat.
@@ -405,51 +398,6 @@ func evalBase(left *Addr, ec *evalCtx, useStart bool) (buffer.Range, error) {
 	return eval(left, ec)
 }
 
-// ---- Byte/rune conversion ---------------------------------------------------
-
-// runeMap converts a byte offset in a flattened copy of a file back to a
-// codepoint offset.
-//
-// Counting the runes before the offset, from the start of the file, costs a
-// pass over everything that precedes the match. Inside an x loop that is a
-// pass per match, and it made a regexp address quadratic in the file -- the
-// dominant cost of such a command, well ahead of flattening the file in the
-// first place. Counting from whichever known point is nearest costs the
-// distance to the match instead, and a search almost always matches near dot.
-type runeMap struct {
-	s            string
-	byteP, runeP int // dot: where the search started, and where matches land
-	byteN, runeN int // the end of the file
-}
-
-// at returns the codepoint offset of the byte at bytePos.
-func (m *runeMap) at(bytePos int) int {
-	// Start from whichever of the three known points is nearest.
-	fromByte, fromRune, dist := 0, 0, bytePos
-	d := bytePos - m.byteP
-	if d < 0 {
-		d = -d
-	}
-	if d < dist {
-		fromByte, fromRune, dist = m.byteP, m.runeP, d
-	}
-	if d := m.byteN - bytePos; d < dist {
-		fromByte, fromRune = m.byteN, m.runeN
-	}
-	if bytePos >= fromByte {
-		return fromRune + utf8.RuneCountInString(m.s[fromByte:bytePos])
-	}
-	return fromRune - utf8.RuneCountInString(m.s[bytePos:fromByte])
-}
-
-// rangeAt converts the byte range [lo,hi) to codepoints. The end is measured
-// from the start of the match rather than located independently, since a match
-// is short and its two ends are next to each other.
-func (m *runeMap) rangeAt(lo, hi int) buffer.Range {
-	start := m.at(lo)
-	return buffer.Range{Start: start, End: start + utf8.RuneCountInString(m.s[lo:hi])}
-}
-
 // --- Parser ------------------------------------------------------------------
 
 // Parse parses an address expression from the start of s.
@@ -460,6 +408,9 @@ func Parse(s string) (*Addr, int, error) {
 	a, err := p.parseCompound()
 	if err != nil {
 		return nil, 0, err
+	}
+	if a == nil {
+		return nil, 0, nil
 	}
 	return a, p.pos, nil
 }
@@ -482,6 +433,30 @@ func (p *parser) consume() byte {
 	return ch
 }
 
+// skipbl consumes spaces and tabs, as sam's skipbl does. A newline is not
+// blank here: it ends a command.
+func (p *parser) skipbl() {
+	for p.pos < len(p.input) && (p.input[p.pos] == ' ' || p.input[p.pos] == '\t') {
+		p.pos++
+	}
+}
+
+// peekbl is the next character that is not a blank, without consuming
+// anything. Sam reaches the same place by consuming the blanks and ungetting
+// the character; looking past them instead means a failed match leaves the
+// position where it found it, which is what Parse's contract of consuming
+// nothing when there is no address depends on.
+func (p *parser) peekbl() byte {
+	i := p.pos
+	for i < len(p.input) && (p.input[i] == ' ' || p.input[i] == '\t') {
+		i++
+	}
+	if i >= len(p.input) {
+		return 0
+	}
+	return p.input[i]
+}
+
 // parseCompound parses a full compound address.
 // parseCompound parses a full address. This is sam's compoundaddr: ',' and ';'
 // are the lowest-precedence operators, and their right side is another compound
@@ -492,10 +467,11 @@ func (p *parser) parseCompound() (*Addr, error) {
 	if err != nil {
 		return nil, err
 	}
-	k := p.peek()
+	k := p.peekbl()
 	if k != ',' && k != ';' {
 		return left, nil
 	}
+	p.skipbl()
 	p.consume()
 	if left == nil {
 		left = &Addr{Kind: KindLine, Num: 0} // ,a2 means 0,a2
@@ -521,11 +497,12 @@ func (p *parser) parseChain() (*Addr, error) {
 	if err != nil {
 		return nil, err
 	}
-	if left == nil && p.peek() != '+' && p.peek() != '-' {
+	if left == nil && p.peekbl() != '+' && p.peekbl() != '-' {
 		return nil, nil
 	}
 	for {
-		if k := p.peek(); k == '+' || k == '-' {
+		if k := p.peekbl(); k == '+' || k == '-' {
+			p.skipbl()
 			p.consume()
 			right, err := p.parseSimple()
 			if err != nil {
@@ -560,6 +537,16 @@ func (p *parser) parseChain() (*Addr, error) {
 }
 
 func (p *parser) parseSimple() (*Addr, error) {
+	save := p.pos
+	p.skipbl()
+	a, err := p.parseSimpleAt()
+	if err == nil && a == nil {
+		p.pos = save
+	}
+	return a, err
+}
+
+func (p *parser) parseSimpleAt() (*Addr, error) {
 	if p.pos >= len(p.input) {
 		return nil, nil
 	}

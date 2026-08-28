@@ -137,7 +137,7 @@ func TestProcessIsCodepointOriented(t *testing.T) {
 // gets dumped on the way out.
 func TestProcessReturnsScriptErrors(t *testing.T) {
 	for _, c := range []struct{ script, wantErr, what string }{
-		{"s/[/x/", "missing closing ]", "malformed regexp"},
+		{"s/[/x/", "malformed `[]'", "malformed regexp"},
 		{"Z", `unknown command "Z"`, "unknown command"},
 		{"s/zzz/x/", "no match", "a substitution that matches nothing"},
 	} {

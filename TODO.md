@@ -1,16 +1,14 @@
 # TODO
 
-Open work. Items resolved in the 2026-08-22 review and the performance
-pass that followed have been removed — see git log for what was done and
-why.
+Open work, known limitations, and options rejected on purpose. Resolved
+items are removed rather than struck through — the git log has what was
+done and why.
 
-The text engine is where the work has been so far and is in good shape,
-with one exception that is now the largest open item in the project: the
-regular expression engine is Go's, and Go's cannot search backwards. That
-is a divergence from sam and not only a slow path — see below. Everything
-else is correct against sam's semantics and covered by a characterisation
-corpus. **The rest of the work is rendering and layout**, which is where
-every other item below lives.
+The text engine is in good shape: correct against sam's semantics, covered
+by a characterisation corpus and by a differential harness against the real
+sam, and running a port of sam's own matcher rather than Go's regexp.
+**The remaining work is rendering and layout**, which is where every open
+item below lives except the `CmdWindow`/`Pane` merge.
 
 ## Rendering and layout
 
@@ -105,218 +103,7 @@ support.
   to paper over, and a manual knob at least lets the user pick a value
   that looks right. Worth deciding on purpose rather than by omission.
 
-### ~~The layout cache does not know the font changed~~ — done
-
-`Pane.Relayout` keys its cache on `(paneW, bufGen)`, which does not
-include the face, and `InvalidateLayout` — written for exactly this —
-had no production callers. The Plan 9 "scale font" menu item mutated
-face metrics in place, so glyphs resized against a layout computed for
-the old size. That menu item is gone: `plan9_scale` is config-only now,
-applied when the face is built, and `Config` reloads it. `applyConfig`
-now invalidates every pane explicitly rather than relying on `SetFace`
-doing it as a side effect, which also covers a reload that changes
-`tab_width` or `margin` while the font fails to load.
-
-### ~~The command window redrew its whole scrollback every frame~~ — done
-
-`CmdWindow.Draw` walked every line in the buffer and converted each to
-runes *before* asking whether it was on screen, with no `break` past the
-bottom. The command window is append-only, so that cost grew with every
-command run for the whole session, on every frame — including the frames
-mouse motion triggers. `EnsureVisible` (every keystroke) and `CPAtXY`
-(every click and drag event) had the same scan.
-
-All three now read a cached table of per-line codepoint offsets, built
-with the line split it was already doing. Drawing starts at an
-arithmetic first-visible index and breaks past the bottom;
-`EnsureVisible` binary-searches; `CPAtXY` is a lookup.
-`input/cmdwin_test.go` — the package's first tests for this type — pins
-the table against the running computation it replaced, and is
-mutation-verified against byte-vs-codepoint offsets, an uncounted
-newline, both `lineAt` boundary errors, and a cache that never
-invalidates.
-
-`main.go` also pushed the window title to the window server on every
-frame, rebuilding it with a `MenuLine` per pane, for a string that
-changes when a filename or modified flag does. It is compared against
-the last one now.
-
-### ~~`render/` has no tests~~ — done
-
-`render/p9face_test.go` covers the Plan 9 binary path: image decoding at
-k1/k2/k4/k8, compressed against uncompressed, the back-reference
-decompressor including overlapping runs, subfont and fontchar parsing
-with signed left bearings, `.font` file parsing, and the malformed-input
-cases for each. Mutation-verified — polarity flips, an off-by-one in the
-back-reference offset or count, a fontchar width read from the wrong
-entry, and byte-order swaps each fail a test. The subfont char count is
-now bounded (`p9MaxSubfontChars`) so a corrupt header cannot size an
-allocation.
-
-The two `Face` implementations are still untested above the parsing
-layer, since that needs a renderer.
-
 ## Elsewhere
-
-### ~~`file.Save` allocates the file three times over~~ — done
-
-The write path streams. `buffer.WriteTo`/`WriteRangeTo` (`buffer/write.go`)
-write the gap buffer's two segments straight to an `io.Writer` without
-flattening it, and CRLF encoding is a writer wrapper (`file/crlf.go`) rather
-than a `strings.ReplaceAll`. Writing an 880 KB file went from 884 KB and one
-allocation to zero (LF) or 16 bytes (CRLF, the interface box), and from
-143 µs to 8 ns. `file/alloc_test.go` guards it.
-
-Encoding also moved from being each write path's duty to a property of the
-writer, which is what fixed the CRLF bug in `WriteTo` — three write paths had
-to remember to encode and one didn't.
-
-### ~~`buffer.String()` still copies the whole file at 5 call sites~~ — done
-
-Counting the call sites was the wrong measure, and the note about Go's
-`regexp` wanting a string was pointing at the small half of the problem. A
-regexp *address* — `/re/` as the address of a command, not as a command —
-still ran once per match inside an `x` loop, and each run flattened the file
-and then converted a byte offset in the copy back to a codepoint by counting
-from the start of the file. Profiling `,x/fox/ +/dog/k` put 74% of the time in
-those two conversions and 8% in the copy the entry was about.
-
-Three changes, in the order they matter:
-
-- **The conversions are anchored on dot** (`runeMap`, `addr/addr.go`).
-  A match is almost always near where the search began, so counting from the
-  nearest of three known points costs the distance to the match rather than
-  the file. `Buffer.ByteOffset` answers the other direction from the buffer's
-  own index; see the note on invariant 1 in `CLAUDE.md` for why that one
-  exported byte offset is allowed.
-- **`String` no longer routes through `ReadAt`.** The endpoints of a
-  whole-buffer read are known without converting anything, and going through
-  `ReadAt` left the memo pinned at the end of the buffer — so the next
-  conversion, of a position near dot, walked in from a fixed point. That is
-  a performance property with no functional signal, and
-  `TestStringLeavesTheMemoAlone` pins it.
-- **The flattening is cached until the next edit.** A command evaluates
-  against one unchanging state, so `looper` and every address inside it now
-  share one copy. This is the change with a price: a second copy of the
-  content is resident between edits.
-
-`,x/fox/ +/dog/k` over 800 lines: 65.7 ms and 33 MB → 1.02 ms and 77 KB, and
-linear in the file where it was quadratic. End to end, 20k lines went from
-14.0 s to 0.02 s. `BenchmarkXWithRegexpAddrBody400`/`800` are there to catch
-the shape coming back.
-
-`Look` was carrying its own version of the same mistake — a `[]rune` copy of
-the whole file at four bytes a codepoint, then a hand-written scan — and is
-now `strings.Index` over the cached flattening. It also never found anything
-with the cursor at offset 0, since its wrap clamp fired on the first pass too.
-
-What is left is `pane/wrap.go:55`, which needs `[]rune` rather than a string
-because `wrapLine` indexes it. The flattening is free now but the rune slice
-is not, and it is reached only on a full wrap. Removing it means changing what
-`wrapLine` walks, which belongs with the rendering work above.
-
-### Dave's regexp is Go's, and Go's cannot search backwards
-
-This is the one place where dave fakes a sam behaviour rather than
-implementing it, and the fake is visibly wrong.
-
-- **Where:** `regexp/regexp.go` — `FindBackward`, and the `samToGo`
-  translation layer that exists only to make sam's syntax survive
-  contact with Go's.
-
-**The divergence.** Sam's backward search runs the machine right to left
-over a program compiled with the operands of concatenation swapped
-(`regexp.c:326`, the whole trick in one line), so `bnewmatch` selects the
-match with the **rightmost end, and among equal ends the longest**:
-
-    if(sel.p[0].p1<0 || sp->p[0].p1>sel.p[0].p2
-       || (sp->p[0].p1==sel.p[0].p2 && sp->p[0].p2<sel.p[0].p1))
-
-Dave cannot run a machine backwards, so `FindBackward` finds every
-forward match and returns the last one — the last element of a
-*non-overlapping partition*, which is a different thing whenever a
-pattern can overlap itself. On `aaaa\nababa\nxaaay\n`, five of ten
-probes disagree:
-
-| script | sam | dave |
-|--------|-----|------|
-| `$` `?aa?` | `#13,#15` | `#12,#14` |
-| `$` `?aba?` | `#7,#10` | `#5,#8` |
-| `#3` `?aa?` | `#1,#3` | `#0,#2` |
-| `#10` `?aba?` | `#7,#10` | `#5,#8` |
-| `$` `-/aa/` | `#13,#15` | `#12,#14` |
-
-`?a+?` agrees, which is why this survived so long: the rule is not
-"rightmost start" either, and a greedy pattern hides the difference.
-Both sam trees have `bnewmatch` and `bexecute` identical, so this is not
-a plan9port quirk to be settled against 9front — it is simply wrong here.
-A `backsearch` difftest case covering the table above is written and
-lands with the fix.
-
-**The cost.** `FindBackward` calls `FindAllStringIndex` and takes the
-last element, so `-/[a-z]/` over an 80k-word manuscript materialises
-341,513 matches — 46 MB and 108 ms — to return the one a few bytes to
-the left. Twenty-seven of those took 1.80 s where sam took 0.03 s. The
-comment above it says "fast enough for the file sizes Dave will
-encounter"; a novel falsifies that.
-
-**Why this cannot be patched in Go.** Go's `regexp` has no reverse
-matching and no way to anchor a search at a position — you must slice,
-and slicing breaks `(?m)^` unless the slice starts at a line boundary.
-Anything built on it is an emulation of sam's rule with a window
-heuristic bolted to it.
-
-**What Go's engine is actually worth here**, measured over the same
-manuscript:
-
-| pattern | throughput |
-|---------|-----------|
-| literal `zzqqxx` | 20.8 GB/s |
-| `(?m)^zz[a-q]+zz$` | 37 MB/s |
-| `(?m)(qqq\|zzz\|xxx)[0-9]` | 11 MB/s |
-
-Only the literal case is fast, and it is fast because RE2 skips with
-memchr. Once the automaton has to run, Go delivers 11–37 MB/s, which is
-Pike VM territory — the same thing a port would do. The engine is not
-buying speed for the patterns structural commands actually use.
-
-**The decision: port `sam/regexp.c`, and drop dave's pattern language to
-sam's.** Sam's whole language is eleven lexer tokens and thirteen
-opcodes; `regexp.c` is 804 lines, of which the two machines are 226 and
-the compiler about 250. Every extra dave accepts today — `@`, POSIX
-classes, `(?:)`, non-greedy — appears nowhere outside the `regexp`
-package's own tests and docs, and none of them is what makes a matcher
-expensive. Dropping them is not what makes the port cheap; it is what
-makes it a **port** rather than a design, which is how the rest of this
-project is built, and it makes the differential harness an exact oracle
-over the whole language instead of over an intersection.
-
-`(?i)` is the sole exception, kept: case-insensitive search is wanted for
-prose, sam has no syntax for it and so cannot disagree about it, and in
-our own matcher it is a fold at the character and class comparison.
-
-What the port retires: `samToGo` entirely, with the `(?m)` prepend and
-the `{`/`}` escaping hack; the flattening, since the machine steps the
-gap buffer rather than a string, which gives back `Buffer.String`'s cache
-and the second copy of the file it costs; and `runeMap` in `addr`, since
-there are no byte offsets to convert back.
-
-**Keep the literal fast path.** It is the one thing leaving Go's engine
-genuinely costs — a plain `/word/` is ~22 µs today and would be ~10 ms
-ported. Sam's equivalent is `startchar`, a single-character skip test.
-`strings.Index` for a literal prefix preserves it, and it is far easier
-to design in than to retrofit.
-
-**Options rejected.** *Emulate the rule in Go* — enumerate overlapping
-matches within a line-snapped window and apply sam's comparison. It is
-approximately right rather than right, keeps the translation layer, and
-is O(window) where sam is O(distance). *Reverse the pattern instead of
-the engine* — parse with `regexp/syntax`, reverse the concatenations,
-swap the anchors, run over a reversed window; leftmost-longest in
-reversed coordinates **is** sam's rule, so this one is exactly right. It
-was the recommendation while the language stayed a superset of sam's.
-Once the language drops to sam's, it is a bridge to an engine we are no
-longer keeping, and the work is thrown away.
 
 ### `CmdWindow` is a second implementation of `Pane`
 
@@ -387,6 +174,25 @@ longer keeping, and the work is thrown away.
 
 ## Known limitations
 
+### A search scans at about 80 MB/s
+
+Dave runs sam's matcher over the gap buffer a rune at a time. Go's
+regexp managed 20 GB/s on a pattern with a literal prefix, because it
+could `memchr` its way along a string.
+
+This is written down so that nobody fixes it the way it looks like it
+should be fixed. A literal-prefix skip does nothing for `[A-Z][a-z]+`,
+which costs the same as a literal scan and is what a structural command
+actually runs; and an optional interface that `regexp` type-asserts for
+is worse than no fast path, since it would appear or vanish with the
+dynamic type of the input. The real mismatch is that the matcher steps
+strictly forward or strictly backward and never seeks, yet asks through
+a random-access interface and pays position bookkeeping on every step:
+walking a segment directly costs 3.5 ns a rune against `RuneAt`'s 12.2.
+A cursor is the shape that would help every pattern rather than some.
+
+It is 5 ms on an 80k-word manuscript, which is what dave is for.
+
 ### A file with no newlines re-wraps entirely on every keystroke
 
 Incremental layout re-wraps whole logical lines, so a file with no
@@ -412,34 +218,17 @@ harness compares against.
 Accepted differences are documented for users in
 `doc/sam-differences.md`.
 
-One is open, and it was found by running dave against a real manuscript
-rather than by reading the C: **backward search selects the wrong match**
-when a pattern can overlap itself. It is written up under "Dave's regexp
-is Go's" above, together with the decision it forces.
-
-Audited against the C, and closed: undo and redo and everything they
-touch, addresses, the structural commands, the shell redirections, the
+Nothing is open. Audited against the C: undo and redo and everything they touch, address
+*evaluation*, the structural commands, the shell redirections, the
 `e`/`r` I/O paths, `{}` groups, the file list, the read and write paths,
 which of sam's two output streams each command prints on, the command
-line, and the window layer. Forward matching is closed too — `re.Longest`
-gives sam's leftmost-longest, and every probe agrees. The findings each
-sweep produced were fixed or recorded as decisions; the git log has them.
+line, and the window layer.
 
-### ~~The window layer has never been compared to samterm~~ — settled
-
-Every difference between dave's window and samterm is now written out in
-`doc/sam-differences.md` under "The window": panes against samterm's
-tiling window system, the key table, the mouse and its menus, the snarf
-buffer against the system clipboard, the command window being a view
-rather than a file, and word wrap and the config file, which sam has
-neither of. Escape has been brought in line with sam — it selects the
-run just typed — and the rescue file is a decision not to, recorded
-there with the reasoning.
-
-Nothing is left open. The last two candidates — autoindent and
-tabs-as-spaces, 9front's samterm `-a` and `-i` — are declined, and the
-tab width staying at 4 where sam's is 8 is a decision rather than an
-oversight; all three are written up under "Tab stops, and no autoindent".
+Regexps are no longer audited against the C — dave runs a port of it, and
+the differential harness compares the two over the whole pattern
+language rather than over the part they had in common. The three
+divergences that closed with the port are held there by the `backsearch`
+and `anchors` cases.
 
 ### Not looked at
 

@@ -188,12 +188,32 @@ func BenchmarkScatteredReadAt(b *testing.B) {
 	}
 }
 
+// Walking the buffer a rune at a time, which is what a search does. The wrap
+// is a compare rather than a modulo: an integer division inside the loop is a
+// meaningful share of what is being measured here.
 func BenchmarkSequentialRuneAt(b *testing.B) {
 	buf := NewFromString(strings.Repeat("héllo wörld — ☃\n", 40000))
-	n := buf.Len()
+	n, pos := buf.Len(), 0
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = buf.RuneAt(i % n)
+		_ = buf.RuneAt(pos)
+		if pos++; pos >= n {
+			pos = 0
+		}
+	}
+}
+
+// The conversion alone, without the decode RuneAt does on top of it. Together
+// these say whether a slow walk is the position bookkeeping or the UTF-8.
+func BenchmarkSequentialRuneToBytePos(b *testing.B) {
+	buf := NewFromString(strings.Repeat("héllo wörld — ☃\n", 40000))
+	n, pos := buf.Len(), 0
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = buf.runeToBytePos(pos)
+		if pos++; pos >= n {
+			pos = 0
+		}
 	}
 }
 
@@ -299,20 +319,41 @@ func TestStringMatchesWholeBufferRead(t *testing.T) {
 	}
 }
 
-// The flattened copy String hands out is the size of the file, so an edit has
-// to drop it rather than leave it stamped with an old generation and wait for
-// the next caller to overwrite it. Nothing about the returned text can show
-// this, so it is checked directly.
-func TestEditReleasesTheFlattenedCopy(t *testing.T) {
-	b := NewFromString(strings.Repeat("héllo wörld\n", 100))
-	if b.String() == "" || b.flat == "" {
-		t.Fatal("String did not cache anything")
+// Walking forward one rune at a time is answered from the memo directly, and
+// the memo has to follow the walk for that to keep working. Nothing about the
+// offsets returned can show this: a memo left behind still gives correct
+// answers, by the slower path, one call at a time. So it is checked directly.
+//
+// This is what a scan is -- the matcher's step, the line index, word bounds --
+// and it is about twice the cost of the general path when it is missed.
+func TestMemoFollowsAForwardWalk(t *testing.T) {
+	for _, gapAt := range []int{0, 3, 7} {
+		b := NewFromString("héllo wörld\n☃ x")
+		// Park the gap somewhere without changing the content.
+		b.Insert(gapAt, "x")
+		b.Delete(gapAt, 1)
+
+		for pos := 0; pos <= b.Len(); pos++ {
+			off := b.runeToBytePos(pos)
+			if b.memoRune != pos || b.memoByte != off || b.memoGen != b.gen {
+				t.Fatalf("gap at %d, pos %d: memo is (%d,%d,gen %d), want (%d,%d,gen %d)",
+					gapAt, pos, b.memoRune, b.memoByte, b.memoGen, pos, off, b.gen)
+			}
+		}
 	}
-	b.Insert(0, "x")
-	if b.flat != "" || b.flatOK {
-		t.Fatalf("edit left %d bytes of stale flattening pinned", len(b.flat))
+}
+
+// A clamped lookup leaves a memo whose rune and byte do not describe the same
+// place. The step-forward path must not build on it.
+func TestStepForwardAfterAClampedLookup(t *testing.T) {
+	const content = "héllo"
+	b := NewFromString(content)
+	n := b.Len()
+	if got, want := b.runeToBytePos(n+3), len(content); got != want {
+		t.Fatalf("clamped lookup = %d, want %d", got, want)
 	}
-	if got, want := b.String(), "x"+strings.Repeat("héllo wörld\n", 100); got != want {
-		t.Fatalf("String after edit = %q..., want %q...", got[:12], want[:12])
+	if got, want := b.runeToBytePos(n+4), len(content); got != want {
+		t.Fatalf("step past a clamped memo = %d, want %d", got, want)
 	}
+	checkAllPositions(t, b, content, "after a clamped lookup")
 }

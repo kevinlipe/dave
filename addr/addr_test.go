@@ -3,7 +3,6 @@ package addr
 import (
 	"dave/buffer"
 	"dave/file"
-	dregs "dave/regexp"
 	"fmt"
 	"strings"
 	"testing"
@@ -510,106 +509,6 @@ func byteOff(s string, runeN int) int {
 	return off
 }
 
-func oldByteRangeToRune(s string, lo, hi int) buffer.Range {
-	return buffer.Range{
-		Start: utf8.RuneCountInString(s[:lo]),
-		End:   utf8.RuneCountInString(s[:hi]),
-	}
-}
-
-// runeMap answers from whichever of three known points is nearest, and from
-// two of them it counts backwards. Every path has to agree with counting from
-// the start, for every anchor and every offset -- including anchors past the
-// match, which is what a backward search hands it.
-func TestRuneMapMatchesCountingFromTheStart(t *testing.T) {
-	for _, content := range lineDiffContents {
-		runes := len([]rune(content))
-		for anchor := 0; anchor <= runes; anchor++ {
-			m := runeMap{
-				s:     content,
-				byteP: byteOff(content, anchor),
-				runeP: anchor,
-				byteN: len(content),
-				runeN: runes,
-			}
-			for lo := 0; lo <= runes; lo++ {
-				loB := byteOff(content, lo)
-				if got, want := m.at(loB), lo; got != want {
-					t.Fatalf("%q anchor=%d: at(%d) = %d, want %d",
-						content, anchor, loB, got, want)
-				}
-				for hi := lo; hi <= runes; hi++ {
-					hiB := byteOff(content, hi)
-					got := m.rangeAt(loB, hiB)
-					want := oldByteRangeToRune(content, loB, hiB)
-					if got != want {
-						t.Fatalf("%q anchor=%d: rangeAt(%d,%d) = %v, want %v",
-							content, anchor, loB, hiB, got, want)
-					}
-				}
-			}
-		}
-	}
-}
-
-// oldEvalRegexp is evalRegexp before the anchoring, verbatim. The search is
-// the same; only the two conversions around it changed, so any disagreement
-// is a conversion bug.
-func oldEvalRegexp(pat string, backward bool, f *file.File) (buffer.Range, error) {
-	re, err := dregs.Compile(pat)
-	if err != nil {
-		return buffer.Range{}, err
-	}
-	s := f.String()
-	dot := f.Dot()
-	if !backward {
-		lo, hi := re.FindForward(s, byteOff(s, dot.End), len(s))
-		if lo == -1 {
-			lo, hi = re.FindForward(s, 0, byteOff(s, dot.End))
-			if lo == -1 {
-				return buffer.Range{}, fmt.Errorf("addr: /%s/ no match", pat)
-			}
-		}
-		return oldByteRangeToRune(s, lo, hi), nil
-	}
-	lo, hi := re.FindBackward(s, 0, byteOff(s, dot.Start))
-	if lo == -1 {
-		lo, hi = re.FindBackward(s, byteOff(s, dot.Start), len(s))
-		if lo == -1 {
-			return buffer.Range{}, fmt.Errorf("addr: ?%s? no match", pat)
-		}
-	}
-	return oldByteRangeToRune(s, lo, hi), nil
-}
-
-// Both directions, from every position in the file, including the wrap that
-// carries a match to the far side of the anchor.
-func TestEvalRegexpMatchesOldConversion(t *testing.T) {
-	pats := []string{"o", "l+", "^", "$", "\\n", "wörld", "☃", "zzz", "b*"}
-	for _, content := range lineDiffContents {
-		f := makeFile(content)
-		runes := f.Len()
-		for _, pat := range pats {
-			for pos := 0; pos <= runes; pos++ {
-				for _, backward := range []bool{false, true} {
-					setDot(f, pos, pos)
-					want, wantErr := oldEvalRegexp(pat, backward, f)
-					setDot(f, pos, pos)
-					got, gotErr := evalRegexp(pat, backward, f)
-					if (gotErr != nil) != (wantErr != nil) {
-						t.Fatalf("%q /%s/ back=%v pos=%d: err %v, old %v",
-							content, pat, backward, pos, gotErr, wantErr)
-					}
-					if gotErr == nil && got != want {
-						t.Fatalf("%q /%s/ back=%v pos=%d: got %v, old %v",
-							content, pat, backward, pos, got, want)
-					}
-				}
-			}
-		}
-	}
-}
-
 // oldLineRange is the implementation lineRange replaced, verbatim.
 func oldLineRange(s string, total, n int) (buffer.Range, error) {
 	if n == 0 {
@@ -1043,5 +942,91 @@ func TestRangeCannotStraddleFiles(t *testing.T) {
 	}
 	if _, _, err := Eval(node, a, files); err == nil {
 		t.Error(`"other",$ : expected an error, got none`)
+	}
+}
+
+// Sam skips blanks in two places while reading an address: before every simple
+// element (`simpleaddr` opens with `skipbl()`) and before the `,` or `;` that
+// joins two of them (`compoundaddr`). Dave's parser had neither, so `0,$ d`
+// worked and `0, $ d` — a space after the comma, which is how anyone writes a
+// range — was `unknown command`.
+//
+// A blank is a space or a tab and never a newline, which ends a command.
+func TestAddressesTolerateBlanks(t *testing.T) {
+	f := makeFile("alpha\nbeta\ngamma\ndelta\n")
+	for _, c := range []struct{ spaced, tight string }{
+		{"0, $", "0,$"},
+		{"0 , $", "0,$"},
+		{"1, 2", "1,2"},
+		{"1 ; 2", "1;2"},
+		{"/alpha/, /gamma/", "/alpha/,/gamma/"},
+		{"#0 /beta/", "#0/beta/"},
+		{"1 /beta/", "1/beta/"},
+		{"1 + 1", "1+1"},
+		{"1+ 1", "1+1"},
+		{"$- 1", "$-1"},
+		{"\t2", "2"},
+		{"1\t, 2", "1,2"},
+		{"1\t;\t2", "1;2"},
+		{"1\t+\t1", "1+1"},
+		{"/alpha/ , /delta/", "/alpha/,/delta/"},
+	} {
+		setDot(f, 0, 0)
+		want := evalStr(t, c.tight, f)
+		setDot(f, 0, 0)
+		got := evalStr(t, c.spaced, f)
+		if got != want {
+			t.Errorf("%q = [%d,%d), %q = [%d,%d)",
+				c.spaced, got.Start, got.End, c.tight, want.Start, want.End)
+		}
+	}
+}
+
+// A newline is not a blank: it ends the command, so an address may not run
+// across one, and Parse must stop rather than reach past it.
+func TestAddressStopsAtNewline(t *testing.T) {
+	for _, s := range []string{
+		"1\n2",  // juxtaposition must not reach across it
+		"1\n,2", // nor may the comma be found past it
+		"1\n+1",
+	} {
+		a, n, err := Parse(s)
+		if err != nil {
+			t.Fatalf("Parse(%q): %v", s, err)
+		}
+		if a == nil || n != 1 {
+			t.Fatalf("Parse(%q) consumed %d, want 1", s, n)
+		}
+	}
+}
+
+// Parse's contract is that it consumes nothing when there is no address. The
+// blank skipping must not eat the blanks in front of a bare command.
+func TestParseConsumesNothingWithoutAnAddress(t *testing.T) {
+	for _, s := range []string{"  d", "\td", "d", "   ", ""} {
+		a, n, err := Parse(s)
+		if err != nil {
+			t.Fatalf("Parse(%q): %v", s, err)
+		}
+		if a != nil || n != 0 {
+			t.Errorf("Parse(%q) = %v, consumed %d; want nil, 0", s, a, n)
+		}
+	}
+}
+
+// parseSimple's local contract: finding no address consumes nothing. Parse
+// enforces the same thing at the top level and parseChain restores the
+// position itself, so both of those would hide a break here — and a future
+// caller that trusted the contract would not.
+func TestParseSimpleConsumesNothingWhenThereIsNoAddress(t *testing.T) {
+	for _, s := range []string{"  d", "\t\td", "d", "   "} {
+		p := &parser{input: s}
+		a, err := p.parseSimple()
+		if err != nil {
+			t.Fatalf("parseSimple(%q): %v", s, err)
+		}
+		if a != nil || p.pos != 0 {
+			t.Errorf("parseSimple(%q) = %v at pos %d; want nil at 0", s, a, p.pos)
+		}
 	}
 }

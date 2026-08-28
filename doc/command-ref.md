@@ -14,7 +14,7 @@ Dave uses Sam's pattern syntax, with one addition:
 | `@`     | Any character including newline (Dave extension) |
 | `\n`    | Newline |
 | `^`     | Start of line (matches at start of text and after every newline) |
-| `$`     | End of line (matches before every newline and at end of text) |
+| `$`     | End of line — before a newline. Searching forward it does *not* match at the end of a file with no final newline; searching backward with `?…?` it does, which is Sam's asymmetry and not ours |
 | `*`     | Zero or more of preceding |
 | `+`     | One or more of preceding |
 | `?`     | Zero or one of preceding |
@@ -22,13 +22,22 @@ Dave uses Sam's pattern syntax, with one addition:
 | `[^abc]`| Negated character class — never matches a newline |
 | `(re)`  | Grouping / capture |
 
-**`\n` is the only escape.** Every other `\X` is the literal character X, as in Sam: `\.` is a dot, `\*` an asterisk, `\\` a backslash — and `\d` is the letter `d`, `\w` the letter `w`, `\t` the letter `t`. Perl's shorthand classes and anchors (`\d`, `\w`, `\s`, `\b`, `\A`, …) are deliberately not available; they would silently select different text from the same pattern in Sam. Use `[0-9]`, `[[:alpha:]]` and the like.
+**`\n` is the only escape.** Every other `\X` is the literal character X, as in Sam: `\.` is a dot, `\*` an asterisk, `\\` a backslash — and `\d` is the letter `d`, `\w` the letter `w`, `\t` the letter `t`. Perl's shorthand classes and anchors (`\d`, `\w`, `\s`, `\b`, `\A`, …) are not available; they would silently select different text from the same pattern in Sam. Use `[0-9]`, `[a-zA-Z]` and the like.
 
 **A negated class never matches a newline.** `[^ ]+` stops at the end of a line rather than running on to the next, as in Sam. A plain class matches a newline only if it says so: `[\n]` and `[ab\n]` do.
 
 **Matching is leftmost-longest.** Among matches starting at the earliest position, the longest wins, so `/foo|foobar/` matches `foobar`. This is Sam's rule, not Perl's — the order of alternatives does not decide the result.
 
-**Braces are ordinary characters.** `a{2,3}` matches the text `a{2,3}`; there is no counted repetition, as there is none in Sam. POSIX classes such as `[[:digit:]]` are kept, and the non-greedy forms are accepted but moot under leftmost-longest.
+**Braces are ordinary characters.** `a{2,3}` matches the text `a{2,3}`; there is no counted repetition, as there is none in Sam.
+
+**The syntax above is the whole of it.** Dave runs Sam's own matcher, so what
+Sam has no syntax for, Dave has no syntax for either — and reads it the way Sam
+does rather than rejecting it. POSIX classes are the one to watch:
+`[[:digit:]]` is a class of the six characters `[`, `:`, `d`, `i`, `g`, `t`
+followed by a literal `]`, so it does not match a digit. Write `[0-9]`.
+`(?:re)` and `(?i)re` are errors — `no operand for '?'` — because `(` and `?`
+mean what they mean. Non-greedy `re*?` parses as `(re*)?`, which under
+leftmost-longest is just `re*`.
 
 The empty pattern `//` reuses the last pattern. Use `?pat?` for backward search.
 
@@ -50,6 +59,10 @@ In the `s` command's replacement:
 ## Addresses
 
 An address identifies a substring (possibly empty) within a file. The default address is always dot (`.`).
+
+Blanks — spaces and tabs — may appear anywhere within an address, so `0, $ d`
+and `0,$ d` are the same command, as are `1 + 1` and `1+1`. A newline is not a
+blank: it ends the command, so an address never runs across one.
 
 ### Simple Addresses
 

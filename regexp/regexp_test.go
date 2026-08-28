@@ -6,7 +6,7 @@ import (
 
 func TestAtMatchesNewline(t *testing.T) {
 	r := MustCompile("@+")
-	lo, hi := r.FindForward("a\nb", 0, 3)
+	lo, hi := r.FindForward(NewRunes("a\nb"), 0, 3)
 	if lo != 0 || hi != 3 {
 		t.Errorf("@ should match newline: got [%d,%d), want [0,3)", lo, hi)
 	}
@@ -14,7 +14,7 @@ func TestAtMatchesNewline(t *testing.T) {
 
 func TestAtMatchesAll(t *testing.T) {
 	r := MustCompile("a@b")
-	lo, hi := r.FindForward("a\nb", 0, 3)
+	lo, hi := r.FindForward(NewRunes("a\nb"), 0, 3)
 	if lo != 0 || hi != 3 {
 		t.Errorf("a@b on a\\nb: got [%d,%d), want [0,3)", lo, hi)
 	}
@@ -22,7 +22,7 @@ func TestAtMatchesAll(t *testing.T) {
 
 func TestDotDoesNotMatchNewline(t *testing.T) {
 	r := MustCompile("a.b")
-	lo, hi := r.FindForward("a\nb", 0, 3)
+	lo, hi := r.FindForward(NewRunes("a\nb"), 0, 3)
 	if lo != -1 {
 		t.Errorf("a.b should not match a\\nb, got [%d,%d)", lo, hi)
 	}
@@ -30,7 +30,7 @@ func TestDotDoesNotMatchNewline(t *testing.T) {
 
 func TestBackslashNMatchesNewline(t *testing.T) {
 	r := MustCompile(`a\nb`)
-	lo, hi := r.FindForward("a\nb", 0, 3)
+	lo, hi := r.FindForward(NewRunes("a\nb"), 0, 3)
 	if lo != 0 || hi != 3 {
 		t.Errorf(`a\nb should match a\nb: got [%d,%d), want [0,3)`, lo, hi)
 	}
@@ -59,7 +59,7 @@ func TestEmptyPatternNoLast(t *testing.T) {
 func TestForwardSearch(t *testing.T) {
 	r := MustCompile("cat")
 	s := "the cat sat"
-	lo, hi := r.FindForward(s, 0, len(s))
+	lo, hi := r.FindForward(NewRunes(s), 0, len(s))
 	if lo != 4 || hi != 7 {
 		t.Errorf("forward search: got [%d,%d), want [4,7)", lo, hi)
 	}
@@ -68,7 +68,7 @@ func TestForwardSearch(t *testing.T) {
 func TestForwardSearchNotFound(t *testing.T) {
 	r := MustCompile("dog")
 	s := "the cat sat"
-	lo, hi := r.FindForward(s, 0, len(s))
+	lo, hi := r.FindForward(NewRunes(s), 0, len(s))
 	if lo != -1 {
 		t.Errorf("forward search not found: got [%d,%d), want -1", lo, hi)
 	}
@@ -77,7 +77,7 @@ func TestForwardSearchNotFound(t *testing.T) {
 func TestForwardSearchInRange(t *testing.T) {
 	r := MustCompile("o")
 	s := "foobar"
-	lo, hi := r.FindForward(s, 2, len(s)) // search from 'o' at index 2
+	lo, hi := r.FindForward(NewRunes(s), 2, len(s)) // search from 'o' at index 2
 	if lo != 2 || hi != 3 {
 		t.Errorf("got [%d,%d), want [2,3)", lo, hi)
 	}
@@ -87,7 +87,7 @@ func TestBackwardSearch(t *testing.T) {
 	r := MustCompile("cat")
 	s := "cat and cat"
 	// Backward search should find the LAST match.
-	lo, hi := r.FindBackward(s, 0, len(s))
+	lo, hi := r.FindBackward(NewRunes(s), 0, len(s))
 	if lo != 8 || hi != 11 {
 		t.Errorf("backward search: got [%d,%d), want [8,11)", lo, hi)
 	}
@@ -96,7 +96,7 @@ func TestBackwardSearch(t *testing.T) {
 func TestBackwardSearchSingleMatch(t *testing.T) {
 	r := MustCompile("cat")
 	s := "the cat sat"
-	lo, hi := r.FindBackward(s, 0, len(s))
+	lo, hi := r.FindBackward(NewRunes(s), 0, len(s))
 	if lo != 4 || hi != 7 {
 		t.Errorf("backward single match: got [%d,%d), want [4,7)", lo, hi)
 	}
@@ -105,33 +105,42 @@ func TestBackwardSearchSingleMatch(t *testing.T) {
 func TestBackwardSearchNotFound(t *testing.T) {
 	r := MustCompile("dog")
 	s := "the cat sat"
-	lo, _ := r.FindBackward(s, 0, len(s))
+	lo, _ := r.FindBackward(NewRunes(s), 0, len(s))
 	if lo != -1 {
 		t.Errorf("backward not found: got %d, want -1", lo)
 	}
 }
 
-func TestFindForwardAll(t *testing.T) {
+// Successive matches, the way sam's s and x loops walk them: search from
+// where the last match ended. This replaced FindForwardAll, which collected
+// every match up front.
+func TestSuccessiveForwardMatches(t *testing.T) {
 	r := MustCompile("cat")
-	s := "cat and cat"
-	matches := r.FindForwardAll(s, 0, len(s))
-	if len(matches) != 2 {
-		t.Fatalf("expected 2 matches, got %d", len(matches))
+	in := NewRunes("cat and cat")
+	var got [][2]int
+	for p := 0; p <= in.Len(); {
+		lo, hi := r.FindForward(in, p, in.Len())
+		if lo < 0 {
+			break
+		}
+		got = append(got, [2]int{lo, hi})
+		if hi == lo {
+			p = hi + 1
+		} else {
+			p = hi
+		}
 	}
-	if matches[0] != [2]int{0, 3} {
-		t.Errorf("match[0] = %v, want [0,3]", matches[0])
-	}
-	if matches[1] != [2]int{8, 11} {
-		t.Errorf("match[1] = %v, want [8,11]", matches[1])
+	want := [][2]int{{0, 3}, {8, 11}}
+	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Errorf("matches = %v, want %v", got, want)
 	}
 }
 
-func TestFindForwardAllEmpty(t *testing.T) {
+func TestNoForwardMatches(t *testing.T) {
 	r := MustCompile("dog")
-	s := "the cat sat"
-	matches := r.FindForwardAll(s, 0, len(s))
-	if matches != nil {
-		t.Errorf("expected nil, got %v", matches)
+	in := NewRunes("the cat sat")
+	if lo, _ := r.FindForward(in, 0, in.Len()); lo != -1 {
+		t.Errorf("expected no match, got %d", lo)
 	}
 }
 
@@ -145,41 +154,45 @@ func TestMatchString(t *testing.T) {
 	}
 }
 
-func TestReplaceExpand(t *testing.T) {
+// Sam's replacement text: \1..\9 are the groups, & is the whole match, and
+// any other \X is the literal X. Go's ${1} template syntax is gone with the
+// engine that needed it.
+func TestExpandGroups(t *testing.T) {
 	r := MustCompile(`(hello) (world)`)
-	s := "hello world"
-	idx := r.FindSubmatchIndex(s, 0, len(s))
+	in := NewRunes("hello world")
+	idx := r.FindSubmatchIndex(in, 0, in.Len())
 	if idx == nil {
 		t.Fatal("no match")
 	}
-	result := r.ReplaceExpand(s, `$2, $1`, idx)
-	if result != "world, hello" {
-		t.Errorf("ReplaceExpand = %q, want %q", result, "world, hello")
+	if got := Expand(in, `\2, \1`, idx); got != "world, hello" {
+		t.Errorf("Expand = %q, want %q", got, "world, hello")
 	}
 }
 
-func TestAmpersandExpand(t *testing.T) {
+func TestExpandAmpersand(t *testing.T) {
 	r := MustCompile(`[a-z]+`)
-	s := "hello world"
-	idx := r.FindSubmatchIndex(s, 0, len(s))
+	in := NewRunes("hello world")
+	idx := r.FindSubmatchIndex(in, 0, in.Len())
 	if idx == nil {
 		t.Fatal("no match")
 	}
-	// & is not natively supported by Go's ExpandString but Sam uses it.
-	// Test that our callers handle & → ${0} transformation.
-	// (The cmd package does this substitution before calling ReplaceExpand.)
-	result := r.ReplaceExpand(s, `${0}!`, idx)
-	if result != "hello!" {
-		t.Errorf("ReplaceExpand with $0 = %q, want %q", result, "hello!")
+	if got := Expand(in, `&!`, idx); got != "hello!" {
+		t.Errorf("Expand = %q, want %q", got, "hello!")
+	}
+	// A backslash before anything else is that character, so \& is a literal.
+	if got := Expand(in, `\&`, idx); got != "&" {
+		t.Errorf("Expand of an escaped & = %q, want %q", got, "&")
 	}
 }
 
-func TestMultilinePattern(t *testing.T) {
-	r := MustCompile(`(?m)^hello`)
+// ^ and $ are line anchors in sam, with no flag to turn that on and none to
+// turn it off; (?m) is a Go-ism and is gone with Go's engine.
+func TestLineAnchors(t *testing.T) {
+	r := MustCompile(`^hello`)
 	s := "world\nhello\nfoo"
-	lo, hi := r.FindForward(s, 0, len(s))
+	lo, hi := r.FindForward(NewRunes(s), 0, len(s))
 	if lo != 6 || hi != 11 {
-		t.Errorf("multiline ^hello: got [%d,%d), want [6,11)", lo, hi)
+		t.Errorf("^hello: got [%d,%d), want [6,11)", lo, hi)
 	}
 }
 
@@ -187,7 +200,7 @@ func TestAtAcrossLines(t *testing.T) {
 	// @ should span multiple lines
 	r := MustCompile(`begin@+end`)
 	s := "begin\n\nend"
-	lo, hi := r.FindForward(s, 0, len(s))
+	lo, hi := r.FindForward(NewRunes(s), 0, len(s))
 	if lo != 0 || hi != len(s) {
 		t.Errorf("@+ across lines: got [%d,%d), want [0,%d)", lo, hi, len(s))
 	}
@@ -216,7 +229,7 @@ func TestLeftmostLongest(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			lo, hi := re.FindForward(tt.text, 0, len(tt.text))
+			lo, hi := re.FindForward(NewRunes(tt.text), 0, len(tt.text))
 			if lo != tt.wantLo || hi != tt.wantHi {
 				t.Errorf("%q on %q = [%d,%d), want [%d,%d)",
 					tt.pat, tt.text, lo, hi, tt.wantLo, tt.wantHi)
@@ -225,15 +238,16 @@ func TestLeftmostLongest(t *testing.T) {
 	}
 }
 
-// Longest changes the whole-match preference; submatch boundaries must still be
-// reported, since s//\1/ depends on them.
+// Submatch boundaries must be reported, since s//\1/ depends on them. Sam
+// keeps a fixed nine groups plus the whole match, so a match always reports
+// ten pairs and the ones that did not participate are (-1,-1).
 func TestSubmatchesSurviveLongest(t *testing.T) {
 	re, err := Compile("(t)(w)")
 	if err != nil {
 		t.Fatal(err)
 	}
-	idx := re.FindSubmatchIndex("two", 0, 3)
-	want := []int{0, 2, 0, 1, 1, 2}
+	idx := re.FindSubmatchIndex(NewRunes("two"), 0, 3)
+	want := []int{0, 2, 0, 1, 1, 2, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1}
 	if len(idx) != len(want) {
 		t.Fatalf("FindSubmatchIndex = %v, want %v", idx, want)
 	}
@@ -270,7 +284,7 @@ func TestEscapesAreLiteralAsInSam(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Compile(%q): %v", tt.pat, err)
 			}
-			lo, hi := re.FindForward(tt.text, 0, len(tt.text))
+			lo, hi := re.FindForward(NewRunes(tt.text), 0, len(tt.text))
 			if lo != tt.wantLo || hi != tt.wantHi {
 				t.Errorf("%q on %q = [%d,%d), want [%d,%d)",
 					tt.pat, tt.text, lo, hi, tt.wantLo, tt.wantHi)
@@ -296,29 +310,34 @@ func TestBracesAreLiteral(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Compile(%q): %v", tt.pat, err)
 		}
-		lo, hi := re.FindForward(tt.text, 0, len(tt.text))
+		lo, hi := re.FindForward(NewRunes(tt.text), 0, len(tt.text))
 		if lo != tt.wantLo || hi != tt.wantHi {
 			t.Errorf("%q on %q = [%d,%d), want [%d,%d)", tt.pat, tt.text, lo, hi, tt.wantLo, tt.wantHi)
 		}
 	}
 }
 
-// POSIX classes stay: sam has no syntax for them either, but they read as
-// classes rather than as a second meaning for a punctuation pair already spoken
-// for elsewhere in the language.
-func TestPosixClassesAreKept(t *testing.T) {
+// POSIX classes are gone, along with every other construct sam has no syntax
+// for. What is left is what sam reads: `[[:digit:]]` is a class of the six
+// distinct characters between the brackets -- [ : d i g t -- followed by a
+// literal `]`, so it does not match a digit. Verified against sam, which
+// reports no search for /[[:alpha:]]/ on a line of prose.
+func TestPosixClassesReadAsSamReadsThem(t *testing.T) {
 	for _, tt := range []struct {
 		pat, text      string
 		wantLo, wantHi int
 	}{
-		{`[[:digit:]]+`, "ab123", 2, 5},
-		{`[[:alpha:]]+`, "12abc", 2, 5},
+		{`[[:digit:]]+`, "ab123", -1, -1},
+		{`[[:alpha:]]+`, "12abc", -1, -1},
+		{`[[:digit:]]+`, "d]]", 0, 3}, // a class character, then the literal ]s
+		{`[0-9]+`, "ab123", 2, 5},     // what sam writes instead
 	} {
 		re, err := Compile(tt.pat)
 		if err != nil {
 			t.Fatalf("Compile(%q): %v", tt.pat, err)
 		}
-		lo, hi := re.FindForward(tt.text, 0, len(tt.text))
+		in := NewRunes(tt.text)
+		lo, hi := re.FindForward(in, 0, in.Len())
 		if lo != tt.wantLo || hi != tt.wantHi {
 			t.Errorf("%q on %q = [%d,%d), want [%d,%d)", tt.pat, tt.text, lo, hi, tt.wantLo, tt.wantHi)
 		}
@@ -338,7 +357,6 @@ func TestNegatedClassExcludesNewline(t *testing.T) {
 		{`[^o]+`, "ab\ncd", 0, 2},
 		{`[^ ]+`, "ab\ncd", 0, 2},
 		{`[^o]`, "\n", -1, -1},
-		{`[^[:digit:]]+`, "ab\n1", 0, 2},
 		// An explicit \n in a negated class is not a contradiction, just a
 		// duplicate.
 		{`[^\n]+`, "ab\ncd", 0, 2},
@@ -352,7 +370,7 @@ func TestNegatedClassExcludesNewline(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Compile(%q): %v", tt.pat, err)
 			}
-			lo, hi := re.FindForward(tt.text, 0, len(tt.text))
+			lo, hi := re.FindForward(NewRunes(tt.text), 0, len(tt.text))
 			if lo != tt.wantLo || hi != tt.wantHi {
 				t.Errorf("%q on %q = [%d,%d), want [%d,%d)",
 					tt.pat, tt.text, lo, hi, tt.wantLo, tt.wantHi)
@@ -370,8 +388,6 @@ func TestClassContents(t *testing.T) {
 		pat, text      string
 		wantLo, wantHi int
 	}{
-		{`[[:alpha:]]+`, "ab1", 0, 2},
-		{`[[:alpha:]0-9]+`, "a1!", 0, 2},
 		{`[\]]`, "]", 0, 1},
 		{`[a\]b]+`, "a]b", 0, 3},
 		// @ inside a class is the character, not "any character": the
@@ -393,7 +409,7 @@ func TestClassContents(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Compile(%q): %v", tt.pat, err)
 			}
-			lo, hi := re.FindForward(tt.text, 0, len(tt.text))
+			lo, hi := re.FindForward(NewRunes(tt.text), 0, len(tt.text))
 			if lo != tt.wantLo || hi != tt.wantHi {
 				t.Errorf("%q on %q = [%d,%d), want [%d,%d)",
 					tt.pat, tt.text, lo, hi, tt.wantLo, tt.wantHi)

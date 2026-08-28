@@ -84,7 +84,7 @@ func TestCacheOverflowKeepsResultsCorrect(t *testing.T) {
 		if r.Pattern() != pat {
 			t.Fatalf("compiled %q, got pattern %q", pat, r.Pattern())
 		}
-		if lo, _ := r.FindForward(pat, 0, len(pat)); lo != 0 {
+		if lo, _ := r.FindForward(NewRunes(pat), 0, len(pat)); lo != 0 {
 			t.Fatalf("%q should match its own text, got lo=%d", pat, lo)
 		}
 		if len(cache) > maxCached {
@@ -98,10 +98,10 @@ func TestCachedPatternKeepsSamSemantics(t *testing.T) {
 	ResetLastPattern()
 	const s = "a\nb"
 	for i := 0; i < 3; i++ {
-		if lo, hi := MustCompile("a@b").FindForward(s, 0, len(s)); lo != 0 || hi != 3 {
+		if lo, hi := MustCompile("a@b").FindForward(NewRunes(s), 0, len(s)); lo != 0 || hi != 3 {
 			t.Fatalf("attempt %d: a@b matched [%d,%d), want [0,3)", i+1, lo, hi)
 		}
-		if lo, hi := MustCompile(`a\nb`).FindForward(s, 0, len(s)); lo != 0 || hi != 3 {
+		if lo, hi := MustCompile(`a\nb`).FindForward(NewRunes(s), 0, len(s)); lo != 0 || hi != 3 {
 			t.Fatalf(`attempt %d: a\nb matched [%d,%d), want [0,3)`, i+1, lo, hi)
 		}
 	}

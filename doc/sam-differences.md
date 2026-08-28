@@ -290,29 +290,30 @@ not.
 
 ## Regular expressions
 
-Dave's patterns follow Sam's syntax. `\n` is the only escape, every other `\X`
-is the literal character X, braces are ordinary characters, and matching is
-leftmost-longest — see `command-ref.md` for the full rules.
+Dave runs Sam's matcher, ported from `sam/regexp.c` — the same instruction set,
+the same operator-precedence compiler, and the same two machines, one compiled
+forward and one with the operands of every concatenation swapped so it can run
+right to left. Patterns therefore mean here what they mean in Sam, including
+what Sam makes of the things it has no syntax for: `[[:digit:]]` is a class of
+six characters followed by a literal `]`, `(?i)re` is the error `no operand for
+'?'`, and `re*?` is `(re*)?`. See `command-ref.md` for the rules.
 
-Beyond that, Dave accepts constructs Sam has no syntax for at all. Sam cannot
-disagree about what it cannot write, so these cost nothing at the boundary: a
-pattern that works in Sam works here and means the same thing.
+There is exactly one addition:
 
 | Construct | Meaning | Notes |
 |-----------|---------|-------|
-| `@` | Any character, newline included | Dave's own addition; Sam treats `@` as an ordinary character. Inside a class, `[a@]`, it is the character itself |
-| `[[:alpha:]]`, `[[:digit:]]`, … | POSIX character classes | |
-| `(?:re)` | Non-capturing group | |
-| `(?i)re` | Flag groups — case-insensitive and friends | |
-| `re*?`, `re+?` | Non-greedy repetition | Accepted, but leftmost-longest makes it moot: `f.*?r` on `foo bar` matches the whole of `foo bar` |
+| `@` | Any character, newline included | Dave's own addition; Sam treats `@` as an ordinary character, so it cannot disagree about a pattern that uses it. Inside a class, `[a@]`, it is the character itself |
 
-Note what is **not** here. Perl's shorthand classes and anchors — `\d`, `\w`,
-`\s`, `\b`, `\A` — are gone, along with `\t`, `\x41`, `\p{Lu}` and `\Q…\E`. In
-Sam every one of those is the literal letter after the backslash, and accepting
-Go's reading would mean the same pattern quietly selecting different text in the
-two editors. Counted repetition is gone for the same reason, with the added
-argument that `{2,3}` puts a second meaning on braces in a language whose
-addresses already read `0,$`.
+Two deliberate departures beyond that, both small:
+
+**A complex pattern does not overflow.** Sam's thread list is a fixed 127
+entries and it reports `reg. exp. list overflow` when a pattern needs more.
+Dave's grows. Nobody wants that error, and the pattern that provokes it is
+matching correctly right up to the point where Sam gives up.
+
+**Nine capture groups, and the rest still match.** Sam records `NSUBEXP` = 9
+groups plus the whole match; a pattern may contain more, and in both editors
+they match and are simply not available to `\1`–`\9`.
 
 ---
 

@@ -1,21 +1,22 @@
-// Package regexp wraps Go's regexp package with sam's pattern syntax plus one
-// dave extension:
-//   - '@' matches any character including newline (a dave extension; sam has
-//     no such operator, and treats '@' as an ordinary character)
-//   - '\n' in a pattern matches a literal newline
-//   - '?' delimiters for backward search (e.g. ?pat?)
-//   - Empty pattern reuses the last compiled pattern
+// Package regexp implements sam's regular expressions, ported from
+// sam/regexp.c, with one addition of dave's own:
 //
-// All search functions work on plain Go strings. Positions returned are
-// byte offsets into those strings; callers are responsible for converting
-// to codepoint offsets if needed.
+//   - '@' matches any character including newline. Sam has no such operator
+//     and reads '@' as an ordinary character, so a pattern written for sam
+//     means here exactly what it means there.
+//   - '\n' in a pattern matches a newline; every other '\X' is the literal X,
+//     and braces are ordinary characters. That is sam's whole escape rule.
+//   - An empty pattern reuses the last one compiled.
+//
+// Matching is leftmost-longest going forward, and going backward it takes the
+// match ending last and the longest among those -- which is what running the
+// machine right to left gives you, and what no forward-only engine can say.
+//
+// Searches run over an Input: any rune at a codepoint position. There are no
+// byte offsets anywhere in this package's interface.
 package regexp
 
-import (
-	"fmt"
-	"regexp"
-	"strings"
-)
+import "fmt"
 
 // last is the package-level most-recently-compiled pattern.
 var last *Regexp
@@ -37,10 +38,13 @@ const maxCached = 256
 
 var cache = map[string]*Regexp{}
 
-// Regexp wraps a compiled Go regexp with the original Sam pattern.
+// Regexp is a compiled pattern, in both directions. The backward program is
+// the same source compiled with the operands of every concatenation swapped;
+// building it eagerly costs a second small compile and means a backward search
+// never pays for one.
 type Regexp struct {
-	re      *regexp.Regexp
-	pattern string // original pattern as given by the user
+	pattern  string
+	fwd, bwd *prog
 }
 
 // Compile compiles pattern with Sam extensions.
@@ -57,17 +61,15 @@ func Compile(pattern string) (*Regexp, error) {
 		last = r // a cache hit is still a use, so // reuse must see it
 		return r, nil
 	}
-	goPattern := samToGo(pattern)
-	re, err := regexp.Compile(goPattern)
+	fwd, err := compileProg(pattern, false)
 	if err != nil {
 		return nil, fmt.Errorf("regexp: %w", err)
 	}
-	// Sam prefers the earliest match and then the longest one (newmatch,
-	// sam/regexp.c). Go's default is Perl's leftmost-first, which would make
-	// /foo|foobar/ match only "foo". Longest switches the whole-match
-	// preference and leaves (?m) and submatch assignment alone.
-	re.Longest()
-	r := &Regexp{re: re, pattern: pattern}
+	bwd, err := compileProg(pattern, true)
+	if err != nil {
+		return nil, fmt.Errorf("regexp: %w", err)
+	}
+	r := &Regexp{pattern: pattern, fwd: fwd, bwd: bwd}
 	if len(cache) >= maxCached {
 		clear(cache)
 	}
@@ -88,189 +90,109 @@ func MustCompile(pattern string) *Regexp {
 // Pattern returns the original Sam pattern string.
 func (r *Regexp) Pattern() string { return r.pattern }
 
-// FindForward finds the first match of r in s[start:end] (byte offsets).
-// Returns the match byte range [lo, hi) or (-1, -1) if not found.
-func (r *Regexp) FindForward(s string, start, end int) (lo, hi int) {
-	sub := s[start:end]
-	loc := r.re.FindStringIndex(sub)
-	if loc == nil {
+// FindForward returns the leftmost-longest match in in[start:end], as
+// codepoint offsets, or (-1, -1) if there is none. It does not wrap; the
+// caller that wants sam's wrap-around search does it where it can be seen.
+func (r *Regexp) FindForward(in Input, start, end int) (lo, hi int) {
+	se, ok := r.fwd.execute(in, start, end)
+	if !ok {
 		return -1, -1
 	}
-	return start + loc[0], start + loc[1]
+	return se[0].p1, se[0].p2
 }
 
-// FindForwardAll finds all non-overlapping matches of r in s[start:end].
-// Returns a slice of [lo, hi) byte ranges.
-func (r *Regexp) FindForwardAll(s string, start, end int) [][2]int {
-	sub := s[start:end]
-	locs := r.re.FindAllStringIndex(sub, -1)
-	if locs == nil {
-		return nil
+// FindBackward returns the match in in[start:end] that ends last, and the
+// longest of those, as codepoint offsets, or (-1, -1) if there is none.
+func (r *Regexp) FindBackward(in Input, start, end int) (lo, hi int) {
+	se, ok := r.bwd.bexecute(in, start, end)
+	if !ok {
+		return -1, -1
 	}
-	result := make([][2]int, len(locs))
-	for i, loc := range locs {
-		result[i] = [2]int{start + loc[0], start + loc[1]}
-	}
-	return result
+	return se[0].p1, se[0].p2
 }
 
-// FindBackward finds the rightmost match of r that starts strictly before
-// end in s[start:end]. Returns the match byte range [lo, hi) or (-1,-1).
+// FindSubmatchIndex returns the match and its capture groups as codepoint
+// offset pairs -- [0] and [1] are the whole match -- or nil if there is none.
+// A group that did not participate is reported as (-1, -1).
 //
-// This is implemented as "find all forward matches, return the rightmost."
-// It is correct for all patterns and fast enough for the file sizes Dave
-// will encounter.
-func (r *Regexp) FindBackward(s string, start, end int) (lo, hi int) {
-	sub := s[start:end]
-	locs := r.re.FindAllStringIndex(sub, -1)
-	if locs == nil {
-		return -1, -1
-	}
-	last := locs[len(locs)-1]
-	return start + last[0], start + last[1]
-}
-
-// FindSubmatch returns the match and captured groups in s[start:end].
-// Returns nil if no match.
-func (r *Regexp) FindSubmatch(s string, start, end int) []string {
-	sub := s[start:end]
-	m := r.re.FindStringSubmatch(sub)
-	return m
-}
-
-// FindSubmatchIndex returns the byte index ranges for the match and groups.
-// Returns nil if no match. All indices are relative to s (not sub).
-func (r *Regexp) FindSubmatchIndex(s string, start, end int) []int {
-	sub := s[start:end]
-	idx := r.re.FindStringSubmatchIndex(sub)
-	if idx == nil {
+// Sam records nine groups and no more; a pattern may contain more, and they
+// match, they are simply not reported.
+func (r *Regexp) FindSubmatchIndex(in Input, start, end int) []int {
+	se, ok := r.fwd.execute(in, start, end)
+	if !ok {
 		return nil
 	}
-	// Adjust all indices by start.
-	for i := range idx {
-		if idx[i] >= 0 {
-			idx[i] += start
-		}
+	idx := make([]int, 0, 2*nsubexp)
+	for _, g := range se {
+		idx = append(idx, g.p1, g.p2)
 	}
 	return idx
 }
 
-// MatchString reports whether r matches anywhere in s.
+// MatchString reports whether r matches anywhere in s. It is for the callers
+// that match against one line -- a file's menu entry -- rather than a file.
 func (r *Regexp) MatchString(s string) bool {
-	return r.re.MatchString(s)
+	in := NewRunes(s)
+	lo, _ := r.FindForward(in, 0, in.Len())
+	return lo >= 0
 }
 
-// ReplaceExpand expands a replacement template using the submatch from src.
-// idx is the submatch index from FindSubmatchIndex.
-// template supports & (whole match) and \1..\9 (captured groups).
-func (r *Regexp) ReplaceExpand(src string, template string, idx []int) string {
-	return string(r.re.ExpandString(nil, template, src, idx))
-}
-
-// ---- Sam pattern → Go pattern conversion ------------------------------------
-
-// samToGo translates a Sam/Dave regex pattern to a Go regexp pattern.
-// Translations:
-//   - Prepends '(?m)' so '^' and '$' match at line boundaries (Sam semantics;
-//     Go's default anchors only match start/end of text).
-//   - '@' → '[\s\S]' (any char including newline)
-//   - '\n' (literal backslash-n) → actual newline in the pattern
-func samToGo(pat string) string {
-	var b strings.Builder
-	b.WriteString("(?m)")
-	for i := 0; i < len(pat); {
-		switch {
-		case pat[i] == '[':
-			i = writeClass(&b, pat, i)
-		case pat[i] == '@':
-			b.WriteString(`[\s\S]`)
-			i++
-		case pat[i] == '\\':
-			i = writeEscape(&b, pat, i)
-		case pat[i] == '{' || pat[i] == '}':
-			// Sam has no repetition braces, so these are ordinary characters
-			// there. Go would read a{2,3} as counted repetition — a second
-			// meaning for braces that reads against the 0,$ address model.
-			b.WriteByte('\\')
-			b.WriteByte(pat[i])
-			i++
-		default:
-			b.WriteByte(pat[i])
-			i++
-		}
-	}
-	return b.String()
-}
-
-// writeEscape copies the escape sequence at pat[i] and returns the index past
-// it. Sam's lex knows exactly one escape, \n; every other \X is the literal X
-// (sam/regexp.c). Go reads \d, \w, \b, \t and friends as classes, anchors or
-// control characters, which is a silent difference in what a pattern selects
-// rather than an error anyone would notice. Escaped punctuation already means
-// the literal in both, so it keeps its backslash.
-func writeEscape(b *strings.Builder, pat string, i int) int {
-	if i+1 >= len(pat) {
-		// A trailing backslash is a literal one: sam's lex leaves c as '\\'
-		// when nothing follows it. Go would reject the pattern.
-		b.WriteString(`\\`)
-		return i + 1
-	}
-	c := pat[i+1]
-	switch {
-	case c == 'n':
-		b.WriteString(`\n`)
-	case c >= '0' && c <= '9' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z':
-		b.WriteByte(c)
-	default:
-		b.WriteByte('\\')
-		b.WriteByte(c)
-	}
-	return i + 2
-}
-
-// writeClass copies the character class starting at pat[i] and returns the
-// index past its closing ']'.
+// Expand builds the replacement text for one match of an s command.
 //
-// A negated class gains a newline. Sam seeds every negated class with one as it
-// builds it (`classp[n++] = '\n'; /* don't match newline in negate case */`,
-// bldcclass), so `[^ ]` cannot cross a line boundary there; Go's can, which
-// makes `,x/[^ ]+/` iterate line-spanning runs here and line-bounded ones in
-// sam. Scanning the class is what the insertion costs: the newline has to go
-// inside the brackets, and a POSIX name like [:alpha:] carries a ']' of its own
-// that does not end the class.
-func writeClass(b *strings.Builder, pat string, i int) int {
-	b.WriteByte('[')
-	i++
-	negated := i < len(pat) && pat[i] == '^'
-	if negated {
-		b.WriteByte('^')
-		i++
-	}
-	for i < len(pat) && pat[i] != ']' {
+// Sam\'s rules, from s_cmd: `&` is the whole match, `\1` to `\9` are the
+// capture groups, and any other `\X` is the literal X. A `\n` reaches here as
+// a newline already, resolved by the command parser the way sam\'s getrhs
+// resolves it.
+func Expand(in Input, repl string, idx []int) string {
+	var b []rune
+	rs := []rune(repl)
+	for i := 0; i < len(rs); i++ {
+		c := rs[i]
 		switch {
-		case pat[i] == '[' && i+1 < len(pat) && pat[i+1] == ':':
-			if end := strings.Index(pat[i:], ":]"); end >= 0 {
-				b.WriteString(pat[i : i+end+2])
-				i += end + 2
-				continue
+		case c == '&':
+			b = append(b, groupText(in, idx, 0)...)
+		case c == '\\' && i+1 < len(rs):
+			i++
+			n := rs[i]
+			if n >= '1' && n <= '9' {
+				b = append(b, groupText(in, idx, int(n-'0'))...)
+			} else if n == 'n' {
+				b = append(b, '\n')
+			} else {
+				b = append(b, n)
 			}
-			b.WriteByte('[')
-			i++
-		case pat[i] == '\\':
-			i = writeEscape(b, pat, i)
 		default:
-			b.WriteByte(pat[i])
-			i++
+			b = append(b, c)
 		}
 	}
-	if negated {
-		b.WriteString(`\n`)
+	return string(b)
+}
+
+func groupText(in Input, idx []int, n int) []rune {
+	if 2*n+1 >= len(idx) {
+		return nil
 	}
-	if i < len(pat) {
-		b.WriteByte(']')
-		i++
+	lo, hi := idx[2*n], idx[2*n+1]
+	if lo < 0 || hi < lo {
+		return nil
 	}
-	return i
+	out := make([]rune, 0, hi-lo)
+	for p := lo; p < hi; p++ {
+		out = append(out, in.RuneAt(p))
+	}
+	return out
+}
+
+// Text returns in[lo:hi] as a string.
+func Text(in Input, lo, hi int) string {
+	if lo < 0 || hi < lo {
+		return ""
+	}
+	out := make([]rune, 0, hi-lo)
+	for p := lo; p < hi; p++ {
+		out = append(out, in.RuneAt(p))
+	}
+	return string(out)
 }
 
 // ResetLastPattern clears the last-used pattern (for testing).
