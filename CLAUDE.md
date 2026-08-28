@@ -56,7 +56,11 @@ These are expensive to violate and hard to see from any one file.
 
 1. **All positions are codepoint offsets.** Byte offsets exist only inside
    `buffer/`, and any position crossing a package boundary is a rune offset.
-   `buffer.Range{Start, End}` throughout.
+   `buffer.Range{Start, End}` throughout. The single exception is
+   `Buffer.ByteOffset`, for a caller that holds `Buffer.String()` and has to
+   index into it — which means the regexp search, since Go's `regexp` runs
+   over a string. It hands out the buffer's own byte coordinates for the
+   buffer's own content; nothing else may take a byte offset across the line.
 2. **The gap begins and ends on a rune boundary.** `buffer/write.go` writes the
    two gap segments raw and depends on this; so does `runeToBytePos`.
 3. **Buffer text is LF-only.** CRLF is stripped on read and restored by a
@@ -124,6 +128,10 @@ you touch; don't sweep the repo in an unrelated change.
   options live — read it before proposing a change to rendering or layout.
 - **A clone gets no design docs.** `README.md`, `TODO.md`, `doc/command-ref.md`,
   `doc/sam-differences.md` and this file are the whole written record.
+- **`Buffer.String()` is cached, and costs a second copy of the file.** It is
+  dropped at the next edit. The cache is what makes a regexp address inside an
+  `x` loop linear rather than quadratic, since a command evaluates against one
+  unchanging state; the price is that a searched file sits in memory twice.
 - **`file.WriteContent` is not called `WriteTo` on purpose.** `go vet`'s
   stdmethods check reads `WriteTo(io.Writer) error` as a broken `io.WriterTo`.
 - **Kerning is inconsistent on purpose, for now.** `TTFFace.MeasureText` kerns;

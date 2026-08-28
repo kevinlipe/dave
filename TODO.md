@@ -168,22 +168,49 @@ Encoding also moved from being each write path's duty to a property of the
 writer, which is what fixed the CRLF bug in `WriteTo` — three write paths had
 to remember to encode and one didn't.
 
-### `buffer.String()` still copies the whole file at 5 call sites
+### ~~`buffer.String()` still copies the whole file at 5 call sites~~ — done
 
-Down from ~15; the address and command paths no longer use it per match, and
-the write path no longer uses it at all.
+Counting the call sites was the wrong measure, and the note about Go's
+`regexp` wanting a string was pointing at the small half of the problem. A
+regexp *address* — `/re/` as the address of a command, not as a command —
+still ran once per match inside an `x` loop, and each run flattened the file
+and then converted a byte offset in the copy back to a codepoint by counting
+from the start of the file. Profiling `,x/fox/ +/dog/k` put 74% of the time in
+those two conversions and 8% in the copy the entry was about.
 
-- `pane/wrap.go:55` is now only reached on a full wrap — a resize, a font
-  change, word wrap toggled, or an edit older than the buffer's edit log —
-  rather than on every keystroke.
-- `addr/addr.go:159` (`evalRegexp`), `cmd/exec_struct.go:43` and `:91`
-  (`execX`, `execY`) — all three via `file.String()` — and `main.go:472`
-  (`lookForward`).
-- **Note:** the regexp ones are the awkward set, because Go's `regexp`
-  wants a string — removing the copy there means either an
-  allocation-free iterator the matcher can drive, or accepting the copy.
-  Not urgent now that the per-match quadratics are gone: a search costs
-  one copy per command rather than one per match.
+Three changes, in the order they matter:
+
+- **The conversions are anchored on dot** (`runeMap`, `addr/addr.go`).
+  A match is almost always near where the search began, so counting from the
+  nearest of three known points costs the distance to the match rather than
+  the file. `Buffer.ByteOffset` answers the other direction from the buffer's
+  own index; see the note on invariant 1 in `CLAUDE.md` for why that one
+  exported byte offset is allowed.
+- **`String` no longer routes through `ReadAt`.** The endpoints of a
+  whole-buffer read are known without converting anything, and going through
+  `ReadAt` left the memo pinned at the end of the buffer — so the next
+  conversion, of a position near dot, walked in from a fixed point. That is
+  a performance property with no functional signal, and
+  `TestStringLeavesTheMemoAlone` pins it.
+- **The flattening is cached until the next edit.** A command evaluates
+  against one unchanging state, so `looper` and every address inside it now
+  share one copy. This is the change with a price: a second copy of the
+  content is resident between edits.
+
+`,x/fox/ +/dog/k` over 800 lines: 65.7 ms and 33 MB → 1.02 ms and 77 KB, and
+linear in the file where it was quadratic. End to end, 20k lines went from
+14.0 s to 0.02 s. `BenchmarkXWithRegexpAddrBody400`/`800` are there to catch
+the shape coming back.
+
+`Look` was carrying its own version of the same mistake — a `[]rune` copy of
+the whole file at four bytes a codepoint, then a hand-written scan — and is
+now `strings.Index` over the cached flattening. It also never found anything
+with the cursor at offset 0, since its wrap clamp fired on the first pass too.
+
+What is left is `pane/wrap.go:55`, which needs `[]rune` rather than a string
+because `wrapLine` indexes it. The flattening is free now but the rune slice
+is not, and it is reached only on a full wrap. Removing it means changing what
+`wrapLine` walks, which belongs with the rendering work above.
 
 ### `CmdWindow` is a second implementation of `Pane`
 
