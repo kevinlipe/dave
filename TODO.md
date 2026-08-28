@@ -4,10 +4,13 @@ Open work. Items resolved in the 2026-08-22 review and the performance
 pass that followed have been removed — see git log for what was done and
 why.
 
-The text engine is where the work has been so far and is in good shape:
-correct against sam's semantics, covered by a characterisation corpus,
-and no longer quadratic anywhere that matters. **The remaining work is
-rendering and layout**, which is where every item below lives except two.
+The text engine is where the work has been so far and is in good shape,
+with one exception that is now the largest open item in the project: the
+regular expression engine is Go's, and Go's cannot search backwards. That
+is a divergence from sam and not only a slow path — see below. Everything
+else is correct against sam's semantics and covered by a characterisation
+corpus. **The rest of the work is rendering and layout**, which is where
+every other item below lives.
 
 ## Rendering and layout
 
@@ -212,6 +215,109 @@ because `wrapLine` indexes it. The flattening is free now but the rune slice
 is not, and it is reached only on a full wrap. Removing it means changing what
 `wrapLine` walks, which belongs with the rendering work above.
 
+### Dave's regexp is Go's, and Go's cannot search backwards
+
+This is the one place where dave fakes a sam behaviour rather than
+implementing it, and the fake is visibly wrong.
+
+- **Where:** `regexp/regexp.go` — `FindBackward`, and the `samToGo`
+  translation layer that exists only to make sam's syntax survive
+  contact with Go's.
+
+**The divergence.** Sam's backward search runs the machine right to left
+over a program compiled with the operands of concatenation swapped
+(`regexp.c:326`, the whole trick in one line), so `bnewmatch` selects the
+match with the **rightmost end, and among equal ends the longest**:
+
+    if(sel.p[0].p1<0 || sp->p[0].p1>sel.p[0].p2
+       || (sp->p[0].p1==sel.p[0].p2 && sp->p[0].p2<sel.p[0].p1))
+
+Dave cannot run a machine backwards, so `FindBackward` finds every
+forward match and returns the last one — the last element of a
+*non-overlapping partition*, which is a different thing whenever a
+pattern can overlap itself. On `aaaa\nababa\nxaaay\n`, five of ten
+probes disagree:
+
+| script | sam | dave |
+|--------|-----|------|
+| `$` `?aa?` | `#13,#15` | `#12,#14` |
+| `$` `?aba?` | `#7,#10` | `#5,#8` |
+| `#3` `?aa?` | `#1,#3` | `#0,#2` |
+| `#10` `?aba?` | `#7,#10` | `#5,#8` |
+| `$` `-/aa/` | `#13,#15` | `#12,#14` |
+
+`?a+?` agrees, which is why this survived so long: the rule is not
+"rightmost start" either, and a greedy pattern hides the difference.
+Both sam trees have `bnewmatch` and `bexecute` identical, so this is not
+a plan9port quirk to be settled against 9front — it is simply wrong here.
+A `backsearch` difftest case covering the table above is written and
+lands with the fix.
+
+**The cost.** `FindBackward` calls `FindAllStringIndex` and takes the
+last element, so `-/[a-z]/` over an 80k-word manuscript materialises
+341,513 matches — 46 MB and 108 ms — to return the one a few bytes to
+the left. Twenty-seven of those took 1.80 s where sam took 0.03 s. The
+comment above it says "fast enough for the file sizes Dave will
+encounter"; a novel falsifies that.
+
+**Why this cannot be patched in Go.** Go's `regexp` has no reverse
+matching and no way to anchor a search at a position — you must slice,
+and slicing breaks `(?m)^` unless the slice starts at a line boundary.
+Anything built on it is an emulation of sam's rule with a window
+heuristic bolted to it.
+
+**What Go's engine is actually worth here**, measured over the same
+manuscript:
+
+| pattern | throughput |
+|---------|-----------|
+| literal `zzqqxx` | 20.8 GB/s |
+| `(?m)^zz[a-q]+zz$` | 37 MB/s |
+| `(?m)(qqq\|zzz\|xxx)[0-9]` | 11 MB/s |
+
+Only the literal case is fast, and it is fast because RE2 skips with
+memchr. Once the automaton has to run, Go delivers 11–37 MB/s, which is
+Pike VM territory — the same thing a port would do. The engine is not
+buying speed for the patterns structural commands actually use.
+
+**The decision: port `sam/regexp.c`, and drop dave's pattern language to
+sam's.** Sam's whole language is eleven lexer tokens and thirteen
+opcodes; `regexp.c` is 804 lines, of which the two machines are 226 and
+the compiler about 250. Every extra dave accepts today — `@`, POSIX
+classes, `(?:)`, non-greedy — appears nowhere outside the `regexp`
+package's own tests and docs, and none of them is what makes a matcher
+expensive. Dropping them is not what makes the port cheap; it is what
+makes it a **port** rather than a design, which is how the rest of this
+project is built, and it makes the differential harness an exact oracle
+over the whole language instead of over an intersection.
+
+`(?i)` is the sole exception, kept: case-insensitive search is wanted for
+prose, sam has no syntax for it and so cannot disagree about it, and in
+our own matcher it is a fold at the character and class comparison.
+
+What the port retires: `samToGo` entirely, with the `(?m)` prepend and
+the `{`/`}` escaping hack; the flattening, since the machine steps the
+gap buffer rather than a string, which gives back `Buffer.String`'s cache
+and the second copy of the file it costs; and `runeMap` in `addr`, since
+there are no byte offsets to convert back.
+
+**Keep the literal fast path.** It is the one thing leaving Go's engine
+genuinely costs — a plain `/word/` is ~22 µs today and would be ~10 ms
+ported. Sam's equivalent is `startchar`, a single-character skip test.
+`strings.Index` for a literal prefix preserves it, and it is far easier
+to design in than to retrofit.
+
+**Options rejected.** *Emulate the rule in Go* — enumerate overlapping
+matches within a line-snapped window and apply sam's comparison. It is
+approximately right rather than right, keeps the translation layer, and
+is O(window) where sam is O(distance). *Reverse the pattern instead of
+the engine* — parse with `regexp/syntax`, reverse the concatenations,
+swap the anchors, run over a reversed window; leftmost-longest in
+reversed coordinates **is** sam's rule, so this one is exactly right. It
+was the recommendation while the language stayed a superset of sam's.
+Once the language drops to sam's, it is a bridge to an engine we are no
+longer keeping, and the work is thrown away.
+
 ### `CmdWindow` is a second implementation of `Pane`
 
 - **Where:** `input/cmdwin.go` against `pane/pane.go`
@@ -306,13 +412,18 @@ harness compares against.
 Accepted differences are documented for users in
 `doc/sam-differences.md`.
 
-Nothing is open. Audited against the C: undo and redo and everything
-they touch, regexps, addresses, the structural commands, the shell
-redirections, the `e`/`r` I/O paths, `{}` groups, the file list, the read
-and write paths, which of sam's two output streams each command prints
-on, the command line, and — since the pass below — the window layer. The
-findings each sweep produced were fixed or recorded as decisions; the git
-log has them.
+One is open, and it was found by running dave against a real manuscript
+rather than by reading the C: **backward search selects the wrong match**
+when a pattern can overlap itself. It is written up under "Dave's regexp
+is Go's" above, together with the decision it forces.
+
+Audited against the C, and closed: undo and redo and everything they
+touch, addresses, the structural commands, the shell redirections, the
+`e`/`r` I/O paths, `{}` groups, the file list, the read and write paths,
+which of sam's two output streams each command prints on, the command
+line, and the window layer. Forward matching is closed too — `re.Longest`
+gives sam's leftmost-longest, and every probe agrees. The findings each
+sweep produced were fixed or recorded as decisions; the git log has them.
 
 ### ~~The window layer has never been compared to samterm~~ — settled
 
