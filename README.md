@@ -10,28 +10,16 @@ The command window at the top accepts sam commands. Right-click opens the buffer
 
 ## Keys
 
-The arrow keys, Home, End and the page keys move the cursor and drag the view
-along behind them, which is the "keyboard-friendly" part — sam's move the view
-and leave the cursor where it was. Ctrl with the arrows moves by word, Ctrl with
-Home and End goes to the ends of the file, and Shift with any of them extends
-the selection.
+The arrow keys, Home, End and the page keys move the cursor and drag the view along behind them, which is the "keyboard-friendly" part — sam's move the view and leave the cursor where it was. Ctrl with the arrows moves by word, Ctrl with Home and End goes to the ends of the file, and Shift with any of them extends the selection.
 
 Two keys are worth knowing:
 
-- **Escape** selects what you just typed. Type a word, press Escape, and it is
-  the selection — ready for `>`, `|`, or any command addressed to dot. The run
-  reaches back as far as the typing does; a click, Home, End or a second Escape
-  ends it. This is sam's behaviour, and it is the fastest way to hand a command
-  something you did not select with the mouse.
-- **Ctrl-K** cycles keyboard focus: command window, first pane, second pane, and
-  back round.
+- **Escape** selects what you just typed. Type a word, press Escape, and it is the selection — ready for `>`, `|`, or any command addressed to dot. The run reaches back as far as the typing does; a click, Home, End or a second Escape ends it. This is sam's behaviour, and it is the fastest way to hand a command something you did not select with the mouse.
+- **Ctrl-K** cycles keyboard focus: command window, first pane, second pane, and back round.
 
-**Ctrl-U** deletes back to the start of the line and **Ctrl-W** deletes the word
-behind the cursor, as they do in sam and at a shell prompt. Both work in the
-command window too.
+**Ctrl-U** deletes back to the start of the line and **Ctrl-W** deletes the word behind the cursor, as they do in sam and at a shell prompt. Both work in the command window too.
 
-`doc/sam-differences.md` has the full key table against sam's, along with
-everything else the window does differently.
+`doc/sam-differences.md` has the full key table against sam's, along with everything else the window does differently.
 
 ## Building
 
@@ -78,13 +66,7 @@ dave -d [file ...]  # headless REPL mode, no GUI
 
 Addresses: `0` start, `$` end, `.` dot, `n` line, `#n` char offset, `/re/` next match, `a1,a2` range, `,` whole file.
 
-Patterns are sam's, with one addition: **`@` matches any character, newline
-included**, where `.` stops at a newline. It is what lets a pattern span lines —
-`,x/<p>@*<\/p>/` selects a `<p>` element however many lines it runs to. sam reads
-`@` as an ordinary character, so no pattern written for sam changes meaning under
-dave; inside a class, `[a@]`, it is still the literal `@`. There is no other
-difference, and no Perl shorthand: `\n` is the only escape, `[[:digit:]]` is a
-class of six characters, and `a{2,3}` is literal text.
+Patterns are sam's, with one addition: **`@` matches any character, newline included**, where `.` stops at a newline. It is what lets a pattern span lines — `,x/<p>@*<\/p>/` selects a `<p>` element however many lines it runs to. sam reads `@` as an ordinary character, so no pattern written for sam changes meaning under dave; inside a class, `[a@]`, it is still the literal `@`. There is no other difference, and no Perl shorthand: `\n` is the only escape, `[[:digit:]]` is a class of six characters, and `a{2,3}` is literal text.
 
 | Command | Effect |
 |---|---|
@@ -122,12 +104,7 @@ sdave -n ',x/TODO/ p' *.go             # print just the matches
 sdave 'y/[a-zA-Z]+/ c/\n/'             # one word per line
 ```
 
-Standard output carries the text and nothing else: the buffer, and whatever
-`p` printed. Menu lines, `=`, `n`, the `!` that marks a finished shell command
-and every warning go to standard error, so a script can report as it works
-without corrupting the pipeline. `dave -d` splits the two the same way, which
-is what `sam -d` does — `ssam` is a shell script that discards the second
-stream, where `sdave` leaves it for you to read or redirect.
+Standard output carries the text and nothing else: the buffer, and whatever `p` printed. Menu lines, `=`, `n`, the `!` that marks a finished shell command and every warning go to standard error, so a script can report as it works without corrupting the pipeline. `dave -d` splits the two the same way, which is what `sam -d` does — `ssam` is a shell script that discards the second stream, where `sdave` leaves it for you to read or redirect.
 
 ## License
 
