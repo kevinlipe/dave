@@ -1,3 +1,5 @@
+//go:build linux || openbsd
+
 package render
 
 import (
