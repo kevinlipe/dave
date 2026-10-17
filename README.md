@@ -2,6 +2,8 @@
 
 A text editor named after Sam & Dave, the Stax Records legends, and a spiritual successor to [Rob Pike's `sam` editor](http://sam.cat-v.org), reimagined for daily use on Linux and Windows, with first-class soft word wrap for prose editing.
 
+![dave editing its own README: the command window on top, a word-wrapped file pane below](img/screenshot.png)
+
 ## What it is
 
 dave uses sam's command language and structural regular expressions. If you know `sam`, you know dave. The main additions are word wrap, a more keyboard-friendly interface, and a config file.
