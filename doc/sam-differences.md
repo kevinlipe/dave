@@ -16,8 +16,7 @@ that runs on the machines dave is developed on, and partly because 9front's
 additions are mostly for its own terminal rather than for the language. Every
 place the two differ and dave had to choose is listed below.
 
-Everything on this page is a decision, not a backlog. Divergences still open are
-in `TODO.md`.
+Everything on this page is a decision, not a backlog.
 
 ---
 

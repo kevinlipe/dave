@@ -208,12 +208,11 @@ since a change can move a break point backwards.
 
 ## Known divergences from sam
 
-There is no single canonical sam. Both trees are read —
-`~/src/9front/sys/src/cmd/sam` and `~/src/plan9/src/cmd/sam` — and where
-they differ the call is made case by case and recorded in
-`doc/sam-differences.md`. plan9port has won more of those calls than
-9front: it is the tree that runs here, and it is what the differential
-harness compares against.
+There is no single canonical sam. Both the 9front and plan9port sources
+are read, and where they differ the call is made case by case and recorded
+in `doc/sam-differences.md`. plan9port has won more of those calls than
+9front: it is the tree dave is developed against, and it is what the
+differential harness compares against.
 
 Accepted differences are documented for users in
 `doc/sam-differences.md`.
